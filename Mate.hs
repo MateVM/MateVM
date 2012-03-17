@@ -60,20 +60,34 @@ main = do
 runstuff :: Ptr Int32 -> B.ByteString -> IO ()
 runstuff env bytecode = do
           let emittedcode = compile $ codeInstructions $ decodeMethod bytecode
-          (_, Right (entryPtr, disasm)) <- runCodeGen emittedcode env ()
+          (_, Right ((entryPtr, endOffset), disasm)) <- runCodeGen emittedcode env ()
           printf "entry point: 0x%08x\n" ((fromIntegral $ ptrToIntPtr entryPtr) :: Int)
 
           let entryFuncPtr = ((castPtrToFunPtr entryPtr) :: FunPtr (CInt -> IO CInt))
           result <- code_void entryFuncPtr (fromIntegral 0x1337)
           let iresult::Int; iresult = fromIntegral result
-          printf "result: 0x%08x\n" iresult
+          printf "result: 0x%08x\n" iresult -- expecting (2 * 0x1337) + 0x42 = 0x26b0
 
           result2 <- code_void entryFuncPtr (fromIntegral (-0x20))
           let iresult2::Int; iresult2 = fromIntegral result2
-          printf "result: 0x%08x\n" iresult2
+          printf "result: 0x%08x\n" iresult2 -- expecting 0x2
+
+
+          -- s/mov ebx 0x6666/mov eax 0x6666/
+          let patchit = plusPtr entryPtr 0xb
+          poke patchit (0xb8 :: Word8)
+
+          result3 <- code_void entryFuncPtr (fromIntegral 0)
+          let iresult3::Int; iresult3 = fromIntegral result3
+          printf "result: 0x%08x\n" iresult3 -- expecting 0x6666
 
           printf "disasm:\n"
           mapM_ (putStrLn . showAtt) disasm
+
+          printf "patched disasm:\n"
+          Right newdisasm <- disassembleBlock entryPtr endOffset
+          mapM_ (putStrLn . showAtt) $ newdisasm
+
           return ()
 
 
@@ -86,21 +100,24 @@ exitCode = do mov esp ebp
               pop ebp
               ret
 
-compile :: [J.Instruction] -> CodeGen (Ptr Int32) s (Ptr Word8, [Instruction])
+compile :: [J.Instruction] -> CodeGen (Ptr Int32) s ((Ptr Word8, Int), [Instruction])
 compile insn = do
   entryCode
   mapM compile_ins insn
   exitCode
   d <- disassemble
   c <- getEntryPoint
-  return (c,d)
+  end <- getCodeOffset
+  return ((c,end),d)
 
 compile_ins :: J.Instruction -> CodeGen (Ptr Int32) s ()
 compile_ins (BIPUSH w8) = do mov eax ((fromIntegral w8) :: Word32)
 compile_ins (PUTSTATIC w16) = do add eax (Disp 8, ebp) -- add first argument to %eax
 compile_ins (GETSTATIC w16) = do nop
-compile_ins ICONST_2 = do nop
+compile_ins ICONST_2 = do mov ebx (0x6666 :: Word32) -- patch me!
 compile_ins IMUL = do nop
+  -- mov eax (0 :: Word32)
+  -- jmp eax
 compile_ins RETURN = do nop
 compile_ins _ = do nop
 
