@@ -31,6 +31,12 @@ import Harpy.X86Disassembler
 foreign import ccall "dynamic"
    code_void :: FunPtr (CInt -> IO CInt) -> (CInt -> IO CInt)
 
+foreign import ccall "getaddr"
+  getaddr :: CUInt
+
+foreign import ccall "callertrap"
+  callertrap :: IO ()
+
 
 $(callDecl "callAsWord32" [t|Word32|])
 
@@ -59,7 +65,7 @@ main = do
 
 runstuff :: Ptr Int32 -> B.ByteString -> IO ()
 runstuff env bytecode = do
-          let emittedcode = compile $ codeInstructions $ decodeMethod bytecode
+          let emittedcode = (compile (fromIntegral getaddr)) $ codeInstructions $ decodeMethod bytecode
           (_, Right ((entryPtr, endOffset), disasm)) <- runCodeGen emittedcode env ()
           printf "entry point: 0x%08x\n" ((fromIntegral $ ptrToIntPtr entryPtr) :: Int)
 
@@ -88,6 +94,9 @@ runstuff env bytecode = do
           Right newdisasm <- disassembleBlock entryPtr endOffset
           mapM_ (putStrLn . showAtt) $ newdisasm
 
+          let addr :: Int; addr = (fromIntegral getaddr :: Int)
+          printf "getaddr: 0x%08x\n" addr
+
           return ()
 
 
@@ -100,10 +109,15 @@ exitCode = do mov esp ebp
               pop ebp
               ret
 
-compile :: [J.Instruction] -> CodeGen (Ptr Int32) s ((Ptr Word8, Int), [Instruction])
-compile insn = do
+compile :: Word32 -> [J.Instruction] -> CodeGen (Ptr Int32) s ((Ptr Word8, Int), [Instruction])
+compile trapaddr insn = do
   entryCode
   mapM compile_ins insn
+  push eax
+  mov ecx (trapaddr :: Word32)
+  call ecx
+  -- call trapaddr -- Y U DON'T WORK? (ask mr. gdb for help)
+  pop eax
   exitCode
   d <- disassemble
   c <- getEntryPoint
