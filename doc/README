@@ -1,0 +1,19 @@
+==== MateVM ====
+
+MateVM is a Java JIT compiler written in Haskell, using already existing
+libaries, namly `harpy' [1] and `hs-java' [2].
+
+We use `hs-java' to parse Java Classfiles in order to get a Java Bytecode
+representation. Afterwards we perform a basic-block analysis and generate a
+control-flow-graph (CFG). We apply several program-analysis, transformations
+and optimizations. Given the annotated CFG we emit native code with `harpy'
+(i386) in a on demand manner.
+
+At the moment we try to minimize effort, by focusing on essential features of
+the JVM, e.g. no exception handling. 
+Performance will be evaluated using a dedicated testsuite which can be handeld
+in our limited implementation.
+
+
+[1] http://hackage.haskell.org/package/harpy
+[2] http://hackage.haskell.org/package/hs-java
