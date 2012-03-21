@@ -1,0 +1,14 @@
+Design Meeting - 21.March.2012
+
+
+1) Compile on Basic Blocks on Demand or complete Methods (check how cacao, mono works)
+2) Calling-Conventions - Standard wegen den Sprüngen (why does Cacao use strange CallingConventions)
+3) Capture Meta-Information by Instruction and Basics-Block
+4) Benchmark Suits - what features do we need?
+5) Boehm GC? using Haskell GC? From Scratch GC? GC option
+6) hs-java reinschauen - kann das schon BBA
+
+
+TODO: Basic-Block Analyis, Dereferencing .class file shit - during or after BBA, 
+
+
