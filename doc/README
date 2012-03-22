@@ -5,9 +5,9 @@ libaries, namly `harpy' [1] and `hs-java' [2].
 
 We use `hs-java' to parse Java Classfiles in order to get a Java Bytecode
 representation. Afterwards we perform a basic-block analysis and generate a
-control-flow-graph (CFG). We apply several program-analysis, transformations
+control-flow-graph (CFG). We apply several program-analyses, transformations
 and optimizations. Given the annotated CFG we emit native code with `harpy'
-(i386) in a on demand manner.
+(i386) in an on demand manner.
 
 At the moment we try to minimize effort, by focusing on essential features of
 the JVM, e.g. no exception handling. 
