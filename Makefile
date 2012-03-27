@@ -4,7 +4,7 @@ all: mate Test.class
 %.class: %.java
 	javac $<
 
-mate: Mate.hs Utilities.hs trap.c
+mate: Mate.hs ./src/Utilities.hs trap.c
 	ghc --make -Wall -O2 $^ -o $@
 
 clean:
