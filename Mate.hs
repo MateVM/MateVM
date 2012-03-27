@@ -27,6 +27,7 @@ import Foreign.C.Types
 import Harpy
 import Harpy.X86Disassembler
 
+import Utilities
 
 foreign import ccall "dynamic"
    code_void :: FunPtr (CInt -> IO CInt) -> (CInt -> IO CInt)
@@ -69,8 +70,11 @@ runstuff env bytecode = do
           (_, Right ((entryPtr, endOffset), disasm)) <- runCodeGen emittedcode env ()
           printf "entry point: 0x%08x\n" ((fromIntegral $ ptrToIntPtr entryPtr) :: Int)
 
+          
           let entryFuncPtr = ((castPtrToFunPtr entryPtr) :: FunPtr (CInt -> IO CInt))
+          printf "got ptr\n"
           result <- code_void entryFuncPtr (fromIntegral 0x1337)
+          printf "called code_void\n"
           let iresult::Int; iresult = fromIntegral result
           printf "result: 0x%08x\n" iresult -- expecting (2 * 0x1337) + 0x42 = 0x26b0
 
@@ -135,11 +139,3 @@ compile_ins IMUL = do nop
 compile_ins RETURN = do nop
 compile_ins _ = do nop
 
--- TODO: actually this function already exists in hs-java-0.3!
-lookupMethod :: B.ByteString -> Class Resolved -> Maybe (Method Resolved)
-lookupMethod name cls = look (classMethods cls)
-  where
-    look [] = Nothing
-    look (f:fs)
-      | methodName f == name = Just f
-      | otherwise  = look fs
