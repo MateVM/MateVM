@@ -1,4 +1,4 @@
-module Utilities where
+module Mate.Utilities where
 
 import qualified Data.ByteString.Lazy as B
 

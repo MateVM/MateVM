@@ -27,7 +27,7 @@ import Foreign.C.Types
 import Harpy
 import Harpy.X86Disassembler
 
-import Utilities
+import Mate.Utilities
 
 foreign import ccall "dynamic"
    code_void :: FunPtr (CInt -> IO CInt) -> (CInt -> IO CInt)

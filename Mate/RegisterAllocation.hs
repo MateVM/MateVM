@@ -1,3 +1,5 @@
+module Mate.RegisterAllocation where
+
 import Data.List
 import Data.Maybe
 

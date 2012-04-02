@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module BasicBlocks where
+module Mate.BasicBlocks where
 
 import Data.Binary
 import System.Environment
@@ -12,7 +12,7 @@ import JVM.Converter
 import JVM.Dump
 import JVM.Assembler
 
-import Utilities
+import Mate.Utilities
 
 type Name       = String -- use "virtual register id" instead?
 data Type       = JInt | JFloat -- add more
