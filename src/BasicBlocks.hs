@@ -28,19 +28,19 @@ parseFile clspath = do
                      cls <- parseClassFile clspath
                      --dumpClass cls    
                      let mainmethod = lookupMethod "fib" cls -- "main|([Ljava/lang/String;)V" cf
-                     putStrLn $ show $ testCFG mainmethod
+                     mapM_ putStrLn (testCFG mainmethod)
 
 test = parseFile "./tests/Fib.class"
 
 
-testCFG :: Maybe (Method Resolved) -> String
+testCFG :: Maybe (Method Resolved) -> [String]
 testCFG (Just m) = case attrByName m "Code" of
                      Nothing       -> error "no code"
                      Just bytecode -> let code = decodeMethod bytecode
                                           instructions = codeInstructions code
-                                      in show $ buildCFG instructions
+                                      in buildCFG instructions
 testCFG _        = error "no method to build cfg"
 
 
-buildCFG :: [Instruction] -> String
-buildCFG xs = concatMap show xs
+buildCFG :: [Instruction] -> [String]
+buildCFG xs = map show xs
