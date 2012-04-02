@@ -1,3 +1,29 @@
 == DEPENDENCIES ==
-$ cabal install harpy
-$ cabal install hs-java # 0.2 at the moment!
+=== HARPY ===
+	$ cabal install harpy
+
+=== HS-JAVA ===
+for `hs-java' a patched build is needed:
+	$ git clone git://wien.tomnetworks.com/hs-java.git
+	$ git checkout v0.2
+	$ cd hs-java; cabal configure; cabal build; cabal install
+
+
+== NOTE ==
+unfortunately, many haskell libaries arn't tested very well, so building
+libraries from hackage can be a very painful trip.
+
+a system configuration we had success building all required
+libraries (yes, no x86_64 so far!):
+	$ uname -a
+	Linux hermann 2.6.32-22-generic-pae #36-Ubuntu SMP Thu Jun 3 23:14:23 UTC
+	2010 i686 GNU/Linux
+	$ cat /etc/issue
+	Ubuntu 10.04.4 LTS \n \l
+	$ ghc --version
+	The Glorious Glasgow Haskell Compilation System, version 6.12.1
+	$ gcc --version
+	gcc (Ubuntu 4.4.3-4ubuntu5.1) 4.4.3
+	Copyright (C) 2009 Free Software Foundation, Inc.
+	This is free software; see the source for copying conditions.  There is NO
+	warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
