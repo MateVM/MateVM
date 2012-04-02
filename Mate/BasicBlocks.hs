@@ -60,4 +60,15 @@ testCFG _        = error "no method to build cfg"
 
 
 buildCFG :: [Instruction] -> [String]
-buildCFG xs = map show xs
+buildCFG xs = map (\(x,y) -> show x ++ ", " ++ show y) xs'
+  where
+  xs' = calculateInstructionOffset xs
+
+type Offset = Int
+calculateInstructionOffset :: [Instruction] -> [(Offset, Instruction)]
+calculateInstructionOffset = cio' 0
+  where
+  cio' :: Offset -> [Instruction] -> [(Offset, Instruction)]
+  cio' _ [] = []
+  cio' off (x:xs) = (off,x):(cio' newoffset xs)
+    where newoffset = off + (fromIntegral $ B.length $ encodeInstructions [x])
