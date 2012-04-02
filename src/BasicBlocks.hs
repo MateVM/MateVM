@@ -14,23 +14,40 @@ import JVM.Assembler
 
 import Utilities
 
+type Name       = String -- use "virtual register id" instead?
+data Type       = JInt | JFloat -- add more
+type Variable   = (Type,Name)
+
+-- Represents a CFG node
+data BasicBlock = BasicBlock {
+                     inputs  :: [Variable],
+                     outputs :: [Variable],
+                     code    :: [Instruction] }
+
+-- Represents a Control-Flow-Graph as
+-- Adjacency list (add matrix representation if appropriate)
+type CFList     = [(BasicBlock, [BasicBlock])]
+
+
 main = do
   args <- getArgs
   case args of
-    [clspath] -> parseFile clspath
+    [clspath] -> parseFile clspath "fib" -- TODO
     _ -> error "Synopsis: dump-class File.class"
 
 
-parseFile :: String -> IO ()
-parseFile clspath = do
+parseFile :: String -> B.ByteString -> IO ()
+parseFile clspath method = do
                      --clsFile <- decodeFile clspath
                      --putStrLn $ showListIx $ M.assocs $ constsPool (clsFile :: Class Pointers)
                      cls <- parseClassFile clspath
                      --dumpClass cls    
-                     let mainmethod = lookupMethod "fib" cls -- "main|([Ljava/lang/String;)V" cf
+                     let mainmethod = lookupMethod method cls -- "main|([Ljava/lang/String;)V" cf
                      mapM_ putStrLn (testCFG mainmethod)
 
-test = parseFile "./tests/Fib.class"
+test_01 = parseFile "./tests/Fib.class" "fib"
+test_02 = parseFile "./tests/While.class" "f"
+test_03 = parseFile "./tests/While.class" "g"
 
 
 testCFG :: Maybe (Method Resolved) -> [String]
