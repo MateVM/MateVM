@@ -115,18 +115,20 @@ exitCode = do mov esp ebp
 
 compile :: Word32 -> [J.Instruction] -> CodeGen (Ptr Int32) s ((Ptr Word8, Int), [Instruction])
 compile trapaddr insn = do
+  ep <- getEntryPoint
+  let w32_ep = (fromIntegral $ ptrToIntPtr ep) :: Word32
   entryCode
   mapM compile_ins insn
   push eax
-  mov ecx (trapaddr :: Word32)
-  call ecx
-  -- call trapaddr -- Y U DON'T WORK? (ask mr. gdb for help)
+  calladdr <- getCodeOffset
+  -- '5' is the size of the `call' instruction ( + immediate)
+  let w32_calladdr = 5 + w32_ep + (fromIntegral calladdr) :: Word32
+  call (trapaddr - w32_calladdr)
   pop eax
   exitCode
   d <- disassemble
-  c <- getEntryPoint
   end <- getCodeOffset
-  return ((c,end),d)
+  return ((ep,end),d)
 
 compile_ins :: J.Instruction -> CodeGen (Ptr Int32) s ()
 compile_ins (BIPUSH w8) = do mov eax ((fromIntegral w8) :: Word32)
