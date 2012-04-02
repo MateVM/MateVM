@@ -2,6 +2,7 @@
 module Mate.BasicBlocks where
 
 import Data.Binary
+import Data.Int
 import System.Environment
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as B
@@ -64,11 +65,18 @@ buildCFG xs = map (\(x,y) -> show x ++ ", " ++ show y) xs'
   where
   xs' = calculateInstructionOffset xs
 
-type Offset = Int
+type Offset = (Int, Maybe Int16) -- (offset in bytecode, offset to jump target)
+
 calculateInstructionOffset :: [Instruction] -> [(Offset, Instruction)]
-calculateInstructionOffset = cio' 0
+calculateInstructionOffset = cio' (0, Nothing)
   where
+  newoffset :: Instruction -> Int -> Offset
+  newoffset x off = (off + (fromIntegral $ B.length $ encodeInstructions [x]), Nothing)
   cio' :: Offset -> [Instruction] -> [(Offset, Instruction)]
   cio' _ [] = []
-  cio' off (x:xs) = (off,x):(cio' newoffset xs)
-    where newoffset = off + (fromIntegral $ B.length $ encodeInstructions [x])
+  -- TODO(bernhard): add more instruction with offset (IF_ACMP, JSR, ...)
+  -- TODO(bernhard): beautiful code please (BCP)
+  cio' (off,_) (x@(IF _ w16):xs) = ((off, Just $ fromIntegral w16), x):(cio' (newoffset x off) xs)
+  cio' (off,_) (x@(IF_ICMP _ w16):xs) = ((off, Just $ fromIntegral w16), x):(cio' (newoffset x off) xs)
+  cio' (off,_) (x@(GOTO w16):xs) = ((off, Just $ fromIntegral w16), x):(cio' (newoffset x off) xs)
+  cio' (off,_) (x:xs) = ((off, Nothing), x):(cio' (newoffset x off) xs)
