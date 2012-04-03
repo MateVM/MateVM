@@ -116,7 +116,7 @@ buildCFG' hmap (((off, Just entry), _):xs) insns = buildCFG' (insertlist entryi 
         case entry of
         TwoTarget t1 t2 -> [t1, t2]
         OneTarget t -> [t]
-        Return -> trace "should not happen" []
+        Return -> []
 
 buildCFG' hmap (((_, Nothing), _):xs) insns = buildCFG' hmap xs insns
 
