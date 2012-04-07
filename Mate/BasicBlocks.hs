@@ -160,5 +160,5 @@ calculateInstructionOffset = cio' (0, Nothing)
     where
     notarget = ((off, Just Return), x):next
     onetarget w16 = ((off, Just $ OneTarget $ (off `addW16Signed` w16)), x):next
-    twotargets w16 = ((off, Just $ TwoTarget (off `addW16Signed` w16) (off + 3)), x):next
+    twotargets w16 = ((off, Just $ TwoTarget (off + 3) (off `addW16Signed` w16)), x):next
     next = cio' (newoffset x off) xs
