@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ForeignFunctionInterface #-}
 module Mate.X86CodeGen where
 
 import Data.Binary
@@ -22,17 +23,49 @@ import Harpy.X86Disassembler
 
 import Mate.BasicBlocks
 
-test_01, test_02, test_03 :: IO ()
-test_01 = testCase "./tests/Fib.class" "fib"
-test_02 = testCase "./tests/While.class" "f"
-test_03 = testCase "./tests/While.class" "g"
+foreign import ccall "dynamic"
+   code_int :: FunPtr (CInt -> CInt -> IO CInt) -> (CInt -> CInt -> IO CInt)
 
-testCase :: String -> B.ByteString -> IO ()
+test_01, test_02, test_03 :: IO ()
+test_01 = do
+  _ <- testCase "./tests/Fib.class" "fib"
+  return ()
+
+
+test_02 = do
+  entry <- testCase "./tests/While.class" "f"
+  let entryFuncPtr = ((castPtrToFunPtr entry) :: FunPtr (CInt -> CInt -> IO CInt))
+  result <- code_int entryFuncPtr (fromIntegral 5) (fromIntegral 4)
+  let iresult :: Int; iresult = fromIntegral result
+  let kk :: String; kk = if iresult == 15 then "OK" else "FAIL"
+  printf "result of f(5,4): %3d\t\t%s\n" iresult kk
+
+  result <- code_int entryFuncPtr (fromIntegral 4) (fromIntegral 3)
+  let iresult :: Int; iresult = fromIntegral result
+  let kk :: String; kk = if iresult == 10 then "OK" else "FAIL"
+  printf "result of f(4,3): %3d\t\t%s\n" iresult kk
+
+
+test_03 = do
+  entry <- testCase "./tests/While.class" "g"
+  let entryFuncPtr = ((castPtrToFunPtr entry) :: FunPtr (CInt -> CInt -> IO CInt))
+  result <- code_int entryFuncPtr (fromIntegral 5) (fromIntegral 4)
+  let iresult :: Int; iresult = fromIntegral result
+  let kk :: String; kk = if iresult == 15 then "OK" else "FAIL"
+  printf "result of g(5,4): %3d\t\t%s\n" iresult kk
+
+  result <- code_int entryFuncPtr (fromIntegral 4) (fromIntegral 3)
+  let iresult :: Int; iresult = fromIntegral result
+  let kk :: String; kk = if iresult == 10 then "OK" else "FAIL"
+  printf "result of g(4,3): %3d\t\t%s\n" iresult kk
+
+
+testCase :: String -> B.ByteString -> IO (Ptr Word8)
 testCase cf method = do
       hmap <- parseMethod cf method
       printMapBB hmap
       case hmap of
-        Nothing -> putStrLn "sorry, no code generation"
+        Nothing -> error "sorry, no code generation"
         Just hmap -> do
               let ebb = emitFromBB hmap
               (_, Right ((entry, bbstarts), disasm)) <- runCodeGen ebb () ()
@@ -42,6 +75,7 @@ testCase cf method = do
               printf "basicblocks addresses:\n"
               let b = map (\(x,y) -> (x,y + int_entry)) $ M.toList bbstarts
               mapM_ (\(x,y) -> printf "\tBasicBlock %2d starts at 0x%08x\n" x y) b
+              return entry
 
 type EntryPoint = Ptr Word8
 type EntryPointOffset = Int
