@@ -102,7 +102,7 @@ buildCFG xs = buildCFG' H.empty xs' xs'
 
 buildCFG' :: MapBB -> [OffIns] -> [OffIns] -> MapBB
 buildCFG' hmap [] _ = hmap
-buildCFG' hmap (((off, Just entry), _):xs) insns = buildCFG' (insertlist entryi hmap) xs insns
+buildCFG' hmap (((off, entry), _):xs) insns = buildCFG' (insertlist entryi hmap) xs insns
   where
   insertlist :: [BlockID] -> MapBB -> MapBB
   insertlist [] hmap = hmap
@@ -114,11 +114,10 @@ buildCFG' hmap (((off, Just entry), _):xs) insns = buildCFG' (insertlist entryi 
   entryi :: [BlockID]
   entryi = (if off == 0 then [0] else []) ++ -- also consider the entrypoint
         case entry of
-        TwoTarget t1 t2 -> [t1, t2]
-        OneTarget t -> [t]
-        Return -> []
-
-buildCFG' hmap (((_, Nothing), _):xs) insns = buildCFG' hmap xs insns
+        Just (TwoTarget t1 t2) -> [t1, t2]
+        Just (OneTarget t) -> [t]
+        Just (Return) -> []
+        Nothing -> []
 
 
 parseBasicBlock :: Int -> [OffIns] -> BasicBlock
