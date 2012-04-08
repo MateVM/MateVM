@@ -3,6 +3,27 @@
 #include <signal.h>
 #include <asm/ucontext.h>
 
+unsigned int getMethodEntry(void *, char *);
+void *method_map = NULL;
+
+void set_mmap(void *mmap)
+{
+	printf("set_mmap: 0x%08x\n", (unsigned int) mmap);
+	method_map = mmap;
+}
+
+void *get_mmap()
+{
+	printf("get_mmap: 0x%08x\n", (unsigned int) method_map);
+	return method_map;
+}
+
+void demo_mmap()
+{
+	printf("mmap: 0x%08x\n", getMethodEntry(method_map, "fib"));
+}
+
+
 unsigned int patchme = 0;
 void print_foo(unsigned int addr)
 {

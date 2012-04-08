@@ -2,3 +2,5 @@
 *.class
 mate
 tags
+*_stub.c
+*_stub.h
