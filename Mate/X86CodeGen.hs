@@ -4,13 +4,10 @@ module Mate.X86CodeGen where
 
 import Data.Binary
 import Data.Int
-import Data.List
-import Data.Maybe
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as B
 
 import Foreign
-import Foreign.Ptr
 import Foreign.C.Types
 
 import Text.Printf
@@ -41,16 +38,17 @@ test_01 = do
   (entry, end) <- testCase "./tests/Fib.class" "fib"
   let entryFuncPtr = ((castPtrToFunPtr entry) :: FunPtr (CInt -> CInt -> IO CInt))
 
-  mapM_ (\(x,entryFuncPtr) -> do
-    result <- code_int entryFuncPtr (fromIntegral x) (fromIntegral 0)
+  mapM_ (\x -> do
+    result <- code_int entryFuncPtr x 0
     let iresult :: Int; iresult = fromIntegral result
     let kk :: String; kk = if iresult == (fib x) then "OK" else "FAIL (" ++ (show (fib x)) ++ ")"
-    printf "result of fib(%2d): %3d\t\t%s\n" x iresult kk
-    ) $ zip ([0..10] :: [Int]) (repeat entryFuncPtr)
+    printf "result of fib(%2d): %3d\t\t%s\n" (fromIntegral x :: Int) iresult kk
+    ) $ ([0..10] :: [CInt])
   printf "patched disasm:\n"
   Right newdisasm <- disassembleBlock entry end
   mapM_ (putStrLn . showAtt) newdisasm
   where
+    fib :: CInt -> Int
     fib n
       | n <= 1 = 1
       | otherwise = (fib (n - 1)) + (fib (n - 2))
@@ -59,29 +57,29 @@ test_01 = do
 test_02 = do
   (entry,_) <- testCase "./tests/While.class" "f"
   let entryFuncPtr = ((castPtrToFunPtr entry) :: FunPtr (CInt -> CInt -> IO CInt))
-  result <- code_int entryFuncPtr (fromIntegral 5) (fromIntegral 4)
+  result <- code_int entryFuncPtr 5 4
   let iresult :: Int; iresult = fromIntegral result
   let kk :: String; kk = if iresult == 15 then "OK" else "FAIL"
   printf "result of f(5,4): %3d\t\t%s\n" iresult kk
 
-  result <- code_int entryFuncPtr (fromIntegral 4) (fromIntegral 3)
-  let iresult :: Int; iresult = fromIntegral result
-  let kk :: String; kk = if iresult == 10 then "OK" else "FAIL"
-  printf "result of f(4,3): %3d\t\t%s\n" iresult kk
+  result2 <- code_int entryFuncPtr 4 3
+  let iresult2 :: Int; iresult2 = fromIntegral result2
+  let kk2 :: String; kk2 = if iresult2 == 10 then "OK" else "FAIL"
+  printf "result of f(4,3): %3d\t\t%s\n" iresult2 kk2
 
 
 test_03 = do
   (entry,_) <- testCase "./tests/While.class" "g"
   let entryFuncPtr = ((castPtrToFunPtr entry) :: FunPtr (CInt -> CInt -> IO CInt))
-  result <- code_int entryFuncPtr (fromIntegral 5) (fromIntegral 4)
+  result <- code_int entryFuncPtr 5 4
   let iresult :: Int; iresult = fromIntegral result
   let kk :: String; kk = if iresult == 15 then "OK" else "FAIL"
   printf "result of g(5,4): %3d\t\t%s\n" iresult kk
 
-  result <- code_int entryFuncPtr (fromIntegral 4) (fromIntegral 3)
-  let iresult :: Int; iresult = fromIntegral result
-  let kk :: String; kk = if iresult == 10 then "OK" else "FAIL"
-  printf "result of g(4,3): %3d\t\t%s\n" iresult kk
+  result2 <- code_int entryFuncPtr 4 3
+  let iresult2 :: Int; iresult2 = fromIntegral result2
+  let kk2 :: String; kk2 = if iresult2 == 10 then "OK" else "FAIL"
+  printf "result of g(4,3): %3d\t\t%s\n" iresult2 kk2
 
 
 testCase :: String -> B.ByteString -> IO (Ptr Word8, Int)
@@ -90,8 +88,8 @@ testCase cf method = do
       printMapBB hmap
       case hmap of
         Nothing -> error "sorry, no code generation"
-        Just hmap -> do
-              let ebb = emitFromBB hmap
+        Just hmap' -> do
+              let ebb = emitFromBB hmap'
               (_, Right ((entry, bbstarts, end), disasm)) <- runCodeGen ebb () ()
               let int_entry = ((fromIntegral $ ptrToIntPtr entry) :: Int)
               printf "disasm:\n"
@@ -118,7 +116,6 @@ emitFromBB hmap =  do
         mov ebp esp
 
         -- TODO(bernhard): remove me. just for PoC here
-        ep <- getEntryPoint
         let w32_ep = (fromIntegral $ ptrToIntPtr ep) :: Word32
         push w32_ep
         -- '5' is the size of the `call' instruction ( + immediate)
@@ -144,7 +141,7 @@ emitFromBB hmap =  do
           bb_offset <- getCodeOffset
           let bbstarts' = M.insert bid bb_offset bbstarts
           defineLabel $ getLabel bid lmap
-          mapM emit $ code bb
+          mapM_ emit $ code bb
           case successor bb of
             Return -> return bbstarts'
             OneTarget t -> do
@@ -173,7 +170,7 @@ emitFromBB hmap =  do
         pop eax -- value2
         pop ebx -- value1
         cmp ebx eax -- intel syntax is swapped (TODO(bernhard): test that plz)
-        let sid = case successor bb of TwoTarget _ t -> t
+        let sid = case successor bb of TwoTarget _ t -> t; _ -> error "bad"
         let l = getLabel sid lmap
         case cond of
           C_EQ -> je  l; C_NE -> jne l
@@ -183,7 +180,7 @@ emitFromBB hmap =  do
     emit (IF cond _) = do
         pop eax -- value1
         cmp eax (0 :: Word32) -- TODO(bernhard): test that plz
-        let sid = case successor bb of TwoTarget _ t -> t
+        let sid = case successor bb of TwoTarget _ t -> t; _ -> error "bad"
         let l = getLabel sid lmap
         case cond of
           C_EQ -> je  l; C_NE -> jne l
@@ -191,9 +188,9 @@ emitFromBB hmap =  do
           C_GE -> jge l; C_LE -> jle l
 
     emit (GOTO _ ) = do
-        let sid = case successor bb of OneTarget t -> t
+        let sid = case successor bb of OneTarget t -> t; _ -> error "bad"
         jmp $ getLabel sid lmap
-    emit (INVOKESTATIC x) = do
+    emit (INVOKESTATIC _) = do
         -- TODO(bernhard): get and save information about this call
         -- TODO(bernhard): better try SIGILL instead of SIGSEGV?
         mov (Addr 0) eax

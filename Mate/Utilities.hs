@@ -2,9 +2,6 @@ module Mate.Utilities where
 
 import qualified Data.ByteString.Lazy as B
 
-import qualified JVM.Assembler as J
-import JVM.Assembler hiding (Instruction)
-import JVM.Common
 import JVM.ClassFile
 
 

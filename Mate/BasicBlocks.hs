@@ -5,29 +5,21 @@ module Mate.BasicBlocks(
   BBEnd (..),
   MapBB,
   printMapBB,
-  parseMethod
+  parseMethod,
+  test_main
   )where
 
 import Data.Binary
 import Data.Int
-import qualified Data.Map as H
-import System.Environment
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as B
 
-import JVM.Common
 import JVM.ClassFile
 import JVM.Converter
-import JVM.Dump
 import JVM.Assembler
-
-import Debug.Trace
 
 import Mate.Utilities
 
-type Name       = String -- use "virtual register id" instead?
-data Type       = JInt | JFloat -- add more
-type Variable   = (Type,Name)
 
 type BlockID = Int
 -- Represents a CFG node
@@ -40,7 +32,7 @@ data BasicBlock = BasicBlock {
 -- describes (leaving) edges of a CFG node
 data BBEnd = Return | OneTarget BlockID | TwoTarget BlockID BlockID deriving Show
 
-type MapBB = H.Map BlockID BasicBlock
+type MapBB = M.Map BlockID BasicBlock
 
 -- for immediate representation for determine BBs
 type Offset = (Int, Maybe BBEnd) -- (offset in bytecode, offset to jump target)
@@ -51,14 +43,14 @@ printMapBB :: Maybe MapBB -> IO ()
 printMapBB Nothing = putStrLn "No BasicBlock"
 printMapBB (Just hmap) = do
                      putStr "BlockIDs: "
-                     let keys = fst $ unzip $ H.toList hmap
+                     let keys = fst $ unzip $ M.toList hmap
                      mapM_ (putStr . (flip (++)) ", " . show) keys
                      putStrLn "\n\nBasicBlocks:"
                      printMapBB' keys hmap
   where
   printMapBB' :: [BlockID] -> MapBB -> IO ()
   printMapBB' [] _ = return ()
-  printMapBB' (i:is) hmap = case H.lookup i hmap of
+  printMapBB' (i:is) hmap' = case M.lookup i hmap' of
                   Just bb -> do
                              putStrLn $ "Block " ++ (show i)
                              mapM_ putStrLn (map ((++) "\t" . show) $ code bb)
@@ -74,6 +66,13 @@ testInstance cf method = do
                       hmap <- parseMethod cf method
                       printMapBB hmap
 
+test_main :: IO ()
+test_main = do
+  test_01
+  test_02
+  test_03
+
+test_01, test_02, test_03 :: IO ()
 test_01 = testInstance "./tests/Fib.class" "fib"
 test_02 = testInstance "./tests/While.class" "f"
 test_03 = testInstance "./tests/While.class" "g"
@@ -87,15 +86,13 @@ parseMethod clspath method = do
 
 testCFG :: Maybe (Method Resolved) -> Maybe MapBB
 testCFG (Just m) = case attrByName m "Code" of
-                     Nothing       -> Nothing
-                     Just bytecode -> let code = decodeMethod bytecode
-                                          instructions = codeInstructions code
-                                      in Just $ buildCFG instructions
-testCFG _        = Nothing
+       Nothing -> Nothing
+       Just bytecode -> Just $ buildCFG $ codeInstructions $ decodeMethod bytecode
+testCFG _ = Nothing
 
 
 buildCFG :: [Instruction] -> MapBB
-buildCFG xs = buildCFG' H.empty xs' xs'
+buildCFG xs = buildCFG' M.empty xs' xs'
   where
   xs' :: [OffIns]
   xs' = calculateInstructionOffset xs
@@ -105,11 +102,11 @@ buildCFG' hmap [] _ = hmap
 buildCFG' hmap (((off, entry), _):xs) insns = buildCFG' (insertlist entryi hmap) xs insns
   where
   insertlist :: [BlockID] -> MapBB -> MapBB
-  insertlist [] hmap = hmap
-  insertlist (x:xs) hmap = insertlist xs newhmap
+  insertlist [] hmap' = hmap'
+  insertlist (y:ys) hmap' = insertlist ys newhmap
     where
-    newhmap = if H.member x hmap then hmap else H.insert x value hmap
-    value = parseBasicBlock x insns
+    newhmap = if M.member y hmap' then hmap' else M.insert y value hmap'
+    value = parseBasicBlock y insns
 
   entryi :: [BlockID]
   entryi = (if off == 0 then [0] else []) ++ -- also consider the entrypoint
