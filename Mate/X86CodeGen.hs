@@ -26,14 +26,38 @@ import Mate.BasicBlocks
 foreign import ccall "dynamic"
    code_int :: FunPtr (CInt -> CInt -> IO CInt) -> (CInt -> CInt -> IO CInt)
 
+foreign import ccall "getaddr"
+  getaddr :: CUInt
+
+foreign import ccall "callertrap"
+  callertrap :: IO ()
+
+foreign import ccall "register_signal"
+  register_signal :: IO ()
+
 test_01, test_02, test_03 :: IO ()
 test_01 = do
-  _ <- testCase "./tests/Fib.class" "fib"
-  return ()
+  register_signal
+  (entry, end) <- testCase "./tests/Fib.class" "fib"
+  let entryFuncPtr = ((castPtrToFunPtr entry) :: FunPtr (CInt -> CInt -> IO CInt))
+
+  mapM_ (\(x,entryFuncPtr) -> do
+    result <- code_int entryFuncPtr (fromIntegral x) (fromIntegral 0)
+    let iresult :: Int; iresult = fromIntegral result
+    let kk :: String; kk = if iresult == (fib x) then "OK" else "FAIL (" ++ (show (fib x)) ++ ")"
+    printf "result of fib(%2d): %3d\t\t%s\n" x iresult kk
+    ) $ zip ([0..10] :: [Int]) (repeat entryFuncPtr)
+  printf "patched disasm:\n"
+  Right newdisasm <- disassembleBlock entry end
+  mapM_ (putStrLn . showAtt) newdisasm
+  where
+    fib n
+      | n <= 1 = 1
+      | otherwise = (fib (n - 1)) + (fib (n - 2))
 
 
 test_02 = do
-  entry <- testCase "./tests/While.class" "f"
+  (entry,_) <- testCase "./tests/While.class" "f"
   let entryFuncPtr = ((castPtrToFunPtr entry) :: FunPtr (CInt -> CInt -> IO CInt))
   result <- code_int entryFuncPtr (fromIntegral 5) (fromIntegral 4)
   let iresult :: Int; iresult = fromIntegral result
@@ -47,7 +71,7 @@ test_02 = do
 
 
 test_03 = do
-  entry <- testCase "./tests/While.class" "g"
+  (entry,_) <- testCase "./tests/While.class" "g"
   let entryFuncPtr = ((castPtrToFunPtr entry) :: FunPtr (CInt -> CInt -> IO CInt))
   result <- code_int entryFuncPtr (fromIntegral 5) (fromIntegral 4)
   let iresult :: Int; iresult = fromIntegral result
@@ -60,7 +84,7 @@ test_03 = do
   printf "result of g(4,3): %3d\t\t%s\n" iresult kk
 
 
-testCase :: String -> B.ByteString -> IO (Ptr Word8)
+testCase :: String -> B.ByteString -> IO (Ptr Word8, Int)
 testCase cf method = do
       hmap <- parseMethod cf method
       printMapBB hmap
@@ -68,14 +92,14 @@ testCase cf method = do
         Nothing -> error "sorry, no code generation"
         Just hmap -> do
               let ebb = emitFromBB hmap
-              (_, Right ((entry, bbstarts), disasm)) <- runCodeGen ebb () ()
+              (_, Right ((entry, bbstarts, end), disasm)) <- runCodeGen ebb () ()
               let int_entry = ((fromIntegral $ ptrToIntPtr entry) :: Int)
               printf "disasm:\n"
               mapM_ (putStrLn . showAtt) disasm
               printf "basicblocks addresses:\n"
               let b = map (\(x,y) -> (x,y + int_entry)) $ M.toList bbstarts
               mapM_ (\(x,y) -> printf "\tBasicBlock %2d starts at 0x%08x\n" x y) b
-              return entry
+              return (entry, end)
 
 type EntryPoint = Ptr Word8
 type EntryPointOffset = Int
@@ -83,7 +107,7 @@ type PatchInfo = (BlockID, EntryPointOffset)
 
 type BBStarts = M.Map BlockID Int
 
-type CompileInfo = (EntryPoint, BBStarts)
+type CompileInfo = (EntryPoint, BBStarts, Int)
 
 emitFromBB :: MapBB -> CodeGen e s (CompileInfo, [Instruction])
 emitFromBB hmap =  do
@@ -92,12 +116,21 @@ emitFromBB hmap =  do
         ep <- getEntryPoint
         push ebp
         mov ebp esp
+
+        -- TODO(bernhard): remove me. just for PoC here
+        ep <- getEntryPoint
+        let w32_ep = (fromIntegral $ ptrToIntPtr ep) :: Word32
+        push w32_ep
+        -- '5' is the size of the `call' instruction ( + immediate)
+        calladdr <- getCodeOffset
+        let w32_calladdr = 5 + w32_ep + (fromIntegral calladdr) :: Word32
+        let trapaddr = (fromIntegral getaddr :: Word32)
+        call (trapaddr - w32_calladdr)
+
         bbstarts <- efBB (0,(hmap M.! 0)) M.empty lmap
-        mov esp ebp
-        pop ebp
-        ret
         d <- disassemble
-        return ((ep, bbstarts), d)
+        end <- getCodeOffset
+        return ((ep, bbstarts, end), d)
   where
   getLabel :: BlockID -> [(BlockID, Label)] -> Label
   getLabel _ [] = error "label not found!"
@@ -139,7 +172,7 @@ emitFromBB hmap =  do
     emit (IF_ICMP cond _) = do
         pop eax -- value2
         pop ebx -- value1
-        cmp eax ebx -- intel syntax is swapped (TODO(bernhard): test that plz)
+        cmp ebx eax -- intel syntax is swapped (TODO(bernhard): test that plz)
         let sid = case successor bb of TwoTarget _ t -> t
         let l = getLabel sid lmap
         case cond of
@@ -160,8 +193,20 @@ emitFromBB hmap =  do
     emit (GOTO _ ) = do
         let sid = case successor bb of OneTarget t -> t
         jmp $ getLabel sid lmap
+    emit (INVOKESTATIC x) = do
+        -- TODO(bernhard): get and save information about this call
+        -- TODO(bernhard): better try SIGILL instead of SIGSEGV?
+        mov (Addr 0) eax
+        -- discard arguments (TODO(bernhard): don't hardcode it)
+        add esp (4 :: Word32)
+        -- push result on stack (TODO(bernhard): if any)
+        push eax
 
-    emit IRETURN = do pop eax
+    emit IRETURN = do
+        pop eax
+        mov esp ebp
+        pop ebp
+        ret
     emit _ = do cmovbe eax eax -- dummy
 
   cArgs x = (8 + 4 * (fromIntegral x))
