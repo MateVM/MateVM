@@ -14,6 +14,7 @@ import Text.Printf
 
 import qualified JVM.Assembler as J
 import JVM.Assembler hiding (Instruction)
+import JVM.Converter
 
 import Harpy
 import Harpy.X86Disassembler
@@ -84,7 +85,8 @@ test_03 = do
 
 testCase :: String -> B.ByteString -> IO (Ptr Word8, Int)
 testCase cf method = do
-      hmap <- parseMethod cf method
+      cls <- parseClassFile cf
+      hmap <- parseMethod cls method
       printMapBB hmap
       case hmap of
         Nothing -> error "sorry, no code generation"
@@ -114,15 +116,6 @@ emitFromBB hmap =  do
         ep <- getEntryPoint
         push ebp
         mov ebp esp
-
-        -- TODO(bernhard): remove me. just for PoC here
-        let w32_ep = (fromIntegral $ ptrToIntPtr ep) :: Word32
-        push w32_ep
-        -- '5' is the size of the `call' instruction ( + immediate)
-        calladdr <- getCodeOffset
-        let w32_calladdr = 5 + w32_ep + (fromIntegral calladdr) :: Word32
-        let trapaddr = (fromIntegral getaddr :: Word32)
-        call (trapaddr - w32_calladdr)
 
         bbstarts <- efBB (0,(hmap M.! 0)) M.empty lmap
         d <- disassemble
@@ -154,8 +147,18 @@ emitFromBB hmap =  do
     --                 instructions, so we can use patterns for optimizations
     where
     emit :: J.Instruction -> CodeGen e s ()
+    emit POP = do -- print dropped value
+        ep <- getEntryPoint
+        let w32_ep = (fromIntegral $ ptrToIntPtr ep) :: Word32
+        -- '5' is the size of the `call' instruction ( + immediate)
+        calladdr <- getCodeOffset
+        let w32_calladdr = 5 + w32_ep + (fromIntegral calladdr) :: Word32
+        let trapaddr = (fromIntegral getaddr :: Word32)
+        call (trapaddr - w32_calladdr)
+    emit (BIPUSH val) = push ((fromIntegral val) :: Word32)
     emit (ICONST_1) = push (1 :: Word32)
     emit (ICONST_2) = push (2 :: Word32)
+    emit (ICONST_5) = push (5 :: Word32)
     emit (ILOAD_ x) = do
         push (Disp (cArgs_ x), ebp)
     emit (ISTORE_ x) = do
@@ -199,6 +202,7 @@ emitFromBB hmap =  do
         -- push result on stack (TODO(bernhard): if any)
         push eax
 
+    emit RETURN = do mov esp ebp; pop ebp; ret
     emit IRETURN = do
         pop eax
         mov esp ebp

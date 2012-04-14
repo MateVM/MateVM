@@ -1,14 +1,32 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Main where
 
+import System.Environment
+
 import Text.Printf
 
+import JVM.Converter
+import JVM.Dump
+
+import Mate.BasicBlocks
 import Mate.X86CodeGen
 import Mate.MethodPool
 
 main ::  IO ()
 main = do
-  printf "fib Codegen:\n"
-  test_01
-  printf "\n\n\n\nData.Map & FFI:\n"
-  t_01
+  args <- getArgs
+  register_signal
+  initMethodPool
+  case args of
+    [clspath] -> do
+      cls <- parseClassFile clspath
+      dumpClass cls
+      hmap <- parseMethod cls "main"
+      printMapBB hmap
+      case hmap of
+        Just hmap' -> do
+          entry <- compileBB hmap' "main"
+          printf "executing `main' now:\n"
+          executeFuncPtr entry
+        Nothing -> error "main not found"
+    _ -> error "Usage: mate <class-file>"

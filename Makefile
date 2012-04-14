@@ -17,7 +17,7 @@ GHC_LD := -optl-Xlinker -optl-x
 all: mate $(CLASS_FILES)
 
 test: mate $(CLASS_FILES)
-	./$<
+	./$< tests/Fib.class
 
 %.class: %.java
 	$(JAVAC) $<

@@ -18,22 +18,16 @@ void *get_mmap()
 	return method_map;
 }
 
-void demo_mmap()
-{
-	printf("mmap: 0x%08x\n", getMethodEntry(method_map, "fib"));
-}
 
-
-unsigned int patchme = 0;
-void print_foo(unsigned int addr)
+void mainresult(unsigned int a)
 {
-	// printf("\n\nprint foo: 0x%08x\n", addr);
-	patchme = addr;
+	printf("mainresult: 0x%08x\n", a);
 }
 
 void callertrap(int nSignal, siginfo_t *info, void *ctx)
 {
 	struct ucontext *uctx = (struct ucontext *) ctx;
+	unsigned int patchme = getMethodEntry(method_map, "fib");
 
 	printf("callertrap(mctx)  by 0x%08x\n", (unsigned int) uctx->uc_mcontext.eip);
 	// printf("callertrap(addr)  by 0x%08x\n", info->si_addr);
@@ -67,5 +61,5 @@ void register_signal(void)
 
 unsigned int getaddr(void)
 {
-	return (unsigned int) print_foo;
+	return (unsigned int) mainresult;
 }

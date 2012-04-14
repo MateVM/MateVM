@@ -63,7 +63,8 @@ printMapBB (Just hmap) = do
 
 testInstance :: String -> B.ByteString -> IO ()
 testInstance cf method = do
-                      hmap <- parseMethod cf method
+                      cls <- parseClassFile cf
+                      hmap <- parseMethod cls method
                       printMapBB hmap
 
 test_main :: IO ()
@@ -78,9 +79,23 @@ test_02 = testInstance "./tests/While.class" "f"
 test_03 = testInstance "./tests/While.class" "g"
 
 
-parseMethod :: String -> B.ByteString -> IO (Maybe MapBB)
-parseMethod clspath method = do
-                     cls <- parseClassFile clspath
+parseMethod :: Class Resolved -> B.ByteString -> IO (Maybe MapBB)
+parseMethod cls method = do
+                     -- TODO(bernhard): remove me! just playing around with
+                     --                 hs-java interface.
+                     -- we get that index at the INVOKESTATIC insn
+                     putStrLn "via constpool @2:"
+                     let cp = constsPool cls
+                     let (CMethod rc nt) = cp M.! (2 :: Word16)
+                     -- rc :: Link stage B.ByteString
+                     -- nt :: Link stage (NameType Method)
+                     B.putStrLn $ "rc: " `B.append` rc
+                     B.putStrLn $ "nt: " `B.append` (encode $ ntSignature nt)
+
+                     putStrLn "via methods:"
+                     let msig = methodSignature $ (classMethods cls) !! 1
+                     B.putStrLn (method `B.append` ": " `B.append` (encode msig))
+
                      return $ testCFG $ lookupMethod method cls
 
 
@@ -153,6 +168,7 @@ calculateInstructionOffset = cio' (0, Nothing)
       IF_ICMP _ w16 -> twotargets w16
       GOTO w16 -> onetarget w16
       IRETURN -> notarget
+      RETURN -> notarget
       _ -> ((off, Nothing), x):next
     where
     notarget = ((off, Just Return), x):next
