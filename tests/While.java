@@ -1,3 +1,5 @@
+package tests;
+
 public class While {
 	public static int f(int a, int b) {
 		do {
