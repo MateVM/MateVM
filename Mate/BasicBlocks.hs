@@ -81,21 +81,9 @@ test_03 = testInstance "./tests/While.class" "g"
 
 parseMethod :: Class Resolved -> B.ByteString -> IO (Maybe MapBB)
 parseMethod cls method = do
-                     -- TODO(bernhard): remove me! just playing around with
-                     --                 hs-java interface.
-                     -- we get that index at the INVOKESTATIC insn
-                     putStrLn "via constpool @2:"
-                     let cp = constsPool cls
-                     let (CMethod rc nt) = cp M.! (2 :: Word16)
-                     -- rc :: Link stage B.ByteString
-                     -- nt :: Link stage (NameType Method)
-                     B.putStrLn $ "rc: " `B.append` rc
-                     B.putStrLn $ "nt: " `B.append` (encode $ ntSignature nt)
-
-                     putStrLn "via methods:"
+                     putStr "BB: analysing: "
                      let msig = methodSignature $ (classMethods cls) !! 1
                      B.putStrLn (method `B.append` ": " `B.append` (encode msig))
-
                      return $ testCFG $ lookupMethod method cls
 
 

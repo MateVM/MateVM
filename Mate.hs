@@ -25,7 +25,7 @@ main = do
       printMapBB hmap
       case hmap of
         Just hmap' -> do
-          entry <- compileBB hmap' "main"
+          entry <- compileBB hmap' cls "main"
           printf "executing `main' now:\n"
           executeFuncPtr entry
         Nothing -> error "main not found"

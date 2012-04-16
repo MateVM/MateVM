@@ -4,6 +4,7 @@ module Mate.X86CodeGen where
 
 import Data.Binary
 import Data.Int
+import Data.Maybe
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as B
 
@@ -14,12 +15,14 @@ import Text.Printf
 
 import qualified JVM.Assembler as J
 import JVM.Assembler hiding (Instruction)
+import JVM.ClassFile
 import JVM.Converter
 
 import Harpy
 import Harpy.X86Disassembler
 
 import Mate.BasicBlocks
+import Mate.Utilities
 
 foreign import ccall "dynamic"
    code_int :: FunPtr (CInt -> CInt -> IO CInt) -> (CInt -> CInt -> IO CInt)
@@ -32,6 +35,12 @@ foreign import ccall "callertrap"
 
 foreign import ccall "register_signal"
   register_signal :: IO ()
+
+foreign import ccall "get_cmap"
+  get_cmap :: IO (Ptr ())
+
+foreign import ccall "set_cmap"
+  set_cmap :: Ptr () -> IO ()
 
 test_01, test_02, test_03 :: IO ()
 test_01 = do
@@ -91,8 +100,8 @@ testCase cf method = do
       case hmap of
         Nothing -> error "sorry, no code generation"
         Just hmap' -> do
-              let ebb = emitFromBB hmap'
-              (_, Right ((entry, bbstarts, end), disasm)) <- runCodeGen ebb () ()
+              let ebb = emitFromBB cls hmap'
+              (_, Right ((entry, bbstarts, end, _), disasm)) <- runCodeGen ebb () ()
               let int_entry = ((fromIntegral $ ptrToIntPtr entry) :: Int)
               printf "disasm:\n"
               mapM_ (putStrLn . showAtt) disasm
@@ -107,45 +116,73 @@ type PatchInfo = (BlockID, EntryPointOffset)
 
 type BBStarts = M.Map BlockID Int
 
-type CompileInfo = (EntryPoint, BBStarts, Int)
+type CompileInfo = (EntryPoint, BBStarts, Int, CMap)
 
-emitFromBB :: MapBB -> CodeGen e s (CompileInfo, [Instruction])
-emitFromBB hmap =  do
+-- B.ByteString: encoded name: <Class>.<methodname><signature>
+-- Class Resolved: classfile
+-- Word16: index of invoke-instruction
+type MethodInfo = (B.ByteString, Class Resolved, Word16)
+
+-- Word32 = point of method call in generated code
+-- MethodInfo = relevant information about callee
+type CMap = M.Map Word32 MethodInfo
+
+
+emitFromBB :: Class Resolved -> MapBB -> CodeGen e s (CompileInfo, [Instruction])
+emitFromBB cls hmap =  do
         llmap <- sequence [newNamedLabel ("bb_" ++ show x) | (x,_) <- M.toList hmap]
         let lmap = zip (Prelude.fst $ unzip $ M.toList hmap) llmap
         ep <- getEntryPoint
         push ebp
         mov ebp esp
 
-        bbstarts <- efBB (0,(hmap M.! 0)) M.empty lmap
+        (calls, bbstarts) <- efBB (0,(hmap M.! 0)) M.empty M.empty lmap
         d <- disassemble
         end <- getCodeOffset
-        return ((ep, bbstarts, end), d)
+        return ((ep, bbstarts, end, calls), d)
   where
   getLabel :: BlockID -> [(BlockID, Label)] -> Label
   getLabel _ [] = error "label not found!"
   getLabel i ((x,l):xs) = if i==x then l else getLabel i xs
 
-  efBB :: (BlockID, BasicBlock) -> BBStarts -> [(BlockID, Label)] -> CodeGen e s (BBStarts)
-  efBB (bid, bb) bbstarts lmap =
+  efBB :: (BlockID, BasicBlock) -> CMap -> BBStarts -> [(BlockID, Label)] -> CodeGen e s (CMap, BBStarts)
+  efBB (bid, bb) calls bbstarts lmap =
         if M.member bid bbstarts then
-          return bbstarts
+          return (calls, bbstarts)
         else do
           bb_offset <- getCodeOffset
           let bbstarts' = M.insert bid bb_offset bbstarts
           defineLabel $ getLabel bid lmap
-          mapM_ emit $ code bb
+          cs <- mapM emit' $ code bb
+          let calls' = calls `M.union` (M.fromList $ catMaybes cs)
           case successor bb of
-            Return -> return bbstarts'
+            Return -> return (calls', bbstarts')
             OneTarget t -> do
-              efBB (t, hmap M.! t) bbstarts' lmap
+              efBB (t, hmap M.! t) calls' bbstarts' lmap
             TwoTarget t1 t2 -> do
-              bbstarts'' <- efBB (t1, hmap M.! t1) bbstarts' lmap
-              efBB (t2, hmap M.! t2) bbstarts'' lmap
+              (calls'', bbstarts'') <- efBB (t1, hmap M.! t1) calls' bbstarts' lmap
+              efBB (t2, hmap M.! t2) calls'' bbstarts'' lmap
     -- TODO(bernhard): also use metainformation
     -- TODO(bernhard): implement `emit' as function which accepts a list of
     --                 instructions, so we can use patterns for optimizations
     where
+    emit' :: J.Instruction -> CodeGen e s (Maybe (Word32, MethodInfo))
+    emit' (INVOKESTATIC cpidx) = do
+        ep <- getEntryPoint
+        let w32_ep = (fromIntegral $ ptrToIntPtr ep) :: Word32
+        let l = buildMethodID cls cpidx
+        calladdr <- getCodeOffset
+        let w32_calladdr = w32_ep + (fromIntegral calladdr) :: Word32
+        newNamedLabel (toString l) >>= defineLabel
+        -- TODO(bernhard): better try SIGILL instead of SIGSEGV?
+        mov (Addr 0) eax
+        -- discard arguments (TODO(bernhard): don't hardcode it)
+        add esp (4 :: Word32)
+        -- push result on stack (TODO(bernhard): if any)
+        push eax
+        return $ Just $ (w32_calladdr, (l, cls, cpidx))
+    emit' insn = emit insn >> return Nothing
+
     emit :: J.Instruction -> CodeGen e s ()
     emit POP = do -- print dropped value
         ep <- getEntryPoint
@@ -193,14 +230,6 @@ emitFromBB hmap =  do
     emit (GOTO _ ) = do
         let sid = case successor bb of OneTarget t -> t; _ -> error "bad"
         jmp $ getLabel sid lmap
-    emit (INVOKESTATIC _) = do
-        -- TODO(bernhard): get and save information about this call
-        -- TODO(bernhard): better try SIGILL instead of SIGSEGV?
-        mov (Addr 0) eax
-        -- discard arguments (TODO(bernhard): don't hardcode it)
-        add esp (4 :: Word32)
-        -- push result on stack (TODO(bernhard): if any)
-        push eax
 
     emit RETURN = do mov esp ebp; pop ebp; ret
     emit IRETURN = do

@@ -3,8 +3,10 @@
 #include <signal.h>
 #include <asm/ucontext.h>
 
-unsigned int getMethodEntry(void *, char *);
+unsigned int getMethodEntry(unsigned int, void *, void *);
+
 void *method_map = NULL;
+void *caller_map = NULL;
 
 void set_mmap(void *mmap)
 {
@@ -18,6 +20,18 @@ void *get_mmap()
 	return method_map;
 }
 
+void set_cmap(void *cmap)
+{
+	printf("set_cmap: 0x%08x\n", (unsigned int) cmap);
+	caller_map = cmap;
+}
+
+void *get_cmap()
+{
+	printf("get_cmap: 0x%08x\n", (unsigned int) caller_map);
+	return caller_map;
+}
+
 
 void mainresult(unsigned int a)
 {
@@ -27,9 +41,10 @@ void mainresult(unsigned int a)
 void callertrap(int nSignal, siginfo_t *info, void *ctx)
 {
 	struct ucontext *uctx = (struct ucontext *) ctx;
-	unsigned int patchme = getMethodEntry(method_map, "fib");
+	unsigned int from = (unsigned int) uctx->uc_mcontext.eip;
+	unsigned int patchme = getMethodEntry(from, method_map, caller_map);
 
-	printf("callertrap(mctx)  by 0x%08x\n", (unsigned int) uctx->uc_mcontext.eip);
+	printf("callertrap(mctx)  by 0x%08x\n", from);
 	// printf("callertrap(addr)  by 0x%08x\n", info->si_addr);
 	// printf("callertrap(*esp)  by 0x%08x\n", * (unsigned int *) uctx->uc_mcontext.esp);
 

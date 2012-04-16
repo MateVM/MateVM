@@ -3,7 +3,6 @@
 module Mate.MethodPool where
 
 import Data.Binary
-import Data.String
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as B
 
@@ -11,10 +10,9 @@ import Text.Printf
 
 import Foreign.Ptr
 import Foreign.C.Types
-import Foreign.C.String
 import Foreign.StablePtr
 
-import JVM.Converter
+import JVM.ClassFile
 
 import Harpy
 import Harpy.X86Disassembler
@@ -34,30 +32,25 @@ foreign import ccall "set_mmap"
 -- Word32 = entrypoint of method
 type MMap = M.Map B.ByteString Word32
 
--- TODO(bernhard): not in use yet
--- Word32 = point of method call
--- B.ByteString = name of called method
-type CMap = M.Map Word32 B.ByteString
-
-foreign export ccall getMethodEntry :: Ptr () -> CString -> IO CUInt
-getMethodEntry :: Ptr () -> CString -> IO CUInt
-getMethodEntry ptr_mmap cstr = do
+foreign export ccall getMethodEntry :: CUInt -> Ptr () -> Ptr () -> IO CUInt
+getMethodEntry :: CUInt -> Ptr () -> Ptr () -> IO CUInt
+getMethodEntry signal_from ptr_mmap ptr_cmap = do
   mmap <- ptr2mmap ptr_mmap
-  str' <- peekCString cstr
-  let method = fromString str'
+  cmap <- ptr2cmap ptr_cmap
+
+  let w32_from = fromIntegral signal_from
+  let (method, cls, cpidx) = cmap M.! w32_from
   case M.lookup method mmap of
     Nothing -> do
-      printf "getMethodEntry: no method found. compile it\n"
-      -- TODO(bernhard): hardcoded... fixme!
-      cls <- parseClassFile "tests/Fib.class"
-      hmap <- parseMethod cls method
+      printf "getMethodEntry(from 0x%08x): no method found. compile it\n" w32_from
+      -- TODO(bernhard): maybe we have to load the class first?
+      --                 (Or better in X86CodeGen?)
+      let (CMethod _ nt) = (constsPool cls) M.! cpidx
+      hmap <- parseMethod cls (ntName nt)
       case hmap of
         Just hmap' -> do
-          entry <- compileBB hmap' method
-          let w32_entry = ((fromIntegral $ ptrToIntPtr entry) :: Word32)
-          let mmap' = M.insert method w32_entry mmap
-          mmap2ptr mmap' >>= set_mmap
-          return $ fromIntegral w32_entry
+          entry <- compileBB hmap' cls method
+          return $ fromIntegral $ ((fromIntegral $ ptrToIntPtr entry) :: Word32)
         Nothing -> error $ (show method) ++ " not found. abort"
     Just w32 -> return (fromIntegral w32)
 
@@ -71,19 +64,28 @@ getMethodEntry ptr_mmap cstr = do
 --   demo_mmap -- access Data.Map from C
 
 initMethodPool :: IO ()
-initMethodPool = mmap2ptr M.empty >>= set_mmap
+initMethodPool = do
+  mmap2ptr M.empty >>= set_mmap
+  cmap2ptr M.empty >>= set_cmap
 
-compileBB :: MapBB -> B.ByteString -> IO (Ptr Word8)
-compileBB hmap name = do
+compileBB :: MapBB -> Class Resolved -> B.ByteString -> IO (Ptr Word8)
+compileBB hmap cls name = do
   mmap <- get_mmap >>= ptr2mmap
-  let ebb = emitFromBB hmap
-  (_, Right ((entry, bbstarts, end), disasm)) <- runCodeGen ebb () ()
+  cmap <- get_cmap >>= ptr2cmap
+
+  let ebb = emitFromBB cls hmap
+  (_, Right ((entry, _, _, new_cmap), disasm)) <- runCodeGen ebb () ()
   let w32_entry = ((fromIntegral $ ptrToIntPtr entry) :: Word32)
+
   let mmap' = M.insert name w32_entry mmap
+  let cmap' = M.union cmap new_cmap -- prefers elements in cmap
   mmap2ptr mmap' >>= set_mmap
+  cmap2ptr cmap' >>= set_cmap
+
   printf "disasm:\n"
   mapM_ (putStrLn . showAtt) disasm
   return entry
+
 
 foreign import ccall "dynamic"
    code_void :: FunPtr (IO ()) -> (IO ())
@@ -91,6 +93,7 @@ foreign import ccall "dynamic"
 executeFuncPtr :: Ptr Word8 -> IO ()
 executeFuncPtr entry = code_void $ ((castPtrToFunPtr entry) :: FunPtr (IO ()))
 
+-- TODO(bernhard): make some typeclass magic 'n stuff
 mmap2ptr :: MMap -> IO (Ptr ())
 mmap2ptr mmap = do
   ptr_mmap <- newStablePtr mmap
@@ -98,3 +101,11 @@ mmap2ptr mmap = do
 
 ptr2mmap :: Ptr () -> IO MMap
 ptr2mmap vmap = deRefStablePtr $ ((castPtrToStablePtr vmap) :: StablePtr MMap)
+
+cmap2ptr :: CMap -> IO (Ptr ())
+cmap2ptr cmap = do
+  ptr_cmap <- newStablePtr cmap
+  return $ castStablePtrToPtr ptr_cmap
+
+ptr2cmap :: Ptr () -> IO CMap
+ptr2cmap vmap = deRefStablePtr $ ((castPtrToStablePtr vmap) :: StablePtr cmap)
