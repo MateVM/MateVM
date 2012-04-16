@@ -84,6 +84,12 @@ compileBB hmap cls name = do
 
   printf "disasm:\n"
   mapM_ (putStrLn . showAtt) disasm
+  -- UNCOMMENT NEXT LINE FOR GDB FUN
+  -- _ <- getLine
+  -- (1) start it with `gdb ./mate' and then `run <classfile>'
+  -- (2) on getLine, press ctrl+c
+  -- (3) `br *0x<addr>'; obtain the address from the disasm above
+  -- (4) `cont' and press enter
   return entry
 
 
