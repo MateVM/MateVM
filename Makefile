@@ -26,7 +26,7 @@ mate: Mate.hs ffi/trap.c $(HS_FILES)
 	ghc --make $(GHC_OPT) Mate.hs ffi/trap.c -o $@ $(GHC_LD)
 
 clean:
-	rm -f {Mate/,}*.hi {Mate/,ffi,}*.o mate tests/*.class
+	rm -f {Mate/,}*.hi {Mate/,ffi/,}*.o mate tests/*.class
 
 ghci: mate
 	ghci $(PACKAGES) $(O_FILES) Mate.hs $(GHC_LD)
