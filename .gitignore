@@ -1,6 +1,8 @@
 *.hi
+*.o
 *.class
 mate
 tags
+*.swp
 *_stub.c
 *_stub.h
