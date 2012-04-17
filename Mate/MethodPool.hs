@@ -42,11 +42,12 @@ getMethodEntry signal_from ptr_mmap ptr_cmap = do
   let (method, cls, cpidx) = cmap M.! w32_from
   case M.lookup method mmap of
     Nothing -> do
-      printf "getMethodEntry(from 0x%08x): no method found. compile it\n" w32_from
+      printf "getMethodEntry(from 0x%08x): no method \"%s\" found. compile it\n" w32_from (show method)
       -- TODO(bernhard): maybe we have to load the class first?
       --                 (Or better in X86CodeGen?)
       let (CMethod _ nt) = (constsPool cls) M.! cpidx
       hmap <- parseMethod cls (ntName nt)
+      printMapBB hmap
       case hmap of
         Just hmap' -> do
           entry <- compileBB hmap' cls method

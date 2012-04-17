@@ -157,6 +157,8 @@ emitFromBB cls hmap =  do
           let calls' = calls `M.union` (M.fromList $ catMaybes cs)
           case successor bb of
             Return -> return (calls', bbstarts')
+            FallThrough t -> do
+              efBB (t, hmap M.! t) calls' bbstarts' lmap
             OneTarget t -> do
               efBB (t, hmap M.! t) calls' bbstarts' lmap
             TwoTarget t1 t2 -> do

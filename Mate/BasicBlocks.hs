@@ -11,6 +11,7 @@ module Mate.BasicBlocks(
 
 import Data.Binary
 import Data.Int
+import Data.List
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as B
 
@@ -30,7 +31,7 @@ data BasicBlock = BasicBlock {
                      successor :: BBEnd }
 
 -- describes (leaving) edges of a CFG node
-data BBEnd = Return | OneTarget BlockID | TwoTarget BlockID BlockID deriving Show
+data BBEnd = Return | FallThrough BlockID | OneTarget BlockID | TwoTarget BlockID BlockID deriving Show
 
 type MapBB = M.Map BlockID BasicBlock
 
@@ -56,6 +57,7 @@ printMapBB (Just hmap) = do
                              mapM_ putStrLn (map ((++) "\t" . show) $ code bb)
                              case successor bb of
                                Return -> putStrLn ""
+                               FallThrough t1 -> putStrLn $ "Sucessor: " ++ (show t1) ++ "\n"
                                OneTarget t1 -> putStrLn $ "Sucessor: " ++ (show t1) ++ "\n"
                                TwoTarget t1 t2 -> putStrLn $ "Sucessor: " ++ (show t1) ++ ", " ++ (show t2) ++ "\n"
                              printMapBB' is hmap
@@ -72,11 +74,13 @@ test_main = do
   test_01
   test_02
   test_03
+  test_04
 
-test_01, test_02, test_03 :: IO ()
+test_01, test_02, test_03, test_04 :: IO ()
 test_01 = testInstance "./tests/Fib.class" "fib"
 test_02 = testInstance "./tests/While.class" "f"
 test_03 = testInstance "./tests/While.class" "g"
+test_04 = testInstance "./tests/Fac.class" "fac"
 
 
 parseMethod :: Class Resolved -> B.ByteString -> IO (Maybe MapBB)
@@ -98,7 +102,28 @@ buildCFG :: [Instruction] -> MapBB
 buildCFG xs = buildCFG' M.empty xs' xs'
   where
   xs' :: [OffIns]
-  xs' = calculateInstructionOffset xs
+  xs' = markBackwardTargets $ calculateInstructionOffset xs
+
+-- get already calculated jmp-targets and mark the predecessor of the
+-- target-instruction as "FallThrough". we just care about backwards
+-- jumps here (forward jumps are handled in buildCFG')
+markBackwardTargets :: [OffIns] -> [OffIns]
+markBackwardTargets [] = []
+markBackwardTargets (x:[]) = [x]
+markBackwardTargets insns@(x@((x_off,x_bbend),x_ins):y@((y_off,_),_):xs) =
+  (x_new):(markBackwardTargets (y:xs))
+  where
+  x_new = if isTarget then checkX y_off else x
+  checkX w16 = case x_bbend of
+    Just _ -> x -- already marked, don't change
+    Nothing -> ((x_off, Just $ FallThrough w16), x_ins) -- mark previous insn
+
+  -- look through all remaining insns in the stream if there is a jmp to `y'
+  isTarget = case find cmpOffset insns of Just _ -> True; Nothing -> False
+  cmpOffset ((_,(Just (OneTarget w16))),_) = w16 == y_off
+  cmpOffset ((_,(Just (TwoTarget _ w16))),_) = w16 == y_off
+  cmpOffset _ = False
+
 
 buildCFG' :: MapBB -> [OffIns] -> [OffIns] -> MapBB
 buildCFG' hmap [] _ = hmap
@@ -116,6 +141,7 @@ buildCFG' hmap (((off, entry), _):xs) insns = buildCFG' (insertlist entryi hmap)
         case entry of
         Just (TwoTarget t1 t2) -> [t1, t2]
         Just (OneTarget t) -> [t]
+        Just (FallThrough t) -> [t]
         Just (Return) -> []
         Nothing -> []
 
