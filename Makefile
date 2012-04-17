@@ -18,6 +18,7 @@ all: mate $(CLASS_FILES)
 
 test: mate $(CLASS_FILES)
 	./$< tests/Fib.class
+	./$< tests/Fac.class
 
 %.class: %.java
 	$(JAVAC) $<

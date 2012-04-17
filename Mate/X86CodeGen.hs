@@ -192,7 +192,9 @@ emitFromBB cls hmap =  do
         let w32_calladdr = 5 + w32_ep + (fromIntegral calladdr) :: Word32
         let trapaddr = (fromIntegral getaddr :: Word32)
         call (trapaddr - w32_calladdr)
+        add esp (4 :: Word32)
     emit (BIPUSH val) = push ((fromIntegral val) :: Word32)
+    emit (ICONST_0) = push (0 :: Word32)
     emit (ICONST_1) = push (1 :: Word32)
     emit (ICONST_2) = push (2 :: Word32)
     emit (ICONST_5) = push (5 :: Word32)
@@ -203,6 +205,7 @@ emitFromBB cls hmap =  do
         mov (Disp (cArgs_ x), ebp) eax
     emit IADD = do pop ebx; pop eax; add eax ebx; push eax
     emit ISUB = do pop ebx; pop eax; sub eax ebx; push eax
+    emit IMUL = do pop ebx; pop eax; mul ebx; push eax
     emit (IINC x imm) = do
         add (Disp (cArgs x), ebp) (s8_w32 imm)
 
