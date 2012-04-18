@@ -1,0 +1,10 @@
+*.ps
+*.ptb
+*.tex
+*.pdf
+*.log
+*.aux
+*.out
+*.dvi
+*.bbl
+*.blg

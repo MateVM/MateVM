@@ -1,15 +1,20 @@
+\documentclass[a4paper,12pt]{scrartcl}
+%include polycode.fmt
+
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage[utf8x]{inputenc}
+
+\newcommand{\authormod}[2]{#1\\{\small\url{#2}}}
+
+\begin{document}
 \title{MateVM Translation scheme}
 \author{
-        Bernhard Urban
-            \and
-        Harald Steinlechner
+	\authormod{Harald Steinlechner}{haraldsteinlechner@@gmail.com} \and
+	\authormod{Bernhard Urban}{lewurm@@gmail.com}
 }
 \date{\today}
 
-\documentclass[12pt]{article}
-%include polycode.fmt
-
-\begin{document}
 \maketitle
 
 %\begin{abstract}

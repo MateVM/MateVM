@@ -1,23 +1,24 @@
-filename=Translation
+SHELL := bash
 
-tex: ${filename}.lhs
-	 lhs2TeX -o ${filename}.tex ${filename}.lhs
+FILENAME := Translation
 
-pdf: ps
-	ps2pdf ${filename}.ps
+.PHONY: all read aread clean
 
-ps: dvi
-	dvips ${filename}.dvi
 
-dvi: tex
-	latex ${filename}.tex
-	latex ${filename}.tex
+all: $(FILENAME).pdf
 
-read:
-	evince ${filename}.pdf &
+%.tex: %.lhs
+	 lhs2TeX -o $@ $<
 
-aread:
-	acroread ${filename}.pdf &
+%.pdf: %.tex
+	pdflatex $<
+	pdflatex $<
+
+read: $(FILENAME).pdf
+	evince $< &
+
+aread: $(FILENAME).pdf
+	acroread $< &
 
 clean:
-	rm -f ${filename}.ps ${filename}.ptb ${filename}.tex ${filename}.pdf ${filename}.log ${filename}.aux ${filename}.out ${filename}.dvi ${filename}.bbl ${filename}.blg
+	rm -rf $(FILENAME).{ps,ptb,tex,pdf,log,aux,out,dvi,bbl,blg}
