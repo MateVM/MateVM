@@ -58,21 +58,17 @@ void callertrap(int nSignal, siginfo_t *info, void *ctx)
 	unsigned int patchme = getMethodEntry(from, method_map, caller_map);
 
 	printf("callertrap(mctx)  by 0x%08x\n", from);
-	// printf("callertrap(addr)  by 0x%08x\n", info->si_addr);
-	// printf("callertrap(*esp)  by 0x%08x\n", * (unsigned int *) uctx->uc_mcontext.esp);
 
-	unsigned int *to_patch = (unsigned int *) (uctx->uc_mcontext.eip + 2);
-	unsigned char *insn = (unsigned char *) (uctx->uc_mcontext.eip);
-	*insn = 0x90; // nop
-	insn++;
-	*insn = 0xe8; // call
+	unsigned int *to_patch = (unsigned int *) (from + 1);
+	unsigned char *insn = (unsigned char *) from;
+	*insn = 0xe8; // call opcode
 	printf(" to_patch: 0x%08x\n", (unsigned int) to_patch);
 	printf("*to_patch: 0x%08x\n", *to_patch);
-	if (*to_patch != 0x00000000) {
+	if (*to_patch != 0x90ffffff) {
 		printf("something is wrong here. abort\n");
 		exit(0);
 	}
-	*to_patch = (unsigned int) patchme - ((unsigned int) insn + 5);
+	*to_patch = patchme - (from + 5);
 	printf("*to_patch: 0x%08x\n", *to_patch);
 	uctx->uc_mcontext.eip = (unsigned long) insn;
 	// while (1) ;
@@ -84,7 +80,7 @@ void register_signal(void)
 	segvaction.sa_sigaction = callertrap;
 	sigemptyset(&segvaction.sa_mask);
 	segvaction.sa_flags = SA_SIGINFO | SA_RESTART;
-	sigaction(SIGSEGV, &segvaction, NULL);
+	sigaction(SIGILL, &segvaction, NULL);
 }
 
 unsigned int getaddr(void)

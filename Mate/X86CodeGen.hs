@@ -176,8 +176,9 @@ emitFromBB cls hmap =  do
         calladdr <- getCodeOffset
         let w32_calladdr = w32_ep + (fromIntegral calladdr) :: Word32
         newNamedLabel (toString l) >>= defineLabel
-        -- TODO(bernhard): better try SIGILL instead of SIGSEGV?
-        mov (Addr 0) eax
+        -- causes SIGILL. in the signal handler we patch it to the acutal call.
+        -- place a nop at the end, therefore the disasm doesn't screw up
+        emit32 (0xffffffff :: Word32) >> emit8 (0x90 :: Word8)
         -- discard arguments (TODO(bernhard): don't hardcode it)
         add esp (4 :: Word32)
         -- push result on stack (TODO(bernhard): if any)
