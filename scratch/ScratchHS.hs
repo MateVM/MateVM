@@ -148,6 +148,30 @@ data G a = Node  a (G a) (G a)
          | Leaf  a 
          | Nil deriving(Show)
 
+
+testG = [(0,[1,2]),(1,[3]),(2,[0]),(3,[])]
+nodeLoads :: [(Int,String)]
+nodeLoads = [(0,"a"),(1,"b"),(2,"c"),(3,"d")]
+
+toG :: (Ord k, Show k) => [(k,[k])] -> k -> [(k, a)] -> Maybe (G a)
+toG xs start pls = let nodeTable = M.fromList pls
+                       payload s = fromJust $ M.lookup s nodeTable
+                       
+                       toBin xs pl = case xs of
+                                      (x:y:[]) -> Node pl x y
+                                      (x:[]  ) -> Node pl x Nil
+                                      ([]    ) -> Leaf pl
+
+                       conn = M.fromList $ map (
+                                  \(f,ts) -> let pl t = node f (payload t) t
+                                                 succ = map pl ts
+                                            in (f, toBin succ (payload f))
+                                ) xs
+                       
+                       node f p t = case M.lookup t conn of
+                                          (Just x) -> x
+                   in M.lookup start conn
+
 type LoopCheck a = Set a
 
 
