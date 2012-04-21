@@ -143,6 +143,22 @@ fib' = do con@(Just (ins,cls)) <- getMethodIO "../tests/Fac.class" "facFor"
           print "Final result"
           print $ printG' finalCyclicStructure
 
+main = do con@(Just (ins,cls)) <- getMethodIO "../tests/AbsurdlyHuge.class" "absurdlyHuge"
+          let tagged = getInstructions ins
+          let backRefs = splitBlocksBackRef tagged
+          let splitted = splitBlocks backRefs tagged
+          let transitions = getTransitions splitted
+          let nodes       = getNodes splitted
+          print "nodes:"
+          print nodes
+          print "transitions"
+          print transitions
+          let (Just finalCyclicStructure) = indirectCFGToG splitted
+          print "Final result"
+          print $ printG' finalCyclicStructure
+
+    
+
 
 diamant ::  G String
 diamant = let start = Node "a" left right

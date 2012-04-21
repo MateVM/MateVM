@@ -97,6 +97,7 @@ getInstructions ins = zip3 (map Source $ sumSeries'' offsets) offsets ins
 getBranch :: NInst -> [Int]
 getBranch (Source s, size, IF_ICMP _ t) = [addW16Signed s t, s+size]
 getBranch (Source s, size, GOTO     t)  = [addW16Signed s t]
+getBranch (Source s, size, IRETURN   )  = [0] --actually wrong
 getBranch _                             = [] 
 
 -- a version of Prelude.span whereby the first element

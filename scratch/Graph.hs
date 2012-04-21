@@ -55,7 +55,7 @@ packNodes []       e = Leaf e        -- leaf
 
 -- Generates a cyclic datastructure given edges and nodes
 -- TODO: remove lists with maps in inputs
-toG :: (Ord k) => ([r] -> a -> r) -> [(k,[k])] -> k -> [(k, a)] -> Maybe r
+toG :: (Ord k,Show k) => ([r] -> a -> r) -> [(k,[k])] -> k -> [(k, a)] -> Maybe r
 toG g xs start pls = let nodeTable = M.fromList pls
                          payload s = case M.lookup s nodeTable of
                                        Just x  -> x
@@ -69,7 +69,8 @@ toG g xs start pls = let nodeTable = M.fromList pls
 
                          node f p t = case M.lookup t conn of
                                             (Just x) -> x
-                                            Nothing  -> error "illformed edge/node list in toG"
+                                            Nothing  
+                                              -> error $ "illformed edge/node list in toG" ++ (show t)
                    in M.lookup start conn
 
 

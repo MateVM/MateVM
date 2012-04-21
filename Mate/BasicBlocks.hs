@@ -6,7 +6,8 @@ module Mate.BasicBlocks(
   MapBB,
   printMapBB,
   parseMethod,
-  test_main
+  test_main,
+  testCFG -- added by hs to perform benches from outside
   )where
 
 import Data.Binary
