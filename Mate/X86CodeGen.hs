@@ -119,11 +119,6 @@ type BBStarts = M.Map BlockID Int
 
 type CompileInfo = (EntryPoint, BBStarts, Int, CMap)
 
--- B.ByteString: encoded name: <Class>.<methodname><signature>
--- Class Resolved: classfile
--- Word16: index of invoke-instruction
-type MethodInfo = (B.ByteString, Class Resolved, Word16)
-
 -- Word32 = point of method call in generated code
 -- MethodInfo = relevant information about callee
 type CMap = M.Map Word32 MethodInfo
@@ -176,7 +171,7 @@ emitFromBB cls hmap =  do
         let l = buildMethodID cls cpidx
         calladdr <- getCodeOffset
         let w32_calladdr = w32_ep + (fromIntegral calladdr) :: Word32
-        newNamedLabel (toString l) >>= defineLabel
+        newNamedLabel (show l) >>= defineLabel
         -- causes SIGILL. in the signal handler we patch it to the acutal call.
         -- place a nop at the end, therefore the disasm doesn't screw up
         emit32 (0xffff9090 :: Word32) >> emit8 (0x90 :: Word8)
@@ -185,7 +180,7 @@ emitFromBB cls hmap =  do
         when (argcnt > 0) (add esp argcnt)
         -- push result on stack if method has a return value
         when (methodHaveReturnValue cls cpidx) (push eax)
-        return $ Just $ (w32_calladdr, (l, cls, cpidx))
+        return $ Just $ (w32_calladdr, l)
     emit' insn = emit insn >> return Nothing
 
     emit :: J.Instruction -> CodeGen e s ()

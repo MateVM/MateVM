@@ -13,12 +13,14 @@ import Foreign.C.Types
 import Foreign.StablePtr
 
 import JVM.ClassFile
+import JVM.Converter
 
 import Harpy
 import Harpy.X86Disassembler
 
 import Mate.BasicBlocks
 import Mate.X86CodeGen
+import Mate.Utilities
 
 
 foreign import ccall "get_mmap"
@@ -30,7 +32,7 @@ foreign import ccall "set_mmap"
 
 -- B.ByteString = name of method
 -- Word32 = entrypoint of method
-type MMap = M.Map B.ByteString Word32
+type MMap = M.Map MethodInfo Word32
 
 foreign export ccall getMethodEntry :: CUInt -> Ptr () -> Ptr () -> IO CUInt
 getMethodEntry :: CUInt -> Ptr () -> Ptr () -> IO CUInt
@@ -39,10 +41,12 @@ getMethodEntry signal_from ptr_mmap ptr_cmap = do
   cmap <- ptr2cmap ptr_cmap
 
   let w32_from = fromIntegral signal_from
-  let (method, cls, cpidx) = cmap M.! w32_from
-  case M.lookup method mmap of
+  let mi@(MethodInfo method cm sig cpidx) = cmap M.! w32_from
+  -- TODO(bernhard): replace parsing with some kind of classpool
+  cls <- parseClassFile $ toString $ cm `B.append` ".class"
+  case M.lookup mi mmap of
     Nothing -> do
-      printf "getMethodEntry(from 0x%08x): no method \"%s\" found. compile it\n" w32_from (show method)
+      printf "getMethodEntry(from 0x%08x): no method \"%s\" found. compile it\n" w32_from (show mi)
       -- TODO(bernhard): maybe we have to load the class first?
       --                 (Or better in X86CodeGen?)
       let (CMethod _ nt) = (constsPool cls) M.! cpidx
@@ -50,7 +54,7 @@ getMethodEntry signal_from ptr_mmap ptr_cmap = do
       printMapBB hmap
       case hmap of
         Just hmap' -> do
-          entry <- compileBB hmap' cls method
+          entry <- compileBB hmap' mi
           return $ fromIntegral $ ((fromIntegral $ ptrToIntPtr entry) :: Word32)
         Nothing -> error $ (show method) ++ " not found. abort"
     Just w32 -> return (fromIntegral w32)
@@ -69,16 +73,18 @@ initMethodPool = do
   mmap2ptr M.empty >>= set_mmap
   cmap2ptr M.empty >>= set_cmap
 
-compileBB :: MapBB -> Class Resolved -> B.ByteString -> IO (Ptr Word8)
-compileBB hmap cls name = do
+compileBB :: MapBB -> MethodInfo -> IO (Ptr Word8)
+compileBB hmap methodinfo = do
   mmap <- get_mmap >>= ptr2mmap
   cmap <- get_cmap >>= ptr2cmap
 
+  -- TODO(bernhard): replace parsing with some kind of classpool
+  cls <- parseClassFile $ toString $ (classname methodinfo) `B.append` ".class"
   let ebb = emitFromBB cls hmap
   (_, Right ((entry, _, _, new_cmap), disasm)) <- runCodeGen ebb () ()
   let w32_entry = ((fromIntegral $ ptrToIntPtr entry) :: Word32)
 
-  let mmap' = M.insert name w32_entry mmap
+  let mmap' = M.insert methodinfo w32_entry mmap
   let cmap' = M.union cmap new_cmap -- prefers elements in cmap
   mmap2ptr mmap' >>= set_mmap
   cmap2ptr cmap' >>= set_cmap

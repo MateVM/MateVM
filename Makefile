@@ -24,6 +24,9 @@ test: mate $(CLASS_FILES)
 	./$< tests/ArgumentPassing1.class | grep mainresult
 	@printf "should be:  0x%08x\n" 0x92
 	@printf "should be:  0x%08x\n" $$(((0 - 0x1337) & 0xffffffff))
+	./$< tests/DifferentClass1.class | grep mainresult
+	@printf "should be:  0x%08x\n" 8
+	@printf "should be:  0x%08x\n" 13
 
 %.class: %.java
 	$(JAVAC) $<
