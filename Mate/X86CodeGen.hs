@@ -239,7 +239,7 @@ emitFromBB cls hmap =  do
         mov esp ebp
         pop ebp
         ret
-    emit _ = do cmovbe eax eax -- dummy
+    emit invalid = error $ "insn not implemented yet: " ++ (show invalid)
 
   cArgs x = (8 + 4 * (fromIntegral x))
   cArgs_ x = (8 + 4 * case x of I0 -> 0; I1 -> 1; I2 -> 2; I3 -> 3)

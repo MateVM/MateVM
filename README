@@ -1,11 +1,13 @@
 == DEPENDENCIES ==
 === HARPY ===
-	$ cabal install harpy
+	$ cabal install harpy --enable-shared
 
 if this fails (e.g. you use ghc >= 7.0) then try our patched version:
 	$ git clone git://wien.tomnetworks.com/harpy.git
 	$ cd harpy
-	$ cabal configure; cabal build; cabal install
+	$ cabal configure --enable-shared
+	$ cabal build
+	$ cabal install --enable-shared
 
 
 === HS-JAVA ===
@@ -13,9 +15,16 @@ for `hs-java' a patched build is needed:
 	$ git clone git://wien.tomnetworks.com/hs-java.git
 	$ cd hs-java
 	$ git checkout -t origin/v0.2
-	$ cabal configure; cabal build; cabal install
+	$ cabal configure --enable-shared
+	$ cabal build
+	$ cabal install --enable-shared
 hint: for some unknown reason yet, it seems building from source will be easier
 if you first install `hs-java' via cabal (like `harpy' above)
+
+=== MISC ===
+	$ cabal install missingh --enable-shared
+	$ cabal install heap --enable-shared
+	$ cabal install plugins --enable-shared
 
 
 == NOTE ==

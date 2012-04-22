@@ -3,15 +3,20 @@
 module Mate.MethodPool where
 
 import Data.Binary
+import Data.String.Utils
 import qualified Data.Map as M
+import qualified Data.Set as S
 import qualified Data.ByteString.Lazy as B
+import System.Plugins
 
 import Text.Printf
 
 import Foreign.Ptr
 import Foreign.C.Types
+import Foreign.C.String
 import Foreign.StablePtr
 
+import JVM.ClassFile
 import JVM.Converter
 
 import Harpy
@@ -20,6 +25,7 @@ import Harpy.X86Disassembler
 import Mate.BasicBlocks
 import Mate.Types
 import Mate.X86CodeGen
+import Mate.Utilities
 
 
 foreign import ccall "get_mmap"
@@ -28,6 +34,10 @@ foreign import ccall "get_mmap"
 foreign import ccall "set_mmap"
   set_mmap :: Ptr () -> IO ()
 
+foreign import ccall "dynamic"
+   code_void :: FunPtr (IO ()) -> (IO ())
+
+
 foreign export ccall getMethodEntry :: CUInt -> Ptr () -> Ptr () -> IO CUInt
 getMethodEntry :: CUInt -> Ptr () -> Ptr () -> IO CUInt
 getMethodEntry signal_from ptr_mmap ptr_cmap = do
@@ -35,20 +45,49 @@ getMethodEntry signal_from ptr_mmap ptr_cmap = do
   cmap <- ptr2cmap ptr_cmap
 
   let w32_from = fromIntegral signal_from
-  let mi@(MethodInfo method cm _) = cmap M.! w32_from
+  let mi@(MethodInfo method cm sig) = cmap M.! w32_from
   -- TODO(bernhard): replace parsing with some kind of classpool
   cls <- parseClassFile $ toString $ cm `B.append` ".class"
   case M.lookup mi mmap of
     Nothing -> do
       printf "getMethodEntry(from 0x%08x): no method \"%s\" found. compile it\n" w32_from (show mi)
-      hmap <- parseMethod cls method
-      printMapBB hmap
-      case hmap of
-        Just hmap' -> do
-          entry <- compileBB hmap' mi
-          return $ fromIntegral $ ((fromIntegral $ ptrToIntPtr entry) :: Word32)
+      let mm = lookupMethod method cls
+      case mm of
+        Just mm' -> do
+            let flags = methodAccessFlags mm'
+            case S.member ACC_NATIVE flags of
+              False -> do
+                hmap <- parseMethod cls method
+                printMapBB hmap
+                case hmap of
+                  Just hmap' -> do
+                    entry <- compileBB hmap' mi
+                    return $ fromIntegral $ ((fromIntegral $ ptrToIntPtr entry) :: Word32)
+                  Nothing -> error $ (show method) ++ " not found. abort"
+              True -> do
+                let symbol = (replace "/" "_" $ toString cm) ++ "__" ++ (toString method) ++ "__" ++ (replace "(" "_" (replace ")" "_" $ toString $ encode sig))
+                printf "native-call: symbol: %s\n" symbol
+                nf <- loadNativeFunction symbol
+                let w32_nf = fromIntegral nf
+                let mmap' = M.insert mi w32_nf mmap
+                mmap2ptr mmap' >>= set_mmap
+                return nf
         Nothing -> error $ (show method) ++ " not found. abort"
     Just w32 -> return (fromIntegral w32)
+
+-- TODO(bernhard): UBERHAX.  ghc patch?
+foreign import ccall safe "lookupSymbol"
+   c_lookupSymbol :: CString -> IO (Ptr a)
+
+loadNativeFunction :: String -> IO (CUInt)
+loadNativeFunction sym = do
+        _ <- loadRawObject "ffi/native.o"
+        -- TODO(bernhard): WTF
+        resolveObjs (return ())
+        ptr <- withCString sym c_lookupSymbol
+        if (ptr == nullPtr)
+          then error $ "dyn. loading of \"" ++ sym ++ "\" failed."
+          else return $ fromIntegral $ minusPtr ptr nullPtr
 
 -- t_01 :: IO ()
 -- t_01 = do
@@ -90,9 +129,6 @@ compileBB hmap methodinfo = do
   -- (4) `cont' and press enter
   return entry
 
-
-foreign import ccall "dynamic"
-   code_void :: FunPtr (IO ()) -> (IO ())
 
 executeFuncPtr :: Ptr Word8 -> IO ()
 executeFuncPtr entry = code_void $ ((castPtrToFunPtr entry) :: FunPtr (IO ()))

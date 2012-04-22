@@ -8,7 +8,7 @@ O_FILES = $(shell ls Mate/*.o) $(wildcard ffi/*.o)
 PACKAGES_ := bytestring harpy hs-java
 PACKAGES := $(addprefix -package ,$(PACKAGES_))
 
-GHC_OPT := -Wall -O0 -fno-warn-unused-do-bind
+GHC_OPT := -dynamic -Wall -O0 -fno-warn-unused-do-bind
 GHC_LD := -optl-Xlinker -optl-x
 
 
@@ -27,11 +27,15 @@ test: mate $(CLASS_FILES)
 	./$< tests/DifferentClass1.class | grep mainresult
 	@printf "should be:  0x%08x\n" 8
 	@printf "should be:  0x%08x\n" 13
+	./$< tests/Native1.class | egrep -i -e '^printsomething: '
 
 %.class: %.java
 	$(JAVAC) $<
 
-mate: Mate.hs ffi/trap.c $(HS_FILES)
+ffi/native.o: ffi/native.c
+	ghc -Wall -O2 -c $< -o $@
+
+mate: Mate.hs ffi/trap.c $(HS_FILES) ffi/native.o
 	ghc --make $(GHC_OPT) Mate.hs ffi/trap.c -o $@ $(GHC_LD)
 
 clean:
