@@ -54,7 +54,7 @@ void mainresult(unsigned int a)
 void callertrap(int nSignal, siginfo_t *info, void *ctx)
 {
 	struct ucontext *uctx = (struct ucontext *) ctx;
-	unsigned int from = (unsigned int) uctx->uc_mcontext.eip;
+	unsigned int from = (unsigned int) uctx->uc_mcontext.eip - 2;
 	unsigned int patchme = getMethodEntry(from, method_map, caller_map);
 
 	printf("callertrap(mctx)  by 0x%08x\n", from);
@@ -64,7 +64,7 @@ void callertrap(int nSignal, siginfo_t *info, void *ctx)
 	*insn = 0xe8; // call opcode
 	printf(" to_patch: 0x%08x\n", (unsigned int) to_patch);
 	printf("*to_patch: 0x%08x\n", *to_patch);
-	if (*to_patch != 0x90ffffff) {
+	if (*to_patch != 0x90ffff90) {
 		printf("something is wrong here. abort\n");
 		exit(0);
 	}

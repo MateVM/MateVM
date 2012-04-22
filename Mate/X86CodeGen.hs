@@ -179,7 +179,7 @@ emitFromBB cls hmap =  do
         newNamedLabel (toString l) >>= defineLabel
         -- causes SIGILL. in the signal handler we patch it to the acutal call.
         -- place a nop at the end, therefore the disasm doesn't screw up
-        emit32 (0xffffffff :: Word32) >> emit8 (0x90 :: Word8)
+        emit32 (0xffff9090 :: Word32) >> emit8 (0x90 :: Word8)
         -- discard arguments on stack
         let argcnt = (methodGetArgsCount cls cpidx) * 4
         when (argcnt > 0) (add esp argcnt)
