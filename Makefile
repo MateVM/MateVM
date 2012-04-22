@@ -17,8 +17,13 @@ GHC_LD := -optl-Xlinker -optl-x
 all: mate $(CLASS_FILES)
 
 test: mate $(CLASS_FILES)
-	./$< tests/Fib.class
-	./$< tests/Fac.class
+	./$< tests/Fib.class | grep mainresult
+	@printf "should be:  0x%08x\n" 0x09de8d6d
+	./$< tests/Fac.class | grep mainresult
+	@printf "should be:  0x%08x\n" 0x58980
+	./$< tests/ArgumentPassing1.class | grep mainresult
+	@printf "should be:  0x%08x\n" 0x92
+	@printf "should be:  0x%08x\n" $$(((0 - 0x1337) & 0xffffffff))
 
 %.class: %.java
 	$(JAVAC) $<

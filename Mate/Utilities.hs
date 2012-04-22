@@ -32,3 +32,19 @@ buildMethodID cls idx = (rc `B.append` dot) `B.append` (ntName nt) `B.append` nt
   dot :: B.ByteString
   -- TODO(bernhard): WTF? why -XOverloadedStrings doesn't apply here?
   dot = B.pack $ map (fromIntegral . ord) "."
+
+methodGetArgsCount :: Class Resolved -> Word16 -> Word32
+methodGetArgsCount cls idx = fromIntegral $ length args
+  where
+  (CMethod _ nt) = (constsPool cls) M.! idx
+  (MethodSignature args _) = ntSignature nt
+
+-- TODO(bernhard): Extend it to more than just int, and provide typeinformation
+methodHaveReturnValue :: Class Resolved -> Word16 -> Bool
+methodHaveReturnValue cls idx = case ret of
+    ReturnsVoid -> False;
+    (Returns IntType) -> True;
+    _ -> error "methodHaveReturnValue: todo"
+  where
+  (CMethod _ nt) = (constsPool cls) M.! idx
+  (MethodSignature _ ret) = ntSignature nt

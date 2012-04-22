@@ -7,6 +7,7 @@ import Data.Int
 import Data.Maybe
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as B
+import Control.Monad
 
 import Foreign
 import Foreign.C.Types
@@ -179,10 +180,11 @@ emitFromBB cls hmap =  do
         -- causes SIGILL. in the signal handler we patch it to the acutal call.
         -- place a nop at the end, therefore the disasm doesn't screw up
         emit32 (0xffffffff :: Word32) >> emit8 (0x90 :: Word8)
-        -- discard arguments (TODO(bernhard): don't hardcode it)
-        add esp (4 :: Word32)
-        -- push result on stack (TODO(bernhard): if any)
-        push eax
+        -- discard arguments on stack
+        let argcnt = (methodGetArgsCount cls cpidx) * 4
+        when (argcnt > 0) (add esp argcnt)
+        -- push result on stack if method has a return value
+        when (methodHaveReturnValue cls cpidx) (push eax)
         return $ Just $ (w32_calladdr, (l, cls, cpidx))
     emit' insn = emit insn >> return Nothing
 
@@ -197,9 +199,11 @@ emitFromBB cls hmap =  do
         call (trapaddr - w32_calladdr)
         add esp (4 :: Word32)
     emit (BIPUSH val) = push ((fromIntegral val) :: Word32)
+    emit (SIPUSH val) = push ((fromIntegral $ ((fromIntegral val) :: Int16)) :: Word32)
     emit (ICONST_0) = push (0 :: Word32)
     emit (ICONST_1) = push (1 :: Word32)
     emit (ICONST_2) = push (2 :: Word32)
+    emit (ICONST_4) = push (4 :: Word32)
     emit (ICONST_5) = push (5 :: Word32)
     emit (ILOAD_ x) = do
         push (Disp (cArgs_ x), ebp)
