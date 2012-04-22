@@ -12,7 +12,6 @@ import Foreign.Ptr
 import Foreign.C.Types
 import Foreign.StablePtr
 
-import JVM.ClassFile
 import JVM.Converter
 
 import Harpy
@@ -36,16 +35,13 @@ getMethodEntry signal_from ptr_mmap ptr_cmap = do
   cmap <- ptr2cmap ptr_cmap
 
   let w32_from = fromIntegral signal_from
-  let mi@(MethodInfo method cm _ cpidx) = cmap M.! w32_from
+  let mi@(MethodInfo method cm _) = cmap M.! w32_from
   -- TODO(bernhard): replace parsing with some kind of classpool
   cls <- parseClassFile $ toString $ cm `B.append` ".class"
   case M.lookup mi mmap of
     Nothing -> do
       printf "getMethodEntry(from 0x%08x): no method \"%s\" found. compile it\n" w32_from (show mi)
-      -- TODO(bernhard): maybe we have to load the class first?
-      --                 (Or better in X86CodeGen?)
-      let (CMethod _ nt) = (constsPool cls) M.! cpidx
-      hmap <- parseMethod cls (ntName nt)
+      hmap <- parseMethod cls method
       printMapBB hmap
       case hmap of
         Just hmap' -> do

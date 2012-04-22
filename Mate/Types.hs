@@ -35,12 +35,11 @@ type MMap = M.Map MethodInfo Word32
 data MethodInfo = MethodInfo {
   methName :: B.ByteString,
   cName :: B.ByteString,
-  mSignature :: MethodSignature,
-  cpIndex :: Word16 }
+  mSignature :: MethodSignature}
 
 instance Eq MethodInfo where
-  (MethodInfo m_a c_a s_a i_a) == (MethodInfo m_b c_b s_b i_b) =
-    (m_a == m_b) && (c_a == c_b) && (s_a == s_b) && (i_a == i_b)
+  (MethodInfo m_a c_a s_a) == (MethodInfo m_b c_b s_b) =
+    (m_a == m_b) && (c_a == c_b) && (s_a == s_b)
 
 -- TODO(bernhard): not really efficient. also, outsource that to hs-java
 instance Ord MethodSignature where
@@ -51,19 +50,17 @@ instance Ord MethodSignature where
     cmp_args = (show args_a) `compare` (show args_b)
 
 instance Ord MethodInfo where
-  compare (MethodInfo m_a c_a s_a i_a) (MethodInfo m_b c_b s_b i_b)
+  compare (MethodInfo m_a c_a s_a) (MethodInfo m_b c_b s_b)
     | cmp_m /= EQ = cmp_m
     | cmp_c /= EQ = cmp_c
-    | cmp_s /= EQ = cmp_s
-    | otherwise = i_a `compare` i_b
+    | otherwise = s_a `compare` s_b
     where
     cmp_m = m_a `compare` m_b
     cmp_c = c_a `compare` c_b
-    cmp_s = s_a `compare` s_b
 
 instance Show MethodInfo where
-  show (MethodInfo method c sig idx) =
-    (toString c) ++ "." ++ (toString method) ++ "." ++ (show sig) ++ "@" ++ (show idx)
+  show (MethodInfo method c sig) =
+    (toString c) ++ "." ++ (toString method) ++ "." ++ (show sig)
 
 
 toString :: B.ByteString -> String

@@ -32,12 +32,11 @@ main = do
       case hmap of
         Just hmap' -> do
           let methods = classMethods cls; methods :: [Method Resolved]
-          let idx = findIndex (\x -> (methodName x) == "main") methods
-          case idx of
-            Just idx' -> do
-              let (Just m) = find (\x -> (methodName x) == "main") methods
+          let method = find (\x -> (methodName x) == "main") methods
+          case method of
+            Just m -> do
               let bclspath = B.pack $ map (fromIntegral . ord) (replace ".class" "" clspath)
-              entry <- compileBB hmap' (MethodInfo "main" bclspath (methodSignature m) (fromIntegral idx'))
+              entry <- compileBB hmap' (MethodInfo "main" bclspath (methodSignature m))
               printf "executing `main' now:\n"
               executeFuncPtr entry
             Nothing -> error "main not found"

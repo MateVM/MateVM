@@ -20,7 +20,7 @@ lookupMethod name cls = look (classMethods cls)
       | otherwise  = look fs
 
 buildMethodID :: Class Resolved -> Word16 -> MethodInfo
-buildMethodID cls idx = MethodInfo (ntName nt) rc (ntSignature nt) idx
+buildMethodID cls idx = MethodInfo (ntName nt) rc (ntSignature nt)
   where
   (CMethod rc nt) = (constsPool cls) M.! idx
 
