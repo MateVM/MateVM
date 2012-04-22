@@ -16,7 +16,7 @@ import JVM.Dump
 import Mate.BasicBlocks
 import Mate.X86CodeGen
 import Mate.MethodPool
-import Mate.Utilities
+import Mate.Types
 
 main ::  IO ()
 main = do

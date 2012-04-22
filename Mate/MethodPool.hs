@@ -19,8 +19,8 @@ import Harpy
 import Harpy.X86Disassembler
 
 import Mate.BasicBlocks
+import Mate.Types
 import Mate.X86CodeGen
-import Mate.Utilities
 
 
 foreign import ccall "get_mmap"
@@ -29,11 +29,6 @@ foreign import ccall "get_mmap"
 foreign import ccall "set_mmap"
   set_mmap :: Ptr () -> IO ()
 
-
--- B.ByteString = name of method
--- Word32 = entrypoint of method
-type MMap = M.Map MethodInfo Word32
-
 foreign export ccall getMethodEntry :: CUInt -> Ptr () -> Ptr () -> IO CUInt
 getMethodEntry :: CUInt -> Ptr () -> Ptr () -> IO CUInt
 getMethodEntry signal_from ptr_mmap ptr_cmap = do
@@ -41,7 +36,7 @@ getMethodEntry signal_from ptr_mmap ptr_cmap = do
   cmap <- ptr2cmap ptr_cmap
 
   let w32_from = fromIntegral signal_from
-  let mi@(MethodInfo method cm sig cpidx) = cmap M.! w32_from
+  let mi@(MethodInfo method cm _ cpidx) = cmap M.! w32_from
   -- TODO(bernhard): replace parsing with some kind of classpool
   cls <- parseClassFile $ toString $ cm `B.append` ".class"
   case M.lookup mi mmap of
@@ -79,7 +74,7 @@ compileBB hmap methodinfo = do
   cmap <- get_cmap >>= ptr2cmap
 
   -- TODO(bernhard): replace parsing with some kind of classpool
-  cls <- parseClassFile $ toString $ (classname methodinfo) `B.append` ".class"
+  cls <- parseClassFile $ toString $ (cName methodinfo) `B.append` ".class"
   let ebb = emitFromBB cls hmap
   (_, Right ((entry, _, _, new_cmap), disasm)) <- runCodeGen ebb () ()
   let w32_entry = ((fromIntegral $ ptrToIntPtr entry) :: Word32)

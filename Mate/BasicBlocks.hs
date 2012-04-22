@@ -21,22 +21,10 @@ import JVM.Converter
 import JVM.Assembler
 
 import Mate.Utilities
+import Mate.Types
 
 
-type BlockID = Int
--- Represents a CFG node
-data BasicBlock = BasicBlock {
-                     -- inputs  :: [Variable],
-                     -- outputs :: [Variable],
-                     code    :: [Instruction],
-                     successor :: BBEnd }
-
--- describes (leaving) edges of a CFG node
-data BBEnd = Return | FallThrough BlockID | OneTarget BlockID | TwoTarget BlockID BlockID deriving Show
-
-type MapBB = M.Map BlockID BasicBlock
-
--- for immediate representation for determine BBs
+-- for immediate representation to determine BBs
 type Offset = (Int, Maybe BBEnd) -- (offset in bytecode, offset to jump target)
 type OffIns = (Offset, Instruction)
 

@@ -23,6 +23,7 @@ import Harpy
 import Harpy.X86Disassembler
 
 import Mate.BasicBlocks
+import Mate.Types
 import Mate.Utilities
 
 foreign import ccall "dynamic"
@@ -118,10 +119,6 @@ type PatchInfo = (BlockID, EntryPointOffset)
 type BBStarts = M.Map BlockID Int
 
 type CompileInfo = (EntryPoint, BBStarts, Int, CMap)
-
--- Word32 = point of method call in generated code
--- MethodInfo = relevant information about callee
-type CMap = M.Map Word32 MethodInfo
 
 
 emitFromBB :: Class Resolved -> MapBB -> CodeGen e s (CompileInfo, [Instruction])
