@@ -49,7 +49,7 @@ type FieldMap = M.Map B.ByteString Int32
 data ClassInfo = ClassInfo {
   clName :: B.ByteString,
   clFile :: Class Resolved,
-  clField :: Ptr Int32,
+  clFieldBase :: Ptr Int32,
   clFieldMap :: FieldMap }
 
 data MethodInfo = MethodInfo {

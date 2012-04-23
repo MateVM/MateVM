@@ -5,12 +5,16 @@ public class Static1 {
 	public static int y;
 
 	public static void main(String []args) {
-		Static1.x = 0x11;
-		Static1.y = 0x22;
-		addnumbers();
+		setNumbers();
+		addNumbers(); // 0x33
 	}
 
-	public static int addnumbers() {
+	public static void setNumbers() {
+		Static1.x = 0x11;
+		Static1.y = 0x22;
+	}
+
+	public static int addNumbers() {
 		return Static1.x + Static1.y;
 	}
 }

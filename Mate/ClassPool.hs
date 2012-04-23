@@ -30,6 +30,8 @@ getClassFile path = do
   (ClassInfo _ cfile _ _) <- getClassInfo path
   return cfile
 
+-- TODO(bernhard): I think we don't need that anymore. also remove fieldbase
+--                 entry in ClassInfo
 getFieldBase :: B.ByteString -> IO (CUInt)
 getFieldBase path = do
   (ClassInfo _ _ fs _) <- getClassInfo path
@@ -48,24 +50,29 @@ getFieldAddr from ptr_trapmap = do
   let sfi = trapmap M.! w32_from
   case sfi of
     (SFI (StaticFieldInfo cls field)) -> do
-      off <- getFieldOffset cls field
-      base <- getFieldBase cls
-      return $ base + off
+      getFieldOffset cls field
     _ -> error $ "getFieldAddr: no trapInfo. abort"
 
 loadClass :: B.ByteString -> IO ClassInfo
 loadClass path = do
-  ptr_classmap <- get_classmap
-  class_map <- ptr2classmap ptr_classmap
+  printf "loadClass: \"%s\"\n" $ toString path
   let rpath = toString $ path `B.append` ".class"
   cfile <- parseClassFile rpath
-  printf "class fieldlength: %d\n" $ classFieldsCount cfile
+  superclass <- case (path /= "java/lang/Object") of
+      True -> do
+        sc <- loadClass $ superClass cfile
+        return $ Just $ sc
+      False -> return $ Nothing
+  class_map <- get_classmap >>= ptr2classmap
   -- TODO(bernhard): correct sizes. int only atm
   let filteredfields = filter (S.member ACC_STATIC . fieldAccessFlags) (classFields cfile)
-  let fm = zipWith (\x y -> (fieldName y, x)) [0,4..] filteredfields
-  let fieldmap = M.fromList fm
-  fieldbase <- mallocBytes ((fromIntegral $ M.size fieldmap) * 4)
-  putStrLn $ "fieldmap: " ++ (show fieldmap)
+  fieldbase <- mallocBytes ((fromIntegral $ length filteredfields) * 4)
+  let i_fb = fromIntegral $ ptrToIntPtr $ fieldbase
+  let fm = zipWith (\x y -> (fieldName y, x + i_fb)) [0,4..] filteredfields
+  let sc_fm = case superclass of Just x -> clFieldMap x; Nothing -> M.empty
+  -- new fields "overwrite" old ones, if they have the same name
+  let fieldmap = (M.fromList fm) `M.union` sc_fm
+  printf "fieldmap: %s @ %s\n" (show fieldmap) (toString path)
   let new_ci = ClassInfo path cfile fieldbase fieldmap
   let class_map' = M.insert path new_ci class_map
   classmap2ptr class_map' >>= set_classmap

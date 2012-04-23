@@ -11,6 +11,6 @@ public class Static2 {
 		// in Static2 as in Static1
 		Static1.x = 0x33;
 		Static1.y = 0x22;
-		Static1.addnumbers();
+		Static1.addNumbers();
 	}
 }
