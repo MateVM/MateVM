@@ -155,13 +155,17 @@ emitFromBB cls hmap =  do
     -- TODO(bernhard): implement `emit' as function which accepts a list of
     --                 instructions, so we can use patterns for optimizations
     where
+    getCurrentOffset :: CodeGen e s (Word32)
+    getCurrentOffset = do
+      ep <- getEntryPoint
+      let w32_ep = (fromIntegral $ ptrToIntPtr ep) :: Word32
+      offset <- getCodeOffset
+      return $ w32_ep + (fromIntegral offset)
+
     emit' :: J.Instruction -> CodeGen e s (Maybe (Word32, TrapInfo))
     emit' (INVOKESTATIC cpidx) = do
-        ep <- getEntryPoint
-        let w32_ep = (fromIntegral $ ptrToIntPtr ep) :: Word32
         let l = buildMethodID cls cpidx
-        calladdr <- getCodeOffset
-        let w32_calladdr = w32_ep + (fromIntegral calladdr) :: Word32
+        calladdr <- getCurrentOffset
         newNamedLabel (show l) >>= defineLabel
         -- causes SIGILL. in the signal handler we patch it to the acutal call.
         -- place a nop at the end, therefore the disasm doesn't screw up
@@ -171,32 +175,24 @@ emitFromBB cls hmap =  do
         when (argcnt > 0) (add esp argcnt)
         -- push result on stack if method has a return value
         when (methodHaveReturnValue cls cpidx) (push eax)
-        return $ Just $ (w32_calladdr, MI l)
+        return $ Just $ (calladdr, MI l)
     emit' (PUTSTATIC cpidx) = do
         pop eax
-        ep <- getEntryPoint
-        let w32_ep = (fromIntegral $ ptrToIntPtr ep) :: Word32
-        trapaddr <- getCodeOffset
-        let w32_trapaddr = w32_ep + (fromIntegral trapaddr)
+        trapaddr <- getCurrentOffset
         mov (Addr 0x00000000) eax -- it's a trap
-        return $ Just $ (w32_trapaddr, SFI $ buildFieldID cls cpidx)
+        return $ Just $ (trapaddr, SFI $ buildFieldID cls cpidx)
     emit' (GETSTATIC cpidx) = do
-        ep <- getEntryPoint
-        let w32_ep = (fromIntegral $ ptrToIntPtr ep) :: Word32
-        trapaddr <- getCodeOffset
-        let w32_trapaddr = w32_ep + (fromIntegral trapaddr)
+        trapaddr <- getCurrentOffset
         mov eax (Addr 0x00000000) -- it's a trap
         push eax
-        return $ Just $ (w32_trapaddr, SFI $ buildFieldID cls cpidx)
+        return $ Just $ (trapaddr, SFI $ buildFieldID cls cpidx)
     emit' insn = emit insn >> return Nothing
 
     emit :: J.Instruction -> CodeGen e s ()
     emit POP = do -- print dropped value
-        ep <- getEntryPoint
-        let w32_ep = (fromIntegral $ ptrToIntPtr ep) :: Word32
+        calladdr <- getCurrentOffset
         -- '5' is the size of the `call' instruction ( + immediate)
-        calladdr <- getCodeOffset
-        let w32_calladdr = 5 + w32_ep + (fromIntegral calladdr) :: Word32
+        let w32_calladdr = 5 + calladdr
         let trapaddr = (fromIntegral getaddr :: Word32)
         call (trapaddr - w32_calladdr)
         add esp (4 :: Word32)
