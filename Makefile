@@ -18,16 +18,15 @@ all: mate $(CLASS_FILES)
 
 test: mate $(CLASS_FILES)
 	./$< tests/Fib | grep mainresult
-	@printf "should be:  0x%08x\n" 0x09de8d6d
+	@printf "should be:  0x%08x\n" 0x2ac2
 	./$< tests/Fac | grep mainresult
-	@printf "should be:  0x%08x\n" 0x58980
+	@printf "should be:  0x%08x\n" 0x63e1a
 	./$< tests/ArgumentPassing1 | grep mainresult
-	@printf "should be:  0x%08x\n" 0x92
-	@printf "should be:  0x%08x\n" $$(((0 - 0x1337) & 0xffffffff))
+	@printf "should be:  0x%08x 0x%08x\n" 0x92 $$(((0 - 0x1337) & 0xffffffff))
 	./$< tests/DifferentClass1 | grep mainresult
-	@printf "should be:  0x%08x\n" 8
-	@printf "should be:  0x%08x\n" 13
+	@printf "should be:  0x%08x 0x%08x\n" 8 13
 	./$< tests/Native1 | egrep -i -e '^printsomething: '
+	@printf "should be:  woot 0x%08x 0x%08x woot 0x%08x\n" 0x1337 0x1338 0x15a5
 	./$< tests/Static1 | grep mainresult
 	@printf "should be:  0x%08x\n" 0x33
 	./$< tests/Static2 | grep mainresult

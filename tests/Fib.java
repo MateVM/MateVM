@@ -7,6 +7,7 @@ public class Fib {
 	}
 
 	public static void main(String[] args) {
-		fib(40);
+		fib(20);
+		// System.out.printf("%x\n", fib(20));
 	}
 }
