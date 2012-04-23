@@ -96,7 +96,7 @@ testCase cf method = do
       case hmap of
         Nothing -> error "sorry, no code generation"
         Just hmap' -> do
-              let ebb = emitFromBB cls hmap'
+              let ebb = emitFromBB method cls hmap'
               (_, Right ((entry, bbstarts, end, _), disasm)) <- runCodeGen ebb () ()
               let int_entry = ((fromIntegral $ ptrToIntPtr entry) :: Int)
               printf "disasm:\n"
@@ -115,13 +115,16 @@ type BBStarts = M.Map BlockID Int
 type CompileInfo = (EntryPoint, BBStarts, Int, TMap)
 
 
-emitFromBB :: Class Resolved -> MapBB -> CodeGen e s (CompileInfo, [Instruction])
-emitFromBB cls hmap =  do
+emitFromBB :: B.ByteString -> Class Resolved -> MapBB -> CodeGen e s (CompileInfo, [Instruction])
+emitFromBB method cls hmap =  do
         llmap <- sequence [newNamedLabel ("bb_" ++ show x) | (x,_) <- M.toList hmap]
         let lmap = zip (Prelude.fst $ unzip $ M.toList hmap) llmap
         ep <- getEntryPoint
         push ebp
         mov ebp esp
+        -- TODO(bernhard): determine a reasonable value.
+        --                 e.g. (locals used) * 4
+        sub esp (0x60 :: Word32)
 
         (calls, bbstarts) <- efBB (0,(hmap M.! 0)) M.empty M.empty lmap
         d <- disassemble
@@ -205,9 +208,14 @@ emitFromBB cls hmap =  do
     emit (ICONST_5) = push (5 :: Word32)
     emit (ILOAD_ x) = do
         push (Disp (cArgs_ x), ebp)
+    emit (ILOAD x) = do
+        push (Disp (cArgs x), ebp)
     emit (ISTORE_ x) = do
         pop eax
         mov (Disp (cArgs_ x), ebp) eax
+    emit (ISTORE x) = do
+        pop eax
+        mov (Disp (cArgs x), ebp) eax
     emit IADD = do pop ebx; pop eax; add eax ebx; push eax
     emit ISUB = do pop ebx; pop eax; sub eax ebx; push eax
     emit IMUL = do pop ebx; pop eax; mul ebx; push eax
@@ -247,8 +255,22 @@ emitFromBB cls hmap =  do
         ret
     emit invalid = error $ "insn not implemented yet: " ++ (show invalid)
 
-  cArgs x = (8 + 4 * (fromIntegral x))
-  cArgs_ x = (8 + 4 * case x of I0 -> 0; I1 -> 1; I2 -> 2; I3 -> 3)
+  -- for locals we use a different storage
+  cArgs :: Word8 -> Word32
+  cArgs x = if (x' >= thisMethodArgCnt)
+      -- TODO(bernhard): maybe s/(-4)/(-8)/
+      then fromIntegral $ (-4) * (x' - thisMethodArgCnt + 1)
+      else 8 + (4 * x')
+    where x' = fromIntegral x
+
+  cArgs_ :: IMM -> Word32
+  cArgs_ x = cArgs $ case x of I0 -> 0; I1 -> 1; I2 -> 2; I3 -> 3
+
+  thisMethodArgCnt :: Word32
+  thisMethodArgCnt = fromIntegral $ length args
+    where
+    (Just m) = lookupMethod method cls
+    (MethodSignature args _) = methodSignature m
 
   -- sign extension from w8 to w32 (over s8)
   --   unfortunately, hs-java is using Word8 everywhere (while

@@ -105,7 +105,7 @@ compileBB hmap methodinfo = do
 
   -- TODO(bernhard): replace parsing with some kind of classpool
   cls <- getClassFile (cName methodinfo)
-  let ebb = emitFromBB cls hmap
+  let ebb = emitFromBB (methName methodinfo) cls hmap
   (_, Right ((entry, _, _, new_tmap), disasm)) <- runCodeGen ebb () ()
   let w32_entry = ((fromIntegral $ ptrToIntPtr entry) :: Word32)
 
