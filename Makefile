@@ -17,17 +17,18 @@ GHC_LD := -optl-Xlinker -optl-x
 all: mate $(CLASS_FILES)
 
 test: mate $(CLASS_FILES)
-	./$< tests/Fib.class | grep mainresult
+	./$< tests/Fib | grep mainresult
 	@printf "should be:  0x%08x\n" 0x09de8d6d
-	./$< tests/Fac.class | grep mainresult
+	./$< tests/Fac | grep mainresult
 	@printf "should be:  0x%08x\n" 0x58980
-	./$< tests/ArgumentPassing1.class | grep mainresult
+	./$< tests/ArgumentPassing1 | grep mainresult
 	@printf "should be:  0x%08x\n" 0x92
 	@printf "should be:  0x%08x\n" $$(((0 - 0x1337) & 0xffffffff))
-	./$< tests/DifferentClass1.class | grep mainresult
+	./$< tests/DifferentClass1 | grep mainresult
 	@printf "should be:  0x%08x\n" 8
 	@printf "should be:  0x%08x\n" 13
-	./$< tests/Native1.class | egrep -i -e '^printsomething: '
+	./$< tests/Native1 | egrep -i -e '^printsomething: '
+	./$< tests/Static1
 
 %.class: %.java
 	$(JAVAC) $<

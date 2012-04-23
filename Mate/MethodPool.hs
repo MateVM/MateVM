@@ -26,6 +26,7 @@ import Mate.BasicBlocks
 import Mate.Types
 import Mate.X86CodeGen
 import Mate.Utilities
+import Mate.ClassPool
 
 
 foreign import ccall "get_mmap"
@@ -47,7 +48,7 @@ getMethodEntry signal_from ptr_mmap ptr_cmap = do
   let w32_from = fromIntegral signal_from
   let mi@(MethodInfo method cm sig) = cmap M.! w32_from
   -- TODO(bernhard): replace parsing with some kind of classpool
-  cls <- parseClassFile $ toString $ cm `B.append` ".class"
+  cls <- getClassFile cm
   case M.lookup mi mmap of
     Nothing -> do
       printf "getMethodEntry(from 0x%08x): no method \"%s\" found. compile it\n" w32_from (show mi)
@@ -109,7 +110,7 @@ compileBB hmap methodinfo = do
   cmap <- get_cmap >>= ptr2cmap
 
   -- TODO(bernhard): replace parsing with some kind of classpool
-  cls <- parseClassFile $ toString $ (cName methodinfo) `B.append` ".class"
+  cls <- getClassFile (cName methodinfo)
   let ebb = emitFromBB cls hmap
   (_, Right ((entry, _, _, new_cmap), disasm)) <- runCodeGen ebb () ()
   let w32_entry = ((fromIntegral $ ptrToIntPtr entry) :: Word32)

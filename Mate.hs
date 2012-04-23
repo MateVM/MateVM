@@ -17,6 +17,7 @@ import Mate.BasicBlocks
 import Mate.X86CodeGen
 import Mate.MethodPool
 import Mate.Types
+import Mate.ClassPool
 
 main ::  IO ()
 main = do
@@ -25,7 +26,8 @@ main = do
   initMethodPool
   case args of
     [clspath] -> do
-      cls <- parseClassFile clspath
+      let bclspath = B.pack $ map (fromIntegral . ord) clspath
+      cls <- getClassFile bclspath
       dumpClass cls
       hmap <- parseMethod cls "main"
       printMapBB hmap
@@ -35,7 +37,6 @@ main = do
           let method = find (\x -> (methodName x) == "main") methods
           case method of
             Just m -> do
-              let bclspath = B.pack $ map (fromIntegral . ord) (replace ".class" "" clspath)
               entry <- compileBB hmap' (MethodInfo "main" bclspath (methodSignature m))
               printf "executing `main' now:\n"
               executeFuncPtr entry

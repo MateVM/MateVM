@@ -25,6 +25,7 @@ import Harpy.X86Disassembler
 import Mate.BasicBlocks
 import Mate.Types
 import Mate.Utilities
+import Mate.ClassPool
 
 foreign import ccall "dynamic"
    code_int :: FunPtr (CInt -> CInt -> IO CInt) -> (CInt -> CInt -> IO CInt)
@@ -47,7 +48,7 @@ foreign import ccall "set_cmap"
 test_01, test_02, test_03 :: IO ()
 test_01 = do
   register_signal
-  (entry, end) <- testCase "./tests/Fib.class" "fib"
+  (entry, end) <- testCase "./tests/Fib" "fib"
   let entryFuncPtr = ((castPtrToFunPtr entry) :: FunPtr (CInt -> CInt -> IO CInt))
 
   mapM_ (\x -> do
@@ -67,7 +68,7 @@ test_01 = do
 
 
 test_02 = do
-  (entry,_) <- testCase "./tests/While.class" "f"
+  (entry,_) <- testCase "./tests/While" "f"
   let entryFuncPtr = ((castPtrToFunPtr entry) :: FunPtr (CInt -> CInt -> IO CInt))
   result <- code_int entryFuncPtr 5 4
   let iresult :: Int; iresult = fromIntegral result
@@ -81,7 +82,7 @@ test_02 = do
 
 
 test_03 = do
-  (entry,_) <- testCase "./tests/While.class" "g"
+  (entry,_) <- testCase "./tests/While" "g"
   let entryFuncPtr = ((castPtrToFunPtr entry) :: FunPtr (CInt -> CInt -> IO CInt))
   result <- code_int entryFuncPtr 5 4
   let iresult :: Int; iresult = fromIntegral result
@@ -94,9 +95,9 @@ test_03 = do
   printf "result of g(4,3): %3d\t\t%s\n" iresult2 kk2
 
 
-testCase :: String -> B.ByteString -> IO (Ptr Word8, Int)
+testCase :: B.ByteString -> B.ByteString -> IO (Ptr Word8, Int)
 testCase cf method = do
-      cls <- parseClassFile cf
+      cls <- getClassFile cf
       hmap <- parseMethod cls method
       printMapBB hmap
       case hmap of
