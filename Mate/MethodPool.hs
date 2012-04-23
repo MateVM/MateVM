@@ -6,7 +6,6 @@ import Data.Binary
 import Data.String.Utils
 import qualified Data.Map as M
 import qualified Data.Set as S
-import qualified Data.ByteString.Lazy as B
 import System.Plugins
 
 import Text.Printf
@@ -14,10 +13,8 @@ import Text.Printf
 import Foreign.Ptr
 import Foreign.C.Types
 import Foreign.C.String
-import Foreign.StablePtr
 
 import JVM.ClassFile
-import JVM.Converter
 
 import Harpy
 import Harpy.X86Disassembler
@@ -84,7 +81,7 @@ loadNativeFunction sym = do
         ptr <- withCString sym c_lookupSymbol
         if (ptr == nullPtr)
           then error $ "dyn. loading of \"" ++ sym ++ "\" failed."
-          else return $ fromIntegral $ minusPtr ptr nullPtr
+          else return $ fromIntegral $ ptrToIntPtr ptr
 
 -- t_01 :: IO ()
 -- t_01 = do

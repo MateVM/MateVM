@@ -24,6 +24,10 @@ buildMethodID cls idx = MethodInfo (ntName nt) rc (ntSignature nt)
   where
   (CMethod rc nt) = (constsPool cls) M.! idx
 
+buildFieldID :: Class Resolved -> Word16 -> StaticFieldInfo
+buildFieldID cls idx = StaticFieldInfo rc (ntName fnt)
+  where (CField rc fnt) = (constsPool cls) M.! idx
+
 methodGetArgsCount :: Class Resolved -> Word16 -> Word32
 methodGetArgsCount cls idx = fromIntegral $ length args
   where

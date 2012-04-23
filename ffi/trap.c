@@ -17,6 +17,7 @@
 #include <asm/ucontext.h>
 
 unsigned int getMethodEntry(unsigned int, void *, void *);
+unsigned int getFieldAddr(unsigned int, void*);
 
 #define NEW_MAP(prefix) \
 	void* prefix ## _map = NULL; \
@@ -64,13 +65,37 @@ void callertrap(int nSignal, siginfo_t *info, void *ctx)
 	// while (1) ;
 }
 
+void staticfieldtrap(int nSignal, siginfo_t *info, void *ctx)
+{
+	struct ucontext *uctx = (struct ucontext *) ctx;
+	unsigned int from = (unsigned int) uctx->uc_mcontext.eip;
+	unsigned int patchme = getFieldAddr(from, trap_map);
+	unsigned int *to_patch = (unsigned int *) (from + 2);
+
+	printf("staticfieldtrap by 0x%08x\n", from);
+	printf(" to_patch: 0x%08x\n", (unsigned int) to_patch);
+	printf("*to_patch: 0x%08x\n", *to_patch);
+	if (*to_patch != 0x00000000) {
+		printf("something is wrong here. abort\n");
+		exit(0);
+	}
+	*to_patch = patchme;
+	printf("*to_patch: 0x%08x\n", *to_patch);
+}
+
 void register_signal(void)
 {
+	struct sigaction illaction;
+	illaction.sa_sigaction = callertrap;
+	sigemptyset(&illaction.sa_mask);
+	illaction.sa_flags = SA_SIGINFO | SA_RESTART;
+	sigaction(SIGILL, &illaction, NULL);
+
 	struct sigaction segvaction;
-	segvaction.sa_sigaction = callertrap;
+	segvaction.sa_sigaction = staticfieldtrap;
 	sigemptyset(&segvaction.sa_mask);
 	segvaction.sa_flags = SA_SIGINFO | SA_RESTART;
-	sigaction(SIGILL, &segvaction, NULL);
+	sigaction(SIGSEGV, &segvaction, NULL);
 }
 
 unsigned int getaddr(void)

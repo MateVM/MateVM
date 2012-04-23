@@ -17,7 +17,6 @@ import Text.Printf
 import qualified JVM.Assembler as J
 import JVM.Assembler hiding (Instruction)
 import JVM.ClassFile
-import JVM.Converter
 
 import Harpy
 import Harpy.X86Disassembler
@@ -173,6 +172,22 @@ emitFromBB cls hmap =  do
         -- push result on stack if method has a return value
         when (methodHaveReturnValue cls cpidx) (push eax)
         return $ Just $ (w32_calladdr, MI l)
+    emit' (PUTSTATIC cpidx) = do
+        pop eax
+        ep <- getEntryPoint
+        let w32_ep = (fromIntegral $ ptrToIntPtr ep) :: Word32
+        trapaddr <- getCodeOffset
+        let w32_trapaddr = w32_ep + (fromIntegral trapaddr)
+        mov (Addr 0x00000000) eax -- it's a trap
+        return $ Just $ (w32_trapaddr, SFI $ buildFieldID cls cpidx)
+    emit' (GETSTATIC cpidx) = do
+        ep <- getEntryPoint
+        let w32_ep = (fromIntegral $ ptrToIntPtr ep) :: Word32
+        trapaddr <- getCodeOffset
+        let w32_trapaddr = w32_ep + (fromIntegral trapaddr)
+        mov eax (Addr 0x00000000) -- it's a trap
+        push eax
+        return $ Just $ (w32_trapaddr, SFI $ buildFieldID cls cpidx)
     emit' insn = emit insn >> return Nothing
 
     emit :: J.Instruction -> CodeGen e s ()

@@ -4,13 +4,12 @@ module Mate.Types where
 
 import Data.Char
 import Data.Word
+import Data.Int
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as B
 import Codec.Binary.UTF8.String hiding (encode,decode)
 
 import Foreign.Ptr
-import Foreign.C.Types
-import Foreign.C.String
 import Foreign.StablePtr
 
 import JVM.ClassFile
@@ -36,7 +35,8 @@ type TMap = M.Map Word32 TrapInfo
 data TrapInfo = MI MethodInfo | SFI StaticFieldInfo
 
 data StaticFieldInfo = StaticFieldInfo {
-  dunnoyet :: Int }
+  sfiClassName :: B.ByteString,
+  sfiFieldName :: B.ByteString }
 
 -- B.ByteString = name of method
 -- Word32 = entrypoint of method
@@ -44,9 +44,13 @@ type MMap = M.Map MethodInfo Word32
 
 type ClassMap = M.Map B.ByteString ClassInfo
 
+type FieldMap = M.Map B.ByteString Int32
+
 data ClassInfo = ClassInfo {
   clName :: B.ByteString,
-  clFile :: Class Resolved }
+  clFile :: Class Resolved,
+  clField :: Ptr Int32,
+  clFieldMap :: FieldMap }
 
 data MethodInfo = MethodInfo {
   methName :: B.ByteString,

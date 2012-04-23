@@ -3,14 +3,12 @@ module Main where
 
 import System.Environment
 import Data.Char
-import Data.String.Utils
 import Data.List
 import qualified Data.ByteString.Lazy as B
 
 import Text.Printf
 
 import JVM.ClassFile
-import JVM.Converter
 import JVM.Dump
 
 import Mate.BasicBlocks

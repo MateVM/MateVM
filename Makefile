@@ -28,7 +28,10 @@ test: mate $(CLASS_FILES)
 	@printf "should be:  0x%08x\n" 8
 	@printf "should be:  0x%08x\n" 13
 	./$< tests/Native1 | egrep -i -e '^printsomething: '
-	./$< tests/Static1
+	./$< tests/Static1 | grep mainresult
+	@printf "should be:  0x%08x\n" 0x33
+	./$< tests/Static2 | grep mainresult
+	@printf "should be:  0x%08x\n" 0x55
 
 %.class: %.java
 	$(JAVAC) $<
