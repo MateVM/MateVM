@@ -31,7 +31,12 @@ type MapBB = M.Map BlockID BasicBlock
 
 -- Word32 = point of method call in generated code
 -- MethodInfo = relevant information about callee
-type CMap = M.Map Word32 MethodInfo
+type TMap = M.Map Word32 TrapInfo
+
+data TrapInfo = MI MethodInfo | SFI StaticFieldInfo
+
+data StaticFieldInfo = StaticFieldInfo {
+  dunnoyet :: Int }
 
 -- B.ByteString = name of method
 -- Word32 = entrypoint of method
@@ -42,7 +47,6 @@ type ClassMap = M.Map B.ByteString ClassInfo
 data ClassInfo = ClassInfo {
   clName :: B.ByteString,
   clFile :: Class Resolved }
-
 
 data MethodInfo = MethodInfo {
   methName :: B.ByteString,
@@ -80,11 +84,11 @@ toString bstr = decodeString $ map (chr . fromIntegral) $ B.unpack bstr
 
 
 -- global map hax
-foreign import ccall "get_callermap"
-  get_callermap :: IO (Ptr ())
+foreign import ccall "get_trapmap"
+  get_trapmap :: IO (Ptr ())
 
-foreign import ccall "set_callermap"
-  set_callermap :: Ptr () -> IO ()
+foreign import ccall "set_trapmap"
+  set_trapmap :: Ptr () -> IO ()
 
 foreign import ccall "get_methodmap"
   get_methodmap :: IO (Ptr ())
@@ -107,13 +111,13 @@ mmap2ptr mmap = do
 ptr2mmap :: Ptr () -> IO MMap
 ptr2mmap vmap = deRefStablePtr $ ((castPtrToStablePtr vmap) :: StablePtr MMap)
 
-cmap2ptr :: CMap -> IO (Ptr ())
-cmap2ptr cmap = do
-  ptr_cmap <- newStablePtr cmap
-  return $ castStablePtrToPtr ptr_cmap
+tmap2ptr :: TMap -> IO (Ptr ())
+tmap2ptr tmap = do
+  ptr_tmap <- newStablePtr tmap
+  return $ castStablePtrToPtr ptr_tmap
 
-ptr2cmap :: Ptr () -> IO CMap
-ptr2cmap vmap = deRefStablePtr $ ((castPtrToStablePtr vmap) :: StablePtr cmap)
+ptr2tmap :: Ptr () -> IO TMap
+ptr2tmap vmap = deRefStablePtr $ ((castPtrToStablePtr vmap) :: StablePtr tmap)
 
 classmap2ptr :: ClassMap -> IO (Ptr ())
 classmap2ptr cmap = do

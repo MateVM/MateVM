@@ -35,40 +35,42 @@ foreign import ccall "dynamic"
 
 foreign export ccall getMethodEntry :: CUInt -> Ptr () -> Ptr () -> IO CUInt
 getMethodEntry :: CUInt -> Ptr () -> Ptr () -> IO CUInt
-getMethodEntry signal_from ptr_mmap ptr_cmap = do
+getMethodEntry signal_from ptr_mmap ptr_tmap = do
   mmap <- ptr2mmap ptr_mmap
-  cmap <- ptr2cmap ptr_cmap
+  tmap <- ptr2tmap ptr_tmap
 
   let w32_from = fromIntegral signal_from
-  let mi@(MethodInfo method cm sig) = cmap M.! w32_from
-  -- TODO(bernhard): replace parsing with some kind of classpool
-  cls <- getClassFile cm
-  case M.lookup mi mmap of
-    Nothing -> do
-      printf "getMethodEntry(from 0x%08x): no method \"%s\" found. compile it\n" w32_from (show mi)
-      let mm = lookupMethod method cls
-      case mm of
-        Just mm' -> do
-            let flags = methodAccessFlags mm'
-            case S.member ACC_NATIVE flags of
-              False -> do
-                hmap <- parseMethod cls method
-                printMapBB hmap
-                case hmap of
-                  Just hmap' -> do
-                    entry <- compileBB hmap' mi
-                    return $ fromIntegral $ ((fromIntegral $ ptrToIntPtr entry) :: Word32)
-                  Nothing -> error $ (show method) ++ " not found. abort"
-              True -> do
-                let symbol = (replace "/" "_" $ toString cm) ++ "__" ++ (toString method) ++ "__" ++ (replace "(" "_" (replace ")" "_" $ toString $ encode sig))
-                printf "native-call: symbol: %s\n" symbol
-                nf <- loadNativeFunction symbol
-                let w32_nf = fromIntegral nf
-                let mmap' = M.insert mi w32_nf mmap
-                mmap2ptr mmap' >>= set_methodmap
-                return nf
-        Nothing -> error $ (show method) ++ " not found. abort"
-    Just w32 -> return (fromIntegral w32)
+  let mi = tmap M.! w32_from
+  case mi of
+    (MI mi'@(MethodInfo method cm sig)) -> do
+      case M.lookup mi' mmap of
+        Nothing -> do
+          cls <- getClassFile cm
+          printf "getMethodEntry(from 0x%08x): no method \"%s\" found. compile it\n" w32_from (show mi')
+          let mm = lookupMethod method cls
+          case mm of
+            Just mm' -> do
+                let flags = methodAccessFlags mm'
+                case S.member ACC_NATIVE flags of
+                  False -> do
+                    hmap <- parseMethod cls method
+                    printMapBB hmap
+                    case hmap of
+                      Just hmap' -> do
+                        entry <- compileBB hmap' mi'
+                        return $ fromIntegral $ ((fromIntegral $ ptrToIntPtr entry) :: Word32)
+                      Nothing -> error $ (show method) ++ " not found. abort"
+                  True -> do
+                    let symbol = (replace "/" "_" $ toString cm) ++ "__" ++ (toString method) ++ "__" ++ (replace "(" "_" (replace ")" "_" $ toString $ encode sig))
+                    printf "native-call: symbol: %s\n" symbol
+                    nf <- loadNativeFunction symbol
+                    let w32_nf = fromIntegral nf
+                    let mmap' = M.insert mi' w32_nf mmap
+                    mmap2ptr mmap' >>= set_methodmap
+                    return nf
+            Nothing -> error $ (show method) ++ " not found. abort"
+        Just w32 -> return (fromIntegral w32)
+    _ -> error $ "getMethodEntry: no trapInfo. abort"
 
 -- TODO(bernhard): UBERHAX.  ghc patch?
 foreign import ccall safe "lookupSymbol"
@@ -96,24 +98,24 @@ loadNativeFunction sym = do
 initMethodPool :: IO ()
 initMethodPool = do
   mmap2ptr M.empty >>= set_methodmap
-  cmap2ptr M.empty >>= set_callermap
+  tmap2ptr M.empty >>= set_trapmap
   classmap2ptr M.empty >>= set_classmap
 
 compileBB :: MapBB -> MethodInfo -> IO (Ptr Word8)
 compileBB hmap methodinfo = do
   mmap <- get_methodmap >>= ptr2mmap
-  cmap <- get_callermap >>= ptr2cmap
+  tmap <- get_trapmap >>= ptr2tmap
 
   -- TODO(bernhard): replace parsing with some kind of classpool
   cls <- getClassFile (cName methodinfo)
   let ebb = emitFromBB cls hmap
-  (_, Right ((entry, _, _, new_cmap), disasm)) <- runCodeGen ebb () ()
+  (_, Right ((entry, _, _, new_tmap), disasm)) <- runCodeGen ebb () ()
   let w32_entry = ((fromIntegral $ ptrToIntPtr entry) :: Word32)
 
   let mmap' = M.insert methodinfo w32_entry mmap
-  let cmap' = M.union cmap new_cmap -- prefers elements in cmap
+  let tmap' = M.union tmap new_tmap -- prefers elements in cmap
   mmap2ptr mmap' >>= set_methodmap
-  cmap2ptr cmap' >>= set_callermap
+  tmap2ptr tmap' >>= set_trapmap
 
   printf "disasm:\n"
   mapM_ (putStrLn . showAtt) disasm

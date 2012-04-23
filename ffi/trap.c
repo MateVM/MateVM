@@ -32,7 +32,7 @@ unsigned int getMethodEntry(unsigned int, void *, void *);
 	}
 
 NEW_MAP(method)
-NEW_MAP(caller)
+NEW_MAP(trap)
 NEW_MAP(class)
 
 
@@ -45,7 +45,7 @@ void callertrap(int nSignal, siginfo_t *info, void *ctx)
 {
 	struct ucontext *uctx = (struct ucontext *) ctx;
 	unsigned int from = (unsigned int) uctx->uc_mcontext.eip - 2;
-	unsigned int patchme = getMethodEntry(from, method_map, caller_map);
+	unsigned int patchme = getMethodEntry(from, method_map, trap_map);
 
 	printf("callertrap(mctx)  by 0x%08x\n", from);
 

@@ -113,7 +113,7 @@ type PatchInfo = (BlockID, EntryPointOffset)
 
 type BBStarts = M.Map BlockID Int
 
-type CompileInfo = (EntryPoint, BBStarts, Int, CMap)
+type CompileInfo = (EntryPoint, BBStarts, Int, TMap)
 
 
 emitFromBB :: Class Resolved -> MapBB -> CodeGen e s (CompileInfo, [Instruction])
@@ -133,7 +133,7 @@ emitFromBB cls hmap =  do
   getLabel _ [] = error "label not found!"
   getLabel i ((x,l):xs) = if i==x then l else getLabel i xs
 
-  efBB :: (BlockID, BasicBlock) -> CMap -> BBStarts -> [(BlockID, Label)] -> CodeGen e s (CMap, BBStarts)
+  efBB :: (BlockID, BasicBlock) -> TMap -> BBStarts -> [(BlockID, Label)] -> CodeGen e s (TMap, BBStarts)
   efBB (bid, bb) calls bbstarts lmap =
         if M.member bid bbstarts then
           return (calls, bbstarts)
@@ -156,7 +156,7 @@ emitFromBB cls hmap =  do
     -- TODO(bernhard): implement `emit' as function which accepts a list of
     --                 instructions, so we can use patterns for optimizations
     where
-    emit' :: J.Instruction -> CodeGen e s (Maybe (Word32, MethodInfo))
+    emit' :: J.Instruction -> CodeGen e s (Maybe (Word32, TrapInfo))
     emit' (INVOKESTATIC cpidx) = do
         ep <- getEntryPoint
         let w32_ep = (fromIntegral $ ptrToIntPtr ep) :: Word32
@@ -172,7 +172,7 @@ emitFromBB cls hmap =  do
         when (argcnt > 0) (add esp argcnt)
         -- push result on stack if method has a return value
         when (methodHaveReturnValue cls cpidx) (push eax)
-        return $ Just $ (w32_calladdr, l)
+        return $ Just $ (w32_calladdr, MI l)
     emit' insn = emit insn >> return Nothing
 
     emit :: J.Instruction -> CodeGen e s ()
