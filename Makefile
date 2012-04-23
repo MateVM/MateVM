@@ -33,6 +33,8 @@ test: mate $(CLASS_FILES)
 	@printf "should be:  0x%08x\n" 0x55
 	./$< tests/Static3 | grep mainresult
 	@printf "should be:  0x%08x\n" 0x6dd
+	./$< tests/Static4 | grep mainresult
+	@printf "should be:  0x%08x 0x%08x\n" 0x33 0x77
 	./$< tests/CallConv1 | grep mainresult
 	@printf "should be:  0x%08x\n" 0x1337
 	./$< tests/CallConv2 | grep mainresult
