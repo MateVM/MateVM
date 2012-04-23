@@ -18,32 +18,22 @@
 
 unsigned int getMethodEntry(unsigned int, void *, void *);
 
-void *method_map = NULL;
-void *caller_map = NULL;
+#define NEW_MAP(prefix) \
+	void* prefix ## _map = NULL; \
+	void set_ ## prefix ## map(void *map) \
+	{ \
+		printf("set_%s: 0x%08x\n", #prefix , (unsigned int) map); \
+		prefix ## _map = map; \
+	} \
+	void *get_ ## prefix ## map() \
+	{ \
+		printf("get_%s: 0x%08x\n", #prefix , (unsigned int) prefix ## _map); \
+		return prefix ## _map; \
+	}
 
-void set_mmap(void *mmap)
-{
-	printf("set_mmap: 0x%08x\n", (unsigned int) mmap);
-	method_map = mmap;
-}
-
-void *get_mmap()
-{
-	printf("get_mmap: 0x%08x\n", (unsigned int) method_map);
-	return method_map;
-}
-
-void set_cmap(void *cmap)
-{
-	printf("set_cmap: 0x%08x\n", (unsigned int) cmap);
-	caller_map = cmap;
-}
-
-void *get_cmap()
-{
-	printf("get_cmap: 0x%08x\n", (unsigned int) caller_map);
-	return caller_map;
-}
+NEW_MAP(method)
+NEW_MAP(caller)
+NEW_MAP(class)
 
 
 void mainresult(unsigned int a)

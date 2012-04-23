@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ForeignFunctionInterface #-}
 module Mate.Types where
 
 import Data.Char
@@ -5,6 +7,11 @@ import Data.Word
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as B
 import Codec.Binary.UTF8.String hiding (encode,decode)
+
+import Foreign.Ptr
+import Foreign.C.Types
+import Foreign.C.String
+import Foreign.StablePtr
 
 import JVM.ClassFile
 import JVM.Assembler
@@ -30,6 +37,11 @@ type CMap = M.Map Word32 MethodInfo
 -- Word32 = entrypoint of method
 type MMap = M.Map MethodInfo Word32
 
+type ClassMap = M.Map B.ByteString ClassInfo
+
+data ClassInfo = ClassInfo {
+  clName :: B.ByteString,
+  clFile :: Class Resolved }
 
 
 data MethodInfo = MethodInfo {
@@ -65,3 +77,48 @@ instance Show MethodInfo where
 
 toString :: B.ByteString -> String
 toString bstr = decodeString $ map (chr . fromIntegral) $ B.unpack bstr
+
+
+-- global map hax
+foreign import ccall "get_callermap"
+  get_callermap :: IO (Ptr ())
+
+foreign import ccall "set_callermap"
+  set_callermap :: Ptr () -> IO ()
+
+foreign import ccall "get_methodmap"
+  get_methodmap :: IO (Ptr ())
+
+foreign import ccall "set_methodmap"
+  set_methodmap :: Ptr () -> IO ()
+
+foreign import ccall "get_classmap"
+  get_classmap :: IO (Ptr ())
+
+foreign import ccall "set_classmap"
+  set_classmap :: Ptr () -> IO ()
+
+-- TODO(bernhard): make some typeclass magic 'n stuff
+mmap2ptr :: MMap -> IO (Ptr ())
+mmap2ptr mmap = do
+  ptr_mmap <- newStablePtr mmap
+  return $ castStablePtrToPtr ptr_mmap
+
+ptr2mmap :: Ptr () -> IO MMap
+ptr2mmap vmap = deRefStablePtr $ ((castPtrToStablePtr vmap) :: StablePtr MMap)
+
+cmap2ptr :: CMap -> IO (Ptr ())
+cmap2ptr cmap = do
+  ptr_cmap <- newStablePtr cmap
+  return $ castStablePtrToPtr ptr_cmap
+
+ptr2cmap :: Ptr () -> IO CMap
+ptr2cmap vmap = deRefStablePtr $ ((castPtrToStablePtr vmap) :: StablePtr cmap)
+
+classmap2ptr :: ClassMap -> IO (Ptr ())
+classmap2ptr cmap = do
+  ptr_cmap <- newStablePtr cmap
+  return $ castStablePtrToPtr ptr_cmap
+
+ptr2classmap :: Ptr () -> IO ClassMap
+ptr2classmap vmap = deRefStablePtr $ ((castPtrToStablePtr vmap) :: StablePtr cmap)

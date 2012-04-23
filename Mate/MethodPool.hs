@@ -29,12 +29,6 @@ import Mate.Utilities
 import Mate.ClassPool
 
 
-foreign import ccall "get_mmap"
-  get_mmap :: IO (Ptr ())
-
-foreign import ccall "set_mmap"
-  set_mmap :: Ptr () -> IO ()
-
 foreign import ccall "dynamic"
    code_void :: FunPtr (IO ()) -> (IO ())
 
@@ -71,7 +65,7 @@ getMethodEntry signal_from ptr_mmap ptr_cmap = do
                 nf <- loadNativeFunction symbol
                 let w32_nf = fromIntegral nf
                 let mmap' = M.insert mi w32_nf mmap
-                mmap2ptr mmap' >>= set_mmap
+                mmap2ptr mmap' >>= set_methodmap
                 return nf
         Nothing -> error $ (show method) ++ " not found. abort"
     Just w32 -> return (fromIntegral w32)
@@ -101,13 +95,14 @@ loadNativeFunction sym = do
 
 initMethodPool :: IO ()
 initMethodPool = do
-  mmap2ptr M.empty >>= set_mmap
-  cmap2ptr M.empty >>= set_cmap
+  mmap2ptr M.empty >>= set_methodmap
+  cmap2ptr M.empty >>= set_callermap
+  classmap2ptr M.empty >>= set_classmap
 
 compileBB :: MapBB -> MethodInfo -> IO (Ptr Word8)
 compileBB hmap methodinfo = do
-  mmap <- get_mmap >>= ptr2mmap
-  cmap <- get_cmap >>= ptr2cmap
+  mmap <- get_methodmap >>= ptr2mmap
+  cmap <- get_callermap >>= ptr2cmap
 
   -- TODO(bernhard): replace parsing with some kind of classpool
   cls <- getClassFile (cName methodinfo)
@@ -117,8 +112,8 @@ compileBB hmap methodinfo = do
 
   let mmap' = M.insert methodinfo w32_entry mmap
   let cmap' = M.union cmap new_cmap -- prefers elements in cmap
-  mmap2ptr mmap' >>= set_mmap
-  cmap2ptr cmap' >>= set_cmap
+  mmap2ptr mmap' >>= set_methodmap
+  cmap2ptr cmap' >>= set_callermap
 
   printf "disasm:\n"
   mapM_ (putStrLn . showAtt) disasm
@@ -133,20 +128,3 @@ compileBB hmap methodinfo = do
 
 executeFuncPtr :: Ptr Word8 -> IO ()
 executeFuncPtr entry = code_void $ ((castPtrToFunPtr entry) :: FunPtr (IO ()))
-
--- TODO(bernhard): make some typeclass magic 'n stuff
-mmap2ptr :: MMap -> IO (Ptr ())
-mmap2ptr mmap = do
-  ptr_mmap <- newStablePtr mmap
-  return $ castStablePtrToPtr ptr_mmap
-
-ptr2mmap :: Ptr () -> IO MMap
-ptr2mmap vmap = deRefStablePtr $ ((castPtrToStablePtr vmap) :: StablePtr MMap)
-
-cmap2ptr :: CMap -> IO (Ptr ())
-cmap2ptr cmap = do
-  ptr_cmap <- newStablePtr cmap
-  return $ castStablePtrToPtr ptr_cmap
-
-ptr2cmap :: Ptr () -> IO CMap
-ptr2cmap vmap = deRefStablePtr $ ((castPtrToStablePtr vmap) :: StablePtr cmap)

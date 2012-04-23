@@ -39,12 +39,6 @@ foreign import ccall "callertrap"
 foreign import ccall "register_signal"
   register_signal :: IO ()
 
-foreign import ccall "get_cmap"
-  get_cmap :: IO (Ptr ())
-
-foreign import ccall "set_cmap"
-  set_cmap :: Ptr () -> IO ()
-
 test_01, test_02, test_03 :: IO ()
 test_01 = do
   register_signal

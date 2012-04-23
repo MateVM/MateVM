@@ -30,5 +30,13 @@ import Mate.Utilities
 
 getClassFile :: B.ByteString -> IO (Class Resolved)
 getClassFile path = do
-  let rpath = toString $ path `B.append` ".class"
-  parseClassFile rpath
+  ptr_classmap <- get_classmap
+  class_map <- ptr2classmap ptr_classmap
+  case M.lookup path class_map of
+    Nothing -> do
+      let rpath = toString $ path `B.append` ".class"
+      cfile <- parseClassFile rpath
+      let class_map' = M.insert path (ClassInfo path cfile) class_map
+      classmap2ptr class_map' >>= set_classmap
+      return cfile
+    Just (ClassInfo name cfs) -> return cfs
