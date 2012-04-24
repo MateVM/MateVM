@@ -6,6 +6,7 @@ import Data.Binary
 import Data.Int
 import Data.Maybe
 import qualified Data.Map as M
+import qualified Data.Set as S
 import qualified Data.ByteString.Lazy as B
 import Control.Monad
 
@@ -31,6 +32,9 @@ foreign import ccall "dynamic"
 
 foreign import ccall "getaddr"
   getaddr :: CUInt
+
+foreign import ccall "getMallocAddr"
+  getMallocAddr :: CUInt
 
 foreign import ccall "callertrap"
   callertrap :: IO ()
@@ -166,6 +170,7 @@ emitFromBB method cls hmap =  do
       return $ w32_ep + (fromIntegral offset)
 
     emit' :: J.Instruction -> CodeGen e s (Maybe (Word32, TrapInfo))
+    emit' (INVOKESPECIAL cpidx) = emit' (INVOKESTATIC cpidx)
     emit' (INVOKESTATIC cpidx) = do
         let l = buildMethodID cls cpidx
         calladdr <- getCurrentOffset
@@ -199,6 +204,18 @@ emitFromBB method cls hmap =  do
         let trapaddr = (fromIntegral getaddr :: Word32)
         call (trapaddr - w32_calladdr)
         add esp (4 :: Word32)
+    emit DUP = pop (Disp 0, esp)
+    emit (NEW objidx) = do
+        -- TODO(bernhard): determine right amount...
+        let amount = 0x20
+        push (amount :: Word32)
+        calladdr <- getCurrentOffset
+        let w32_calladdr = 5 + calladdr
+        let malloaddr = (fromIntegral getMallocAddr :: Word32)
+        call (malloaddr - w32_calladdr)
+        add esp (4 :: Word32)
+        push eax
+        -- TODO(bernhard): save reference somewhere for GC
     emit (BIPUSH val) = push ((fromIntegral val) :: Word32)
     emit (SIPUSH val) = push ((fromIntegral $ ((fromIntegral val) :: Int16)) :: Word32)
     emit (ICONST_0) = push (0 :: Word32)
@@ -206,16 +223,29 @@ emitFromBB method cls hmap =  do
     emit (ICONST_2) = push (2 :: Word32)
     emit (ICONST_4) = push (4 :: Word32)
     emit (ICONST_5) = push (5 :: Word32)
+    emit (ALOAD_ x) = emit (ILOAD_ x)
     emit (ILOAD_ x) = do
         push (Disp (cArgs_ x), ebp)
+    emit (ALOAD x) = emit (ILOAD x)
     emit (ILOAD x) = do
         push (Disp (cArgs x), ebp)
+    emit (ASTORE_ x) = emit (ISTORE_ x)
     emit (ISTORE_ x) = do
         pop eax
         mov (Disp (cArgs_ x), ebp) eax
+    emit (ASTORE x) = emit (ISTORE x)
     emit (ISTORE x) = do
         pop eax
         mov (Disp (cArgs x), ebp) eax
+
+    emit (GETFIELD x) = do
+        pop eax -- this pointer
+        push (Disp (fromIntegral x * 4), eax) -- get field
+    emit (PUTFIELD x) = do
+        pop ebx -- value to write
+        pop eax -- this pointer
+        mov (Disp (fromIntegral x * 4), eax) ebx -- set field
+
     emit IADD = do pop ebx; pop eax; add eax ebx; push eax
     emit ISUB = do pop ebx; pop eax; sub eax ebx; push eax
     emit IMUL = do pop ebx; pop eax; mul ebx; push eax
@@ -267,10 +297,14 @@ emitFromBB method cls hmap =  do
   cArgs_ x = cArgs $ case x of I0 -> 0; I1 -> 1; I2 -> 2; I3 -> 3
 
   thisMethodArgCnt :: Word32
-  thisMethodArgCnt = fromIntegral $ length args
+  thisMethodArgCnt = isNonStatic + (fromIntegral $ length args)
     where
     (Just m) = lookupMethod method cls
     (MethodSignature args _) = methodSignature m
+    isNonStatic = if S.member ACC_STATIC (methodAccessFlags m)
+        then 0
+        else 1 -- one argument for the this pointer
+
 
   -- sign extension from w8 to w32 (over s8)
   --   unfortunately, hs-java is using Word8 everywhere (while
