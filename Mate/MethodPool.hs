@@ -118,9 +118,9 @@ initMethodPool = do
 
 
 addMethodRef :: Word32 -> MethodInfo -> [B.ByteString] -> IO ()
-addMethodRef entry mi@(MethodInfo mname _ msig) clsnames = do
+addMethodRef entry (MethodInfo mmname _ msig) clsnames = do
   mmap <- get_methodmap >>= ptr2mmap
-  let newmap = M.fromList $ map (\x -> ((MethodInfo mname x msig), entry)) clsnames
+  let newmap = M.fromList $ map (\x -> ((MethodInfo mmname x msig), entry)) clsnames
   let mmap' = newmap `M.union` newmap
   mmap2ptr mmap' >>= set_methodmap
 

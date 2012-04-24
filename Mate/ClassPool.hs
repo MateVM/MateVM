@@ -15,7 +15,10 @@ import Foreign.Marshal.Alloc
 import JVM.ClassFile
 import JVM.Converter
 
+import Mate.BasicBlocks
+import {-# SOURCE #-} Mate.MethodPool
 import Mate.Types
+import Mate.Utilities
 
 getClassInfo :: B.ByteString -> IO ClassInfo
 getClassInfo path = do
@@ -76,4 +79,19 @@ loadClass path = do
   let new_ci = ClassInfo path cfile fieldbase fieldmap
   let class_map' = M.insert path new_ci class_map
   classmap2ptr class_map' >>= set_classmap
-  return new_ci
+  -- execute class initializer
+  case lookupMethod "<clinit>" cfile of
+    Just m -> do
+      hmap <- parseMethod cfile "<clinit>"
+      printMapBB hmap
+      case hmap of
+        Just hmap' -> do
+          let mi = (MethodInfo "<clinit>" path (methodSignature m))
+          entry <- compileBB hmap' mi
+          addMethodRef entry mi [path]
+          printf "executing static initializer from %s now\n" (toString path)
+          executeFuncPtr entry
+          printf "static initializer from %s done\n" (toString path)
+          return new_ci
+        Nothing -> error $ "loadClass: static initializer not found (WTF?). abort"
+    Nothing -> return new_ci

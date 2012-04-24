@@ -4,6 +4,7 @@ JAVAC := javac
 JAVA_FILES := $(wildcard tests/*.java)
 CLASS_FILES := $(JAVA_FILES:.java=.class)
 HS_FILES := $(wildcard Mate/*.hs)
+HS_BOOT := $(wildcard Mate/*.hs-boot)
 O_FILES = $(shell ls Mate/*.o) $(wildcard ffi/*.o)
 PACKAGES_ := bytestring harpy hs-java
 PACKAGES := $(addprefix -package ,$(PACKAGES_))
@@ -37,6 +38,12 @@ test: mate $(CLASS_FILES)
 	@printf "should be:  0x%08x 0x%08x\n" 0x33 0x77
 	./$< tests/Static5 | grep mainresult
 	@printf "should be:  0x%08x 0x%08x\n" 0x33 0x33
+	./$< tests/Static6 | grep mainresult
+	@printf "should be:  0x%08x\n" 0x33
+	./$< tests/Static7 | grep mainresult
+	@printf "should be:  0x%08x\n" $$((0x1337 + 0x555))
+	./$< tests/Static8 | grep mainresult
+	@printf "should be:  0x%08x 0x%08x\n" 0x33 $$((0x1337 + 0x555))
 	./$< tests/CallConv1 | grep mainresult
 	@printf "should be:  0x%08x\n" 0x1337
 	./$< tests/CallConv2 | grep mainresult
@@ -48,11 +55,11 @@ test: mate $(CLASS_FILES)
 ffi/native.o: ffi/native.c
 	ghc -Wall -O2 -c $< -o $@
 
-mate: Mate.hs ffi/trap.c $(HS_FILES) ffi/native.o
+mate: Mate.hs ffi/trap.c $(HS_FILES) $(HS_BOOT) ffi/native.o
 	ghc --make $(GHC_OPT) Mate.hs ffi/trap.c -o $@ $(GHC_LD)
 
 clean:
-	rm -f {Mate/,}*.hi {Mate/,ffi/,}*.o mate tests/*.class
+	rm -f {Mate/,}*.hi {Mate/,ffi/,}*.o Mate/*.{hi,o}-boot mate tests/*.class
 
 ghci: mate
 	ghci $(PACKAGES) $(O_FILES) Mate.hs $(GHC_LD)

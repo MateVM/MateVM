@@ -6,3 +6,5 @@ tags
 *.swp
 *_stub.c
 *_stub.h
+*.hi-boot
+*.o-boot
