@@ -121,8 +121,7 @@ addMethodRef :: Word32 -> MethodInfo -> [B.ByteString] -> IO ()
 addMethodRef entry (MethodInfo mmname _ msig) clsnames = do
   mmap <- get_methodmap >>= ptr2mmap
   let newmap = M.fromList $ map (\x -> ((MethodInfo mmname x msig), entry)) clsnames
-  let mmap' = newmap `M.union` newmap
-  mmap2ptr mmap' >>= set_methodmap
+  mmap2ptr (mmap `M.union` newmap) >>= set_methodmap
 
 
 compileBB :: MapBB -> MethodInfo -> IO Word32
