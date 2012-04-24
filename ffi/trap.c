@@ -46,19 +46,18 @@ void callertrap(int nSignal, siginfo_t *info, void *ctx)
 {
 	struct ucontext *uctx = (struct ucontext *) ctx;
 	unsigned int from = (unsigned int) uctx->uc_mcontext.eip - 2;
+	unsigned int *to_patch = (unsigned int *) (from + 1);
+	printf("callertrap(mctx)  by 0x%08x\n", from);
+	if (*to_patch != 0x90ffff90) {
+		printf("callertrap: something is wrong here. abort\n");
+		exit(0);
+	}
 	unsigned int patchme = getMethodEntry(from, method_map, trap_map);
 
-	printf("callertrap(mctx)  by 0x%08x\n", from);
-
-	unsigned int *to_patch = (unsigned int *) (from + 1);
 	unsigned char *insn = (unsigned char *) from;
 	*insn = 0xe8; // call opcode
 	printf(" to_patch: 0x%08x\n", (unsigned int) to_patch);
 	printf("*to_patch: 0x%08x\n", *to_patch);
-	if (*to_patch != 0x90ffff90) {
-		printf("something is wrong here. abort\n");
-		exit(0);
-	}
 	*to_patch = patchme - (from + 5);
 	printf("*to_patch: 0x%08x\n", *to_patch);
 	uctx->uc_mcontext.eip = (unsigned long) insn;
@@ -69,16 +68,16 @@ void staticfieldtrap(int nSignal, siginfo_t *info, void *ctx)
 {
 	struct ucontext *uctx = (struct ucontext *) ctx;
 	unsigned int from = (unsigned int) uctx->uc_mcontext.eip;
-	unsigned int patchme = getFieldAddr(from, trap_map);
 	unsigned int *to_patch = (unsigned int *) (from + 2);
-
 	printf("staticfieldtrap by 0x%08x\n", from);
-	printf(" to_patch: 0x%08x\n", (unsigned int) to_patch);
-	printf("*to_patch: 0x%08x\n", *to_patch);
 	if (*to_patch != 0x00000000) {
-		printf("something is wrong here. abort\n");
+		printf("staticfieldtrap: something is wrong here. abort\n");
 		exit(0);
 	}
+	unsigned int patchme = getFieldAddr(from, trap_map);
+
+	printf(" to_patch: 0x%08x\n", (unsigned int) to_patch);
+	printf("*to_patch: 0x%08x\n", *to_patch);
 	*to_patch = patchme;
 	printf("*to_patch: 0x%08x\n", *to_patch);
 }
@@ -101,4 +100,9 @@ void register_signal(void)
 unsigned int getaddr(void)
 {
 	return (unsigned int) mainresult;
+}
+
+unsigned int getMallocAddr(void)
+{
+	return (unsigned int) malloc;
 }
