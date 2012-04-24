@@ -49,8 +49,9 @@ type FieldMap = M.Map B.ByteString Int32
 data ClassInfo = ClassInfo {
   clName :: B.ByteString,
   clFile :: Class Resolved,
-  clFieldBase :: Ptr Int32,
-  clFieldMap :: FieldMap }
+  clStaticMap  :: FieldMap,
+  clFieldMap :: FieldMap,
+  clInitDone :: Bool }
 
 data MethodInfo = MethodInfo {
   methName :: B.ByteString,
