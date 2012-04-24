@@ -35,7 +35,9 @@ main = do
           let method = find (\x -> (methodName x) == "main") methods
           case method of
             Just m -> do
-              entry <- compileBB hmap' (MethodInfo "main" bclspath (methodSignature m))
+              let mi = (MethodInfo "main" bclspath (methodSignature m))
+              entry <- compileBB hmap' mi
+              addMethodRef entry mi [bclspath]
               printf "executing `main' now:\n"
               executeFuncPtr entry
             Nothing -> error "main not found"

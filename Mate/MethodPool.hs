@@ -6,6 +6,7 @@ import Data.Binary
 import Data.String.Utils
 import qualified Data.Map as M
 import qualified Data.Set as S
+import qualified Data.ByteString.Lazy as B
 import System.Plugins
 
 import Text.Printf
@@ -44,18 +45,19 @@ getMethodEntry signal_from ptr_mmap ptr_tmap = do
         Nothing -> do
           cls <- getClassFile cm
           printf "getMethodEntry(from 0x%08x): no method \"%s\" found. compile it\n" w32_from (show mi')
-          let mm = lookupMethod method cls
+          mm <- lookupMethodRecursive method [] cls
           case mm of
-            Just mm' -> do
+            Just (mm', clsnames, cls') -> do
                 let flags = methodAccessFlags mm'
                 case S.member ACC_NATIVE flags of
                   False -> do
-                    hmap <- parseMethod cls method
+                    hmap <- parseMethod cls' method
                     printMapBB hmap
                     case hmap of
                       Just hmap' -> do
-                        entry <- compileBB hmap' mi'
-                        return $ fromIntegral $ ((fromIntegral $ ptrToIntPtr entry) :: Word32)
+                        entry <- compileBB hmap' (MethodInfo method (thisClass cls') sig)
+                        addMethodRef entry mi' clsnames
+                        return $ fromIntegral entry
                       Nothing -> error $ (show method) ++ " not found. abort"
                   True -> do
                     let symbol = (replace "/" "_" $ toString cm) ++ "__" ++ (toString method) ++ "__" ++ (replace "(" "_" (replace ")" "_" $ toString $ encode sig))
@@ -68,6 +70,22 @@ getMethodEntry signal_from ptr_mmap ptr_tmap = do
             Nothing -> error $ (show method) ++ " not found. abort"
         Just w32 -> return (fromIntegral w32)
     _ -> error $ "getMethodEntry: no trapInfo. abort"
+
+lookupMethodRecursive :: B.ByteString -> [B.ByteString] -> Class Resolved
+                         -> IO (Maybe ((Method Resolved, [B.ByteString], Class Resolved)))
+lookupMethodRecursive name clsnames cls = do
+  case res of
+    Just x -> return $ Just (x, nextclsn, cls)
+    Nothing -> if thisname == "java/lang/Object"
+      then return $ Nothing
+      else do
+        supercl <- getClassFile (superClass cls)
+        lookupMethodRecursive name nextclsn supercl
+  where
+  res = lookupMethod name cls
+  thisname = thisClass cls
+  nextclsn :: [B.ByteString]
+  nextclsn = thisname:clsnames
 
 -- TODO(bernhard): UBERHAX.  ghc patch?
 foreign import ccall safe "lookupSymbol"
@@ -98,20 +116,24 @@ initMethodPool = do
   tmap2ptr M.empty >>= set_trapmap
   classmap2ptr M.empty >>= set_classmap
 
-compileBB :: MapBB -> MethodInfo -> IO (Ptr Word8)
-compileBB hmap methodinfo = do
+
+addMethodRef :: Word32 -> MethodInfo -> [B.ByteString] -> IO ()
+addMethodRef entry mi@(MethodInfo mname _ msig) clsnames = do
   mmap <- get_methodmap >>= ptr2mmap
+  let newmap = M.fromList $ map (\x -> ((MethodInfo mname x msig), entry)) clsnames
+  let mmap' = newmap `M.union` newmap
+  mmap2ptr mmap' >>= set_methodmap
+
+
+compileBB :: MapBB -> MethodInfo -> IO Word32
+compileBB hmap methodinfo = do
   tmap <- get_trapmap >>= ptr2tmap
 
-  -- TODO(bernhard): replace parsing with some kind of classpool
   cls <- getClassFile (cName methodinfo)
   let ebb = emitFromBB (methName methodinfo) cls hmap
   (_, Right ((entry, _, _, new_tmap), disasm)) <- runCodeGen ebb () ()
-  let w32_entry = ((fromIntegral $ ptrToIntPtr entry) :: Word32)
 
-  let mmap' = M.insert methodinfo w32_entry mmap
   let tmap' = M.union tmap new_tmap -- prefers elements in cmap
-  mmap2ptr mmap' >>= set_methodmap
   tmap2ptr tmap' >>= set_trapmap
 
   printf "disasm:\n"
@@ -122,8 +144,9 @@ compileBB hmap methodinfo = do
   -- (2) on getLine, press ctrl+c
   -- (3) `br *0x<addr>'; obtain the address from the disasm above
   -- (4) `cont' and press enter
-  return entry
+  return $ fromIntegral $ ptrToIntPtr entry
 
 
-executeFuncPtr :: Ptr Word8 -> IO ()
-executeFuncPtr entry = code_void $ ((castPtrToFunPtr entry) :: FunPtr (IO ()))
+executeFuncPtr :: Word32 -> IO ()
+executeFuncPtr entry =
+  code_void $ ((castPtrToFunPtr $ intPtrToPtr $ fromIntegral entry) :: FunPtr (IO ()))
