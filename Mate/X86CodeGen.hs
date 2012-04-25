@@ -193,7 +193,7 @@ emitFromBB method cls hmap =  do
         newNamedLabel (show mi) >>= defineLabel
         -- objref lives somewhere on the argument stack
         mov eax (Disp ((*4) $ fromIntegral $ length args), esp)
-        -- get methodtable ref
+        -- get method-table-ptr
         mov eax (Disp 0, eax)
         -- get method offset
         let nameAndSig = methodname `B.append` (encode msig)
@@ -206,7 +206,10 @@ emitFromBB method cls hmap =  do
         when (argcnt > 0) (add esp argcnt)
         -- push result on stack if method has a return value
         when (methodHaveReturnValue cls cpidx) (push eax)
-        return $ Just $ (calladdr, MI mi)
+        -- note, the "mi" has the wrong class reference here.
+        -- we figure that out at run-time, in the methodpool,
+        -- depending on the method-table-ptr
+        return $ Just $ (calladdr, VI mi)
     emit' (PUTSTATIC cpidx) = do
         pop eax
         trapaddr <- getCurrentOffset
@@ -242,6 +245,7 @@ emitFromBB method cls hmap =  do
         -- set method table pointer
         let mtable = unsafePerformIO $ getMethodTable objname
         mov (Disp 0, eax) mtable
+    emit (CHECKCAST _) = nop -- TODO(bernhard): ...
     emit (BIPUSH val) = push ((fromIntegral val) :: Word32)
     emit (SIPUSH val) = push ((fromIntegral $ ((fromIntegral val) :: Int16)) :: Word32)
     emit (ICONST_0) = push (0 :: Word32)

@@ -101,6 +101,10 @@ loadClass path = do
   printf "methodmap: %s @ %s\n" (show methodmap) (toString path)
   printf "mbase: 0x%08x\n" mbase
 
+  virtual_map <- get_virtualmap >>= ptr2virtualmap
+  let virtual_map' = M.insert mbase path virtual_map
+  virtualmap2ptr virtual_map' >>= set_virtualmap
+
   class_map <- get_classmap >>= ptr2classmap
   let new_ci = ClassInfo path cfile staticmap fieldmap methodmap mbase False
   let class_map' = M.insert path new_ci class_map

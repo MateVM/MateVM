@@ -19,7 +19,7 @@
 
 #include <sys/ucontext.h>
 
-unsigned int getMethodEntry(unsigned int, void *, void *);
+unsigned int getMethodEntry(unsigned int, unsigned int);
 unsigned int getStaticFieldAddr(unsigned int, void*);
 
 #define NEW_MAP(prefix) \
@@ -38,6 +38,7 @@ unsigned int getStaticFieldAddr(unsigned int, void*);
 NEW_MAP(method)
 NEW_MAP(trap)
 NEW_MAP(class)
+NEW_MAP(virtual)
 
 
 void mainresult(unsigned int a)
@@ -55,7 +56,7 @@ void callertrap(int nSignal, siginfo_t *info, void *ctx)
 		printf("callertrap: something is wrong here. abort\n");
 		exit(0);
 	}
-	unsigned int patchme = getMethodEntry(from, method_map, trap_map);
+	unsigned int patchme = getMethodEntry(from, 0);
 
 	unsigned char *insn = (unsigned char *) from;
 	*insn = 0xe8; // call opcode
@@ -71,18 +72,21 @@ void staticfieldtrap(int nSignal, siginfo_t *info, void *ctx)
 	/* TODO(bernhard): more generic and cleaner please... */
 	mcontext_t *mctx = &((ucontext_t *) ctx)->uc_mcontext;
 	unsigned int from = (unsigned int) mctx->gregs[REG_EIP];
-	if (from == 0) { // invokevirtual
-		unsigned int eax = (unsigned int) mctx->gregs[REG_EAX];
+	if (from < 0x10000) { // invokevirtual
+		if (from > 0) {
+			printf("from: 0x%08x but should be 0 :-(\n", from);
+		}
+		unsigned int method_table_ptr = (unsigned int) mctx->gregs[REG_EAX];
 		unsigned int *esp = (unsigned int *) mctx->gregs[REG_ESP];
 		/* get actual eip from stack storage */
 		unsigned int from = (*esp) - 3;
 		unsigned char offset = *((unsigned char *) (*esp) - 1);
 		/* method entry to patch */
-		unsigned int *to_patch = (unsigned int*) (eax + offset);
+		unsigned int *to_patch = (unsigned int*) (method_table_ptr + offset);
 		printf("invokevirtual by 0x%08x with offset 0x%08x\n", from, offset);
 		printf(" to_patch: 0x%08x\n", (unsigned int) to_patch);
 		printf("*to_patch: 0x%08x\n", *to_patch);
-		*to_patch = getMethodEntry(from, method_map, trap_map);
+		*to_patch = getMethodEntry(from, method_table_ptr);
 		mctx->gregs[REG_EIP] = *to_patch;
 		printf("*to_patch: 0x%08x\n", *to_patch);
 	} else {

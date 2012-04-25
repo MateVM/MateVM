@@ -32,7 +32,10 @@ type MapBB = M.Map BlockID BasicBlock
 -- MethodInfo = relevant information about callee
 type TMap = M.Map Word32 TrapInfo
 
-data TrapInfo = MI MethodInfo | SFI StaticFieldInfo
+data TrapInfo =
+  MI MethodInfo |
+  VI MethodInfo | -- for virtual calls
+  SFI StaticFieldInfo
 
 data StaticFieldInfo = StaticFieldInfo {
   sfiClassName :: B.ByteString,
@@ -45,6 +48,11 @@ type MMap = M.Map MethodInfo Word32
 type ClassMap = M.Map B.ByteString ClassInfo
 
 type FieldMap = M.Map B.ByteString Int32
+
+-- map "methodtable addr" to "classname"
+-- we need that to identify the actual type
+-- on the invokevirtual insn
+type VirtualMap = M.Map Word32 B.ByteString
 
 data ClassInfo = ClassInfo {
   clName :: B.ByteString,
@@ -109,6 +117,12 @@ foreign import ccall "get_classmap"
 foreign import ccall "set_classmap"
   set_classmap :: Ptr () -> IO ()
 
+foreign import ccall "get_virtualmap"
+  get_virtualmap :: IO (Ptr ())
+
+foreign import ccall "set_virtualmap"
+  set_virtualmap :: Ptr () -> IO ()
+
 -- TODO(bernhard): make some typeclass magic 'n stuff
 mmap2ptr :: MMap -> IO (Ptr ())
 mmap2ptr mmap = do
@@ -133,3 +147,11 @@ classmap2ptr cmap = do
 
 ptr2classmap :: Ptr () -> IO ClassMap
 ptr2classmap vmap = deRefStablePtr $ ((castPtrToStablePtr vmap) :: StablePtr cmap)
+
+virtualmap2ptr :: VirtualMap -> IO (Ptr ())
+virtualmap2ptr cmap = do
+  ptr_cmap <- newStablePtr cmap
+  return $ castStablePtrToPtr ptr_cmap
+
+ptr2virtualmap :: Ptr () -> IO VirtualMap
+ptr2virtualmap vmap = deRefStablePtr $ ((castPtrToStablePtr vmap) :: StablePtr cmap)

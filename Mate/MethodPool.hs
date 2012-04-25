@@ -31,45 +31,49 @@ foreign import ccall "dynamic"
    code_void :: FunPtr (IO ()) -> (IO ())
 
 
-foreign export ccall getMethodEntry :: CUInt -> Ptr () -> Ptr () -> IO CUInt
-getMethodEntry :: CUInt -> Ptr () -> Ptr () -> IO CUInt
-getMethodEntry signal_from ptr_mmap ptr_tmap = do
-  mmap <- ptr2mmap ptr_mmap
-  tmap <- ptr2tmap ptr_tmap
+foreign export ccall getMethodEntry :: CUInt -> CUInt -> IO CUInt
+getMethodEntry :: CUInt -> CUInt -> IO CUInt
+getMethodEntry signal_from methodtable = do
+  mmap <- get_methodmap >>= ptr2mmap
+  tmap <- get_trapmap >>= ptr2tmap
+  vmap <- get_virtualmap >>= ptr2virtualmap
 
   let w32_from = fromIntegral signal_from
   let mi = tmap M.! w32_from
-  case mi of
-    (MI mi'@(MethodInfo method cm sig)) -> do
-      case M.lookup mi' mmap of
-        Nothing -> do
-          cls <- getClassFile cm
-          printf "getMethodEntry(from 0x%08x): no method \"%s\" found. compile it\n" w32_from (show mi')
-          mm <- lookupMethodRecursive method [] cls
-          case mm of
-            Just (mm', clsnames, cls') -> do
-                let flags = methodAccessFlags mm'
-                case S.member ACC_NATIVE flags of
-                  False -> do
-                    hmap <- parseMethod cls' method
-                    printMapBB hmap
-                    case hmap of
-                      Just hmap' -> do
-                        entry <- compileBB hmap' (MethodInfo method (thisClass cls') sig)
-                        addMethodRef entry mi' clsnames
-                        return $ fromIntegral entry
-                      Nothing -> error $ (show method) ++ " not found. abort"
-                  True -> do
-                    let symbol = (replace "/" "_" $ toString cm) ++ "__" ++ (toString method) ++ "__" ++ (replace "(" "_" (replace ")" "_" $ toString $ encode sig))
-                    printf "native-call: symbol: %s\n" symbol
-                    nf <- loadNativeFunction symbol
-                    let w32_nf = fromIntegral nf
-                    let mmap' = M.insert mi' w32_nf mmap
-                    mmap2ptr mmap' >>= set_methodmap
-                    return nf
-            Nothing -> error $ (show method) ++ " not found. abort"
-        Just w32 -> return (fromIntegral w32)
-    _ -> error $ "getMethodEntry: no trapInfo. abort"
+  let mi'@(MethodInfo method cm sig) =
+        case mi of
+          (MI x) -> x
+          (VI (MethodInfo methname _ msig)) ->
+              (MethodInfo methname (vmap M.! (fromIntegral methodtable)) msig)
+          _ -> error $ "getMethodEntry: no trapInfo. abort."
+  case M.lookup mi' mmap of
+    Nothing -> do
+      cls <- getClassFile cm
+      printf "getMethodEntry(from 0x%08x): no method \"%s\" found. compile it\n" w32_from (show mi')
+      mm <- lookupMethodRecursive method [] cls
+      case mm of
+        Just (mm', clsnames, cls') -> do
+            let flags = methodAccessFlags mm'
+            case S.member ACC_NATIVE flags of
+              False -> do
+                hmap <- parseMethod cls' method
+                printMapBB hmap
+                case hmap of
+                  Just hmap' -> do
+                    entry <- compileBB hmap' (MethodInfo method (thisClass cls') sig)
+                    addMethodRef entry mi' clsnames
+                    return $ fromIntegral entry
+                  Nothing -> error $ (show method) ++ " not found. abort"
+              True -> do
+                let symbol = (replace "/" "_" $ toString cm) ++ "__" ++ (toString method) ++ "__" ++ (replace "(" "_" (replace ")" "_" $ toString $ encode sig))
+                printf "native-call: symbol: %s\n" symbol
+                nf <- loadNativeFunction symbol
+                let w32_nf = fromIntegral nf
+                let mmap' = M.insert mi' w32_nf mmap
+                mmap2ptr mmap' >>= set_methodmap
+                return nf
+        Nothing -> error $ (show method) ++ " not found. abort"
+    Just w32 -> return (fromIntegral w32)
 
 lookupMethodRecursive :: B.ByteString -> [B.ByteString] -> Class Resolved
                          -> IO (Maybe ((Method Resolved, [B.ByteString], Class Resolved)))
@@ -115,6 +119,7 @@ initMethodPool = do
   mmap2ptr M.empty >>= set_methodmap
   tmap2ptr M.empty >>= set_trapmap
   classmap2ptr M.empty >>= set_classmap
+  virtualmap2ptr M.empty >>= set_virtualmap
 
 
 addMethodRef :: Word32 -> MethodInfo -> [B.ByteString] -> IO ()

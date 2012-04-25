@@ -56,6 +56,8 @@ test: mate $(CLASS_FILES)
 	@printf "should be:  0x%08x 0x%08x\n" 0x198 0x22
 	./$< tests/Instance3 | grep mainresult
 	@printf "should be:  0x%08x 0x%08x\n" 0x33 0x44
+	./$< tests/Instance4 | grep mainresult
+	@printf "should be:  0x%08x 0x%08x\n" 0x1337 0x1337
 
 %.class: %.java
 	$(JAVAC) $<
