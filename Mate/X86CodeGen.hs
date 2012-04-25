@@ -188,12 +188,12 @@ emitFromBB method cls hmap =  do
         pop eax
         trapaddr <- getCurrentOffset
         mov (Addr 0x00000000) eax -- it's a trap
-        return $ Just $ (trapaddr, SFI $ buildFieldID cls cpidx)
+        return $ Just $ (trapaddr, SFI $ buildStaticFieldID cls cpidx)
     emit' (GETSTATIC cpidx) = do
         trapaddr <- getCurrentOffset
         mov eax (Addr 0x00000000) -- it's a trap
         push eax
-        return $ Just $ (trapaddr, SFI $ buildFieldID cls cpidx)
+        return $ Just $ (trapaddr, SFI $ buildStaticFieldID cls cpidx)
     emit' insn = emit insn >> return Nothing
 
     emit :: J.Instruction -> CodeGen e s ()
@@ -240,11 +240,15 @@ emitFromBB method cls hmap =  do
 
     emit (GETFIELD x) = do
         pop eax -- this pointer
-        push (Disp (fromIntegral x * 4), eax) -- get field
+        let (cname, fname) = buildFieldOffset cls x
+        let offset = unsafePerformIO $ getFieldOffset cname fname
+        push (Disp (fromIntegral $ offset * 4), eax) -- get field
     emit (PUTFIELD x) = do
         pop ebx -- value to write
         pop eax -- this pointer
-        mov (Disp (fromIntegral x * 4), eax) ebx -- set field
+        let (cname, fname) = buildFieldOffset cls x
+        let offset = unsafePerformIO $ getFieldOffset cname fname
+        mov (Disp (fromIntegral $ offset * 4), eax) ebx -- set field
 
     emit IADD = do pop ebx; pop eax; add eax ebx; push eax
     emit ISUB = do pop ebx; pop eax; sub eax ebx; push eax

@@ -17,7 +17,7 @@
 #include <asm/ucontext.h>
 
 unsigned int getMethodEntry(unsigned int, void *, void *);
-unsigned int getFieldAddr(unsigned int, void*);
+unsigned int getStaticFieldAddr(unsigned int, void*);
 
 #define NEW_MAP(prefix) \
 	void* prefix ## _map = NULL; \
@@ -74,7 +74,7 @@ void staticfieldtrap(int nSignal, siginfo_t *info, void *ctx)
 		printf("staticfieldtrap: something is wrong here. abort\n");
 		exit(0);
 	}
-	unsigned int patchme = getFieldAddr(from, trap_map);
+	unsigned int patchme = getStaticFieldAddr(from, trap_map);
 
 	printf(" to_patch: 0x%08x\n", (unsigned int) to_patch);
 	printf("*to_patch: 0x%08x\n", *to_patch);

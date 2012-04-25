@@ -15,6 +15,7 @@ public class Instance1 {
 	}
 
 	public static int id(int a) {
+		// System.out.printf("0x%08x\n", a);
 		return a;
 	}
 }

@@ -3,9 +3,11 @@
 module Mate.ClassPool (
   getClassInfo,
   getClassFile,
-  getFieldAddr
+  getFieldOffset,
+  getStaticFieldAddr
   ) where
 
+import Data.Int
 import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.ByteString.Lazy as B
@@ -42,14 +44,14 @@ getStaticFieldOffset path field = do
   ci <- getClassInfo path
   return $ fromIntegral $ (clStaticMap ci) M.! field
 
-getFieldOffset :: B.ByteString -> B.ByteString -> IO (CUInt)
+getFieldOffset :: B.ByteString -> B.ByteString -> IO (Int32)
 getFieldOffset path field = do
   ci <- getClassInfo path
-  return $ fromIntegral $ (clFieldMap ci) M.! field
+  return $ (clFieldMap ci) M.! field
 
-foreign export ccall getFieldAddr :: CUInt -> Ptr () -> IO CUInt
-getFieldAddr :: CUInt -> Ptr () -> IO CUInt
-getFieldAddr from ptr_trapmap = do
+foreign export ccall getStaticFieldAddr :: CUInt -> Ptr () -> IO CUInt
+getStaticFieldAddr :: CUInt -> Ptr () -> IO CUInt
+getStaticFieldAddr from ptr_trapmap = do
   trapmap <- ptr2tmap ptr_trapmap
   let w32_from = fromIntegral from
   let sfi = trapmap M.! w32_from
@@ -93,8 +95,10 @@ calculateFields cf superclass = do
     -- new fields "overwrite" old ones, if they have the same name
     let staticmap = (M.fromList sm) `M.union` sc_sm
 
-    let im = zipbase 0 ifields
     let sc_im = getsupermap clFieldMap
+    -- TODO(bernhard): not efficient :-(
+    let max_off = if (M.size sc_im) > 0 then maximum $ M.elems sc_im else 0
+    let im = zipbase (max_off + 4) ifields
     -- new fields "overwrite" old ones, if they have the same name
     let fieldmap = (M.fromList im) `M.union` sc_im
 
