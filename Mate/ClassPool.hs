@@ -68,20 +68,41 @@ loadClass path = do
         sc <- loadClass $ superClass cfile
         return $ Just $ sc
       False -> return $ Nothing
-  class_map <- get_classmap >>= ptr2classmap
-  -- TODO(bernhard): correct sizes. int only atm
-  let staticfields = filter (S.member ACC_STATIC . fieldAccessFlags) (classFields cfile)
-  staticbase <- mallocBytes ((fromIntegral $ length staticfields) * 4)
-  let i_sb = fromIntegral $ ptrToIntPtr $ staticbase
-  let sm = zipWith (\x y -> (fieldName y, x + i_sb)) [0,4..] staticfields
-  let sc_sm = case superclass of Just x -> clStaticMap x; Nothing -> M.empty
-  -- new fields "overwrite" old ones, if they have the same name
-  let staticmap = (M.fromList sm) `M.union` sc_sm
+
+  (staticmap, fieldmap) <- calculateFields cfile superclass
   printf "staticmap: %s @ %s\n" (show staticmap) (toString path)
-  let new_ci = ClassInfo path cfile staticmap M.empty False
+  printf "fieldmap:  %s @ %s\n" (show fieldmap) (toString path)
+
+  class_map <- get_classmap >>= ptr2classmap
+  let new_ci = ClassInfo path cfile staticmap fieldmap False
   let class_map' = M.insert path new_ci class_map
   classmap2ptr class_map' >>= set_classmap
   return new_ci
+
+
+calculateFields :: Class Resolved -> Maybe ClassInfo -> IO (FieldMap, FieldMap)
+calculateFields cf superclass = do
+    -- TODO(bernhard): correct sizes. int only atm
+
+    let (sfields, ifields) = span (S.member ACC_STATIC . fieldAccessFlags) (classFields cf)
+
+    staticbase <- mallocBytes ((fromIntegral $ length sfields) * 4)
+    let i_sb = fromIntegral $ ptrToIntPtr $ staticbase
+    let sm = zipbase i_sb sfields
+    let sc_sm = getsupermap clStaticMap
+    -- new fields "overwrite" old ones, if they have the same name
+    let staticmap = (M.fromList sm) `M.union` sc_sm
+
+    let im = zipbase 0 ifields
+    let sc_im = getsupermap clFieldMap
+    -- new fields "overwrite" old ones, if they have the same name
+    let fieldmap = (M.fromList im) `M.union` sc_im
+
+    return (staticmap, fieldmap)
+  where
+  zipbase base = zipWith (\x y -> (fieldName y, x + base)) [0,4..]
+  getsupermap getter = case superclass of Just x -> getter x; Nothing -> M.empty
+
 
 loadAndInitClass :: B.ByteString -> IO ClassInfo
 loadAndInitClass path = do
