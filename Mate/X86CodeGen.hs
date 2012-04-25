@@ -312,6 +312,7 @@ emitFromBB method cls hmap =  do
         jmp $ getLabel sid lmap
 
     emit RETURN = do mov esp ebp; pop ebp; ret
+    emit ARETURN = emit IRETURN
     emit IRETURN = do
         pop eax
         mov esp ebp

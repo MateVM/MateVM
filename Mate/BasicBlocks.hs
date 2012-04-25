@@ -171,6 +171,7 @@ calculateInstructionOffset = cio' (0, Nothing)
       IF_ICMP _ w16 -> twotargets w16
       GOTO w16 -> onetarget w16
       IRETURN -> notarget
+      ARETURN -> notarget
       RETURN -> notarget
       _ -> ((off, Nothing), x):next
     where

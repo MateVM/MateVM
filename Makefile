@@ -1,7 +1,7 @@
 SHELL := bash
 
 JAVAC := javac
-JAVA_FILES := $(wildcard tests/*.java)
+JAVA_FILES := $(wildcard tests/*.java java/lang/*.java java/io/*.java)
 CLASS_FILES := $(JAVA_FILES:.java=.class)
 HS_FILES := $(wildcard Mate/*.hs)
 HS_BOOT := $(wildcard Mate/*.hs-boot)
@@ -58,6 +58,8 @@ test: mate $(CLASS_FILES)
 	@printf "should be:  0x%08x 0x%08x\n" 0x33 0x44
 	./$< tests/Instance4 | grep mainresult
 	@printf "should be:  0x%08x 0x%08x\n" 0x1337 0x1337
+	./$< tests/Native2 | grep "printstream"
+	@printf "should be:   0x%08x\n" 0x1337
 
 %.class: %.java
 	$(JAVAC) $<

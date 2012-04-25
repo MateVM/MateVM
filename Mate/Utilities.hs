@@ -47,6 +47,7 @@ methodHaveReturnValue :: Class Resolved -> Word16 -> Bool
 methodHaveReturnValue cls idx = case ret of
     ReturnsVoid -> False;
     (Returns IntType) -> True;
+    (Returns (ObjectType _)) -> True;
     _ -> error "methodHaveReturnValue: todo"
   where
   (CMethod _ nt) = (constsPool cls) M.! idx
