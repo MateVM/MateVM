@@ -110,13 +110,13 @@ void register_signal(void)
 	struct sigaction illaction;
 	illaction.sa_sigaction = callertrap;
 	sigemptyset(&illaction.sa_mask);
-	illaction.sa_flags = SA_SIGINFO | SA_RESTART;
+	illaction.sa_flags = SA_SIGINFO | SA_RESTART | SA_NODEFER;
 	sigaction(SIGILL, &illaction, NULL);
 
 	struct sigaction segvaction;
 	segvaction.sa_sigaction = staticfieldtrap;
 	sigemptyset(&segvaction.sa_mask);
-	segvaction.sa_flags = SA_SIGINFO | SA_RESTART;
+	segvaction.sa_flags = SA_SIGINFO | SA_RESTART | SA_NODEFER;
 	sigaction(SIGSEGV, &segvaction, NULL);
 }
 
