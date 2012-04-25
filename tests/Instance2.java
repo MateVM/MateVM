@@ -19,5 +19,14 @@ public class Instance2 extends Instance1 {
 		b.x = 0x22; sum += b.x; // 0x22
 		b.y = 0x33; sum += b.y; // 0x33
 		Instance1.id(sum); // 0x198
+		b.getX(); // 0x22
+	}
+
+	public int getX() {
+		return this.x;
+	}
+
+	public void setX(int a) {
+		this.x = a;
 	}
 }

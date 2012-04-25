@@ -169,9 +169,8 @@ emitFromBB method cls hmap =  do
       offset <- getCodeOffset
       return $ w32_ep + (fromIntegral offset)
 
-    emit' :: J.Instruction -> CodeGen e s (Maybe (Word32, TrapInfo))
-    emit' (INVOKESPECIAL cpidx) = emit' (INVOKESTATIC cpidx)
-    emit' (INVOKESTATIC cpidx) = do
+    emitInvoke :: Word16 -> Bool -> CodeGen e s (Maybe (Word32, TrapInfo))
+    emitInvoke cpidx hasThis = do
         let l = buildMethodID cls cpidx
         calladdr <- getCurrentOffset
         newNamedLabel (show l) >>= defineLabel
@@ -179,11 +178,35 @@ emitFromBB method cls hmap =  do
         -- place a nop at the end, therefore the disasm doesn't screw up
         emit32 (0xffff9090 :: Word32) >> emit8 (0x90 :: Word8)
         -- discard arguments on stack
-        let argcnt = (methodGetArgsCount cls cpidx) * 4
+        let argcnt = ((if hasThis then 1 else 0) + (methodGetArgsCount cls cpidx)) * 4
         when (argcnt > 0) (add esp argcnt)
         -- push result on stack if method has a return value
         when (methodHaveReturnValue cls cpidx) (push eax)
         return $ Just $ (calladdr, MI l)
+
+    emit' :: J.Instruction -> CodeGen e s (Maybe (Word32, TrapInfo))
+    emit' (INVOKESPECIAL cpidx) = emitInvoke cpidx True
+    emit' (INVOKESTATIC cpidx) = emitInvoke cpidx False
+    emit' (INVOKEVIRTUAL cpidx) = do
+        -- get methodInfo entry
+        let mi@(MethodInfo methodname objname msig@(MethodSignature args _))  = buildMethodID cls cpidx
+        newNamedLabel (show mi) >>= defineLabel
+        -- objref lives somewhere on the argument stack
+        mov eax (Disp ((*4) $ fromIntegral $ length args), esp)
+        -- get methodtable ref
+        mov eax (Disp 0, eax)
+        -- get method offset
+        let nameAndSig = methodname `B.append` (encode msig)
+        let offset = unsafePerformIO $ getMethodOffset objname nameAndSig
+        -- make actual (indirect) call
+        calladdr <- getCurrentOffset
+        call (Disp offset, eax)
+        -- discard arguments on stack (+4 for "this")
+        let argcnt = 4 + ((methodGetArgsCount cls cpidx) * 4)
+        when (argcnt > 0) (add esp argcnt)
+        -- push result on stack if method has a return value
+        when (methodHaveReturnValue cls cpidx) (push eax)
+        return $ Just $ (calladdr, MI mi)
     emit' (PUTSTATIC cpidx) = do
         pop eax
         trapaddr <- getCurrentOffset
@@ -204,10 +227,10 @@ emitFromBB method cls hmap =  do
         let trapaddr = (fromIntegral getaddr :: Word32)
         call (trapaddr - w32_calladdr)
         add esp (4 :: Word32)
-    emit DUP = pop (Disp 0, esp)
+    emit DUP = push (Disp 0, esp)
     emit (NEW objidx) = do
-        -- TODO(bernhard): determine right amount...
-        let amount = 0x20
+        let objname = buildClassID cls objidx
+        let amount = unsafePerformIO $ getMethodSize objname
         push (amount :: Word32)
         calladdr <- getCurrentOffset
         let w32_calladdr = 5 + calladdr
@@ -216,6 +239,9 @@ emitFromBB method cls hmap =  do
         add esp (4 :: Word32)
         push eax
         -- TODO(bernhard): save reference somewhere for GC
+        -- set method table pointer
+        let mtable = unsafePerformIO $ getMethodTable objname
+        mov (Disp 0, eax) mtable
     emit (BIPUSH val) = push ((fromIntegral val) :: Word32)
     emit (SIPUSH val) = push ((fromIntegral $ ((fromIntegral val) :: Int16)) :: Word32)
     emit (ICONST_0) = push (0 :: Word32)

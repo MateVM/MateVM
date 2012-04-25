@@ -29,8 +29,12 @@ buildStaticFieldID cls idx = StaticFieldInfo rc (ntName fnt)
   where (CField rc fnt) = (constsPool cls) M.! idx
 
 buildFieldOffset :: Class Resolved -> Word16 -> (B.ByteString, B.ByteString)
-buildFieldOffset cls idx = (thisClass cls, ntName fnt)
+buildFieldOffset cls idx = (rc, ntName fnt)
   where (CField rc fnt) = (constsPool cls) M.! idx
+
+buildClassID :: Class Resolved -> Word16 -> B.ByteString
+buildClassID cls idx = cl
+  where (CClass cl) = (constsPool cls) M.! idx
 
 methodGetArgsCount :: Class Resolved -> Word16 -> Word32
 methodGetArgsCount cls idx = fromIntegral $ length args

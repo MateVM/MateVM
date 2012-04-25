@@ -51,6 +51,8 @@ data ClassInfo = ClassInfo {
   clFile :: Class Resolved,
   clStaticMap  :: FieldMap,
   clFieldMap :: FieldMap,
+  clMethodMap :: FieldMap,
+  clMethodBase :: Word32,
   clInitDone :: Bool }
 
 data MethodInfo = MethodInfo {

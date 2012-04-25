@@ -1,6 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+/* TODO(bernhard): use {u,}int* types */
+
+#define __USE_GNU
 // Note by hs: my signal.h includes sys/uconctext which conflicts with
 // asm/ucontext - this hack kinda solves the problem for me ;-) 
 // so feel free to blame me for that s**t
@@ -14,7 +17,7 @@
 #define __USE_XOPEN2K8
 #endif
 
-#include <asm/ucontext.h>
+#include <sys/ucontext.h>
 
 unsigned int getMethodEntry(unsigned int, void *, void *);
 unsigned int getStaticFieldAddr(unsigned int, void*);
@@ -44,8 +47,8 @@ void mainresult(unsigned int a)
 
 void callertrap(int nSignal, siginfo_t *info, void *ctx)
 {
-	struct ucontext *uctx = (struct ucontext *) ctx;
-	unsigned int from = (unsigned int) uctx->uc_mcontext.eip - 2;
+	mcontext_t *mctx = &((ucontext_t *) ctx)->uc_mcontext;
+	unsigned int from = (unsigned int) mctx->gregs[REG_EIP] - 2;
 	unsigned int *to_patch = (unsigned int *) (from + 1);
 	printf("callertrap(mctx)  by 0x%08x\n", from);
 	if (*to_patch != 0x90ffff90) {
@@ -60,14 +63,29 @@ void callertrap(int nSignal, siginfo_t *info, void *ctx)
 	printf("*to_patch: 0x%08x\n", *to_patch);
 	*to_patch = patchme - (from + 5);
 	printf("*to_patch: 0x%08x\n", *to_patch);
-	uctx->uc_mcontext.eip = (unsigned long) insn;
-	// while (1) ;
+	mctx->gregs[REG_EIP] = (unsigned long) insn;
 }
 
 void staticfieldtrap(int nSignal, siginfo_t *info, void *ctx)
 {
-	struct ucontext *uctx = (struct ucontext *) ctx;
-	unsigned int from = (unsigned int) uctx->uc_mcontext.eip;
+	/* TODO(bernhard): more generic and cleaner please... */
+	mcontext_t *mctx = &((ucontext_t *) ctx)->uc_mcontext;
+	unsigned int from = (unsigned int) mctx->gregs[REG_EIP];
+	if (from == 0) { // invokevirtual
+		unsigned int eax = (unsigned int) mctx->gregs[REG_EAX];
+		unsigned int *esp = (unsigned int *) mctx->gregs[REG_ESP];
+		/* get actual eip from stack storage */
+		unsigned int from = (*esp) - 3;
+		unsigned char offset = *((unsigned char *) (*esp) - 1);
+		/* method entry to patch */
+		unsigned int *to_patch = (unsigned int*) (eax + offset);
+		printf("invokevirtual by 0x%08x with offset 0x%08x\n", from, offset);
+		printf(" to_patch: 0x%08x\n", (unsigned int) to_patch);
+		printf("*to_patch: 0x%08x\n", *to_patch);
+		*to_patch = getMethodEntry(from, method_map, trap_map);
+		mctx->gregs[REG_EIP] = *to_patch;
+		printf("*to_patch: 0x%08x\n", *to_patch);
+	} else {
 	unsigned int *to_patch = (unsigned int *) (from + 2);
 	printf("staticfieldtrap by 0x%08x\n", from);
 	if (*to_patch != 0x00000000) {
@@ -80,6 +98,7 @@ void staticfieldtrap(int nSignal, siginfo_t *info, void *ctx)
 	printf("*to_patch: 0x%08x\n", *to_patch);
 	*to_patch = patchme;
 	printf("*to_patch: 0x%08x\n", *to_patch);
+	}
 }
 
 void register_signal(void)

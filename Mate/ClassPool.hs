@@ -3,11 +3,16 @@
 module Mate.ClassPool (
   getClassInfo,
   getClassFile,
+  getMethodTable,
+  getMethodSize,
+  getMethodOffset,
   getFieldOffset,
   getStaticFieldAddr
   ) where
 
 import Data.Int
+import Data.Word
+import Data.Binary
 import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.ByteString.Lazy as B
@@ -49,6 +54,24 @@ getFieldOffset path field = do
   ci <- getClassInfo path
   return $ (clFieldMap ci) M.! field
 
+-- method + signature plz!
+getMethodOffset :: B.ByteString -> B.ByteString -> IO (Word32)
+getMethodOffset path method = do
+  ci <- getClassInfo path
+  return $ fromIntegral $ (clMethodMap ci) M.! method
+
+getMethodTable :: B.ByteString -> IO (Word32)
+getMethodTable path = do
+  ci <- getClassInfo path
+  return $ clMethodBase ci
+
+getMethodSize :: B.ByteString -> IO (Word32)
+getMethodSize path = do
+  ci <- getClassInfo path
+  -- TODO(bernhard): correct sizes for different types...
+  let msize = fromIntegral $ M.size $ clMethodMap ci
+  return $ (1 + msize) * 4
+
 foreign export ccall getStaticFieldAddr :: CUInt -> Ptr () -> IO CUInt
 getStaticFieldAddr :: CUInt -> Ptr () -> IO CUInt
 getStaticFieldAddr from ptr_trapmap = do
@@ -74,9 +97,12 @@ loadClass path = do
   (staticmap, fieldmap) <- calculateFields cfile superclass
   printf "staticmap: %s @ %s\n" (show staticmap) (toString path)
   printf "fieldmap:  %s @ %s\n" (show fieldmap) (toString path)
+  (methodmap, mbase) <- calculateMethodMap cfile superclass
+  printf "methodmap: %s @ %s\n" (show methodmap) (toString path)
+  printf "mbase: 0x%08x\n" mbase
 
   class_map <- get_classmap >>= ptr2classmap
-  let new_ci = ClassInfo path cfile staticmap fieldmap False
+  let new_ci = ClassInfo path cfile staticmap fieldmap methodmap mbase False
   let class_map' = M.insert path new_ci class_map
   classmap2ptr class_map' >>= set_classmap
   return new_ci
@@ -91,21 +117,41 @@ calculateFields cf superclass = do
     staticbase <- mallocBytes ((fromIntegral $ length sfields) * 4)
     let i_sb = fromIntegral $ ptrToIntPtr $ staticbase
     let sm = zipbase i_sb sfields
-    let sc_sm = getsupermap clStaticMap
+    let sc_sm = getsupermap superclass clStaticMap
     -- new fields "overwrite" old ones, if they have the same name
     let staticmap = (M.fromList sm) `M.union` sc_sm
 
-    let sc_im = getsupermap clFieldMap
-    -- TODO(bernhard): not efficient :-(
-    let max_off = if (M.size sc_im) > 0 then maximum $ M.elems sc_im else 0
-    let im = zipbase (max_off + 4) ifields
+    let sc_im = getsupermap superclass clFieldMap
+    -- "+ 4" for the method table pointer
+    let max_off = (fromIntegral $ (M.size sc_im) * 4) + 4
+    let im = zipbase max_off ifields
     -- new fields "overwrite" old ones, if they have the same name
     let fieldmap = (M.fromList im) `M.union` sc_im
 
     return (staticmap, fieldmap)
   where
   zipbase base = zipWith (\x y -> (fieldName y, x + base)) [0,4..]
-  getsupermap getter = case superclass of Just x -> getter x; Nothing -> M.empty
+
+-- helper
+getsupermap :: Maybe ClassInfo -> (ClassInfo -> FieldMap) -> FieldMap
+getsupermap superclass getter = case superclass of Just x -> getter x; Nothing -> M.empty
+
+
+calculateMethodMap :: Class Resolved -> Maybe ClassInfo -> IO (FieldMap, Word32)
+calculateMethodMap cf superclass = do
+    let methods = filter
+                  (\x -> (not . S.member ACC_STATIC . methodAccessFlags) x &&
+                         ((/=) "<init>" . methodName) x)
+                  (classMethods cf)
+    let sc_mm = getsupermap superclass clMethodMap
+    let max_off = fromIntegral $ (M.size sc_mm) * 4
+    let mm = zipbase max_off methods
+    let methodmap = (M.fromList mm) `M.union` sc_mm
+
+    methodbase <- mallocBytes ((fromIntegral $ M.size methodmap) * 4)
+    return (methodmap, fromIntegral $ ptrToIntPtr $ methodbase)
+  where zipbase base = zipWith (\x y -> (entry y, x + base)) [0,4..]
+          where entry y = (methodName y) `B.append` (encode $ methodSignature y)
 
 
 loadAndInitClass :: B.ByteString -> IO ClassInfo
