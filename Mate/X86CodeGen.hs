@@ -294,7 +294,7 @@ emitFromBB method cls hmap =  do
   cArgs x = if (x' >= thisMethodArgCnt)
       -- TODO(bernhard): maybe s/(-4)/(-8)/
       then fromIntegral $ (-4) * (x' - thisMethodArgCnt + 1)
-      else 8 + (4 * x')
+      else 4 + (thisMethodArgCnt * 4) - (4 * x')
     where x' = fromIntegral x
 
   cArgs_ :: IMM -> Word32
