@@ -307,13 +307,13 @@ emitFromBB method cls hmap =  do
         pop eax -- this pointer
         let (cname, fname) = buildFieldOffset cls x
         offset <- liftIO $ getFieldOffset cname fname
-        push (Disp (fromIntegral $ offset * 4), eax) -- get field
+        push (Disp (fromIntegral $ offset), eax) -- get field
     emit (PUTFIELD x) = do
         pop ebx -- value to write
         pop eax -- this pointer
         let (cname, fname) = buildFieldOffset cls x
         offset <- liftIO $ getFieldOffset cname fname
-        mov (Disp (fromIntegral $ offset * 4), eax) ebx -- set field
+        mov (Disp (fromIntegral $ offset), eax) ebx -- set field
 
     emit IADD = do pop ebx; pop eax; add eax ebx; push eax
     emit ISUB = do pop ebx; pop eax; sub eax ebx; push eax
