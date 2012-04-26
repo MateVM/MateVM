@@ -1,4 +1,17 @@
+MateVM is i686 only, at the moment.
+
 == DEPENDENCIES ==
+=== GHC ===
+install GHC via your distro manager. make sure you install
+it with shared libaries.
+on ubuntu 12.04 LTS it is:
+	$ sudo apt-get install ghc-dynamic
+
+for an "easy" installation of the remaining packages, you can use
+the script "./tools/installhaskellenv.sh".
+note, that it deletes your ~/.cabal and ~/.ghc directory first.
+
+
 === HARPY ===
 	$ cabal install harpy --enable-shared
 
@@ -20,6 +33,7 @@ for `hs-java' a patched build is needed:
 	$ cabal install --enable-shared
 hint: for some unknown reason yet, it seems building from source will be easier
 if you first install `hs-java' via cabal (like `harpy' above)
+
 
 === MISC ===
 	$ cabal install missingh --enable-shared
@@ -145,28 +159,30 @@ libraries (yes, no x86_64 so far!):
 		unix-2.5.1.0
 
 	/home/lewurm/.ghc/i386-linux-7.4.1/package.conf.d:
-		Glob-0.7
 		HUnit-1.2.4.2
 		MissingH-1.1.1.0
+		QuickCheck-2.4.2
 		binary-state-0.1.1
-		bindings-DSL-1.0.15
 		control-monad-exception-0.10.2
 		data-binary-ieee754-0.4.2.1
 		disassembler-0.1.0.1
-		dlist-0.5
 		failure-0.2.0.1
+		ghc-paths-0.1.0.8
 		harpy-0.4.3.0
+		haskell-src-1.0.1.5
+		heap-1.0.0
 		hs-java-0.2
 		hslogger-1.1.5
 		monadloc-0.6
 		mtl-1.1.1.1
-		mtl-2.1
-		network-2.3.0.11
+		mtl-2.1.1
+		network-2.3.0.13
 		parsec-2.1.0.1
+		plugins-1.5.2.1
 		random-1.0.1.1
 		regex-base-0.93.2
 		regex-compat-0.95.1
 		regex-posix-0.95.1
-		transformers-0.2.2.0
+		syb-0.3.6.1
 		transformers-0.3.0.0
 		utf8-string-0.3.7
