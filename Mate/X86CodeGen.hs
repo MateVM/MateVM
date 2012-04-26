@@ -199,7 +199,7 @@ emitFromBB method cls hmap =  do
         mov eax (Disp 0, eax)
         -- get method offset
         let nameAndSig = methodname `B.append` (encode msig)
-        let offset = unsafePerformIO $ getMethodOffset objname nameAndSig
+        offset <- liftIO $ getMethodOffset objname nameAndSig
         -- make actual (indirect) call
         calladdr <- getCurrentOffset
         call (Disp offset, eax)
@@ -235,7 +235,7 @@ emitFromBB method cls hmap =  do
     emit DUP = push (Disp 0, esp)
     emit (NEW objidx) = do
         let objname = buildClassID cls objidx
-        let amount = unsafePerformIO $ getMethodSize objname
+        amount <- liftIO $ getMethodSize objname
         push (amount :: Word32)
         calladdr <- getCurrentOffset
         let w32_calladdr = 5 + calladdr
@@ -245,7 +245,7 @@ emitFromBB method cls hmap =  do
         push eax
         -- TODO(bernhard): save reference somewhere for GC
         -- set method table pointer
-        let mtable = unsafePerformIO $ getMethodTable objname
+        mtable <- liftIO $ getMethodTable objname
         mov (Disp 0, eax) mtable
     emit (CHECKCAST _) = nop -- TODO(bernhard): ...
     emit (BIPUSH val) = push ((fromIntegral val) :: Word32)
@@ -272,20 +272,20 @@ emitFromBB method cls hmap =  do
 
     emit (LDC1 x) = emit (LDC2 $ fromIntegral x)
     emit (LDC2 x) = do
-        let value = case (constsPool cls) M.! x of
-                      (CString s) -> unsafePerformIO $ getUniqueStringAddr s
+        value <- case (constsPool cls) M.! x of
+                      (CString s) -> liftIO $ getUniqueStringAddr s
                       _ -> error $ "LDCI... missing impl."
         push value
     emit (GETFIELD x) = do
         pop eax -- this pointer
         let (cname, fname) = buildFieldOffset cls x
-        let offset = unsafePerformIO $ getFieldOffset cname fname
+        offset <- liftIO $ getFieldOffset cname fname
         push (Disp (fromIntegral $ offset * 4), eax) -- get field
     emit (PUTFIELD x) = do
         pop ebx -- value to write
         pop eax -- this pointer
         let (cname, fname) = buildFieldOffset cls x
-        let offset = unsafePerformIO $ getFieldOffset cname fname
+        offset <- liftIO $ getFieldOffset cname fname
         mov (Disp (fromIntegral $ offset * 4), eax) ebx -- set field
 
     emit IADD = do pop ebx; pop eax; add eax ebx; push eax
