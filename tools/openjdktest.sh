@@ -1,5 +1,11 @@
 #!/bin/bash
 
+if [ $# = 0 ]
+then
+	echo "no arguments..."
+	exit
+fi
+
 class2test=$1
 
 openjdk="java -client"

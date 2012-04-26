@@ -2,7 +2,7 @@
 
 rm -rf ~/.ghc ~/.cabal
 cabal update
-cabal install cabal-install
+cabal install cabal-install --enable-shared
 export PATH=~/.cabal/bin:$PATH
 cabal update
 cabal install hs-java --enable-shared
