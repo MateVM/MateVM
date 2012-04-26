@@ -226,12 +226,7 @@ emitFromBB method cls hmap =  do
     emit' insn = emit insn >> return Nothing
 
     emit :: J.Instruction -> CodeGen e s ()
-    emit POP = do -- print dropped value
-        calladdr <- getCurrentOffset
-        -- '5' is the size of the `call' instruction ( + immediate)
-        let w32_calladdr = 5 + calladdr
-        let trapaddr = (fromIntegral getaddr :: Word32)
-        call (trapaddr - w32_calladdr)
+    emit POP = do -- dropp value
         add esp (4 :: Word32)
     emit DUP = push (Disp 0, esp)
     emit AASTORE = emit IASTORE

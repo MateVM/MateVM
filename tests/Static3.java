@@ -12,8 +12,7 @@ public class Static3 extends Static1 {
 		sum += Static1.addNumbers(); // 0x33
 		Static3.z = 0x11;
 		sum += Static3.addNumbers(); // 0x44
-		getSum(); // 0x666 + 0x33 + 0x44 = 0x6dd
-		// System.out.printf("%x\n", getSum());
+		System.out.printf("result: 0x%08x\n", getSum()); // 0x666 + 0x33 + 0x44 = 0x6dd
 	}
 
 	public static int getSum() {

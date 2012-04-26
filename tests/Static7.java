@@ -10,7 +10,6 @@ public class Static7 extends Static6 {
 	}
 
 	public static void main(String []args) {
-		addNumbers(); // 0x188c
-		// System.out.printf("%x\n", addNumbers());
+		System.out.printf("result: 0x%08x\n", addNumbers()); // 0x188c
 	}
 }

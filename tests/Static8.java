@@ -10,8 +10,7 @@ public class Static8 extends Static8_local {
 	}
 
 	public static void main(String []args) {
-		Static8.addNumbers(); // 0x188c
-		// System.out.printf("%x\n", Static8.addNumbers());
+		System.out.printf("result: 0x%08x\n", Static8.addNumbers()); // 0x188c
 	}
 }
 
@@ -22,8 +21,7 @@ class Static8_local {
 	static {
 		Static8_local.x = 0x11;
 		Static8_local.y = 0x22;
-		Static8_local.addNumbers(); // 0x33
-		// System.out.printf("%x\n", addNumbers());
+		System.out.printf("result: 0x%08x\n", addNumbers()); // 0x33
 	}
 
 	public static int addNumbers() {

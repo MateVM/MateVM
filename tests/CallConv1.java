@@ -4,11 +4,7 @@ public class CallConv1 {
 	public static void main(String []args) {
 		int sum = 0;
 		sum += manyVars(0x1348);
-		id(sum); // 0x1337
-	}
-
-	public static int id(int a) {
-		return a;
+		System.out.printf("result: 0x%08x\n", sum);
 	}
 
 	public static int manyVars(int a) {

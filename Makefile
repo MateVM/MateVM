@@ -18,57 +18,55 @@ GHC_LD := -optl-Xlinker -optl-x
 all: mate $(CLASS_FILES)
 
 test: mate $(CLASS_FILES)
-	./$< tests/Fib | grep mainresult
+	./$< tests/While | grep -e "^result"
+	@printf "should be:  0x%08x 0x%08x\n" 0x19 0x19
+	./$< tests/Fib | grep -e "^result"
 	@printf "should be:  0x%08x\n" 0x2ac2
-	./$< tests/Fac | grep mainresult
+	./$< tests/Fac | grep -e "^result"
 	@printf "should be:  0x%08x\n" 0x63e1a
-	./$< tests/ArgumentPassing1 | grep mainresult
+	./$< tests/ArgumentPassing1 | grep -e "^result"
 	@printf "should be:  0x%08x 0x%08x\n" 0x92 $$(((0 - 0x1337) & 0xffffffff))
-	./$< tests/DifferentClass1 | grep mainresult
+	./$< tests/DifferentClass1 | grep -e "^result"
 	@printf "should be:  0x%08x 0x%08x\n" 8 13
-	./$< tests/Native1 | egrep -i -e '^printsomething: '
-	@printf "should be:  woot 0x%08x 0x%08x woot 0x%08x\n" 0x1337 0x1338 0x15a5
-	./$< tests/Static1 | grep mainresult
+	./$< tests/Static1 | grep -e "^result"
 	@printf "should be:  0x%08x\n" 0x33
-	./$< tests/Static2 | grep mainresult
+	./$< tests/Static2 | grep -e "^result"
 	@printf "should be:  0x%08x\n" 0x55
-	./$< tests/Static3 | grep mainresult
+	./$< tests/Static3 | grep -e "^result"
 	@printf "should be:  0x%08x\n" 0x6dd
-	./$< tests/Static4 | grep mainresult
+	./$< tests/Static4 | grep -e "^result"
 	@printf "should be:  0x%08x 0x%08x\n" 0x33 0x77
-	./$< tests/Static5 | grep mainresult
+	./$< tests/Static5 | grep -e "^result"
 	@printf "should be:  0x%08x 0x%08x\n" 0x33 0x33
-	./$< tests/Static6 | grep mainresult
+	./$< tests/Static6 | grep -e "^result"
 	@printf "should be:  0x%08x\n" 0x33
-	./$< tests/Static7 | grep mainresult
+	./$< tests/Static7 | grep -e "^result"
 	@printf "should be:  0x%08x\n" $$((0x1337 + 0x555))
-	./$< tests/Static8 | grep mainresult
+	./$< tests/Static8 | grep -e "^result"
 	@printf "should be:  0x%08x 0x%08x\n" 0x33 $$((0x1337 + 0x555))
-	./$< tests/CallConv1 | grep mainresult
+	./$< tests/CallConv1 | grep -e "^result"
 	@printf "should be:  0x%08x\n" 0x1337
-	./$< tests/CallConv2 | grep mainresult
+	./$< tests/CallConv2 | grep -e "^result"
 	@printf "should be:  0x%08x\n" 0x1337
-	./$< tests/CallConv3 | grep mainresult
+	./$< tests/CallConv3 | grep -e "^result"
 	@printf "should be:  0x%08x 0x%08x 0x%08x 0x%08x\n" 0x1000 0x300 0x30 0x7
-	./$< tests/Instance1 | grep mainresult
+	./$< tests/Instance1 | grep -e "^result"
 	@printf "should be:  0x%08x 0x%08x\n" 0x55 0x11
-	./$< tests/Instance2 | grep mainresult
+	./$< tests/Instance2 | grep -e "^result"
 	@printf "should be:  0x%08x 0x%08x\n" 0x198 0x22
-	./$< tests/Instance3 | grep mainresult
+	./$< tests/Instance3 | grep -e "^result"
 	@printf "should be:  0x%08x 0x%08x\n" 0x33 0x44
-	./$< tests/Instance4 | grep mainresult
-	@printf "should be:  0x%08x 0x%08x\n" 0x1337 0x1337
-	./$< tests/Native2 | grep "printstream"
+	./$< tests/Native2 | grep -e "^result"
 	@printf "should be:   0x%08x\n" 0x1337
-	./$< tests/Native3 | egrep -e "^Hello World"
+	./$< tests/Native3 | egrep -e "^result"
 	@printf "should be: %s\n" "Hello World"
-	./$< tests/Strings1 | egrep -c -e "^okay :-\)"
+	./$< tests/Strings1 | egrep -c -e "^result"
 	@printf "should be: %d\n" 3
-	./$< tests/Array1 | grep "printstream"
+	./$< tests/Array1 | grep -e "^result"
 	@printf "should be:   0x%08x 0x%08x\n" 0x264 0x8
-	./$< tests/Integer1 | grep mainresult
+	./$< tests/Integer1 | grep -e "^result"
 	@printf "should be:  0x%08x\n" 0x1337
-	./$< tests/VarArgs1 | grep mainresult
+	./$< tests/VarArgs1 | grep -e "^result"
 
 %.class: %.java
 	$(JAVAC) $<

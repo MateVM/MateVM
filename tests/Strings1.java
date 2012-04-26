@@ -7,21 +7,21 @@ public class Strings1 {
 		String c = "wtf";
 
 		if (a == b) {
-			System.out.println("okay :-)");
+			System.out.println("result: okay :-)");
 		} else {
-			System.out.println("bad :-(");
+			System.out.println("result: bad :-(");
 		}
 
 		if (a != c) {
-			System.out.println("okay :-)");
+			System.out.println("result: okay :-)");
 		} else {
-			System.out.println("bad :-(");
+			System.out.println("result: bad :-(");
 		}
 
 		if (a == c) {
-			System.out.println("bad :-(");
+			System.out.println("result: bad :-(");
 		} else {
-			System.out.println("okay :-)");
+			System.out.println("result: okay :-)");
 		}
 	}
 }

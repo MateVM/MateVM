@@ -14,8 +14,7 @@ public class Instance1 {
 		id(a.x); // 0x11
 	}
 
-	public static int id(int a) {
-		// System.out.printf("0x%08x\n", a);
-		return a;
+	public static void id(int a) {
+		System.out.printf("result: 0x%08x\n", a);
 	}
 }

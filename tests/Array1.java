@@ -10,7 +10,7 @@ public class Array1 {
 		for (int i = 0; i < 0x8; i++) {
 			sum += arr[i];
 		}
-		System.out.printf(sum); // 0x264
-		System.out.printf(arr.length); // 0x8
+		System.out.printf("result: 0x%08x\n", sum); // 0x264
+		System.out.printf("result: 0x%08x\n", arr.length); // 0x8
 	}
 }
