@@ -1,3 +1,88 @@
-== DEPENDENCIES ==
-$ cabal install harpy
-$ cabal install hs-java # 0.2 at the moment!
+$ make
+./stackoverflow_segv
+entry point: 0x0a0e97e0
+welcome back
+$ # however, when executing binray from shell...
+$ ./stackoverflow_segv
+entry point: 0x0916b7e0
+Segmentation fault (core dumped)
+
+
+
+# some information about the system
+$ cat /etc/issue
+Ubuntu 12.04 LTS \n \l
+$ uname -a
+Linux matevm-dev 3.2.0-23-generic #36-Ubuntu SMP Tue Apr 10 20:41:14 UTC 2012 i686 athlon i386 GNU/Linux
+$ ghc --version
+The Glorious Glasgow Haskell Compilation System, version 7.4.1
+$ gcc --version
+gcc (Ubuntu/Linaro 4.6.3-1ubuntu5) 4.6.3
+Copyright (C) 2011 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+$ make --version
+GNU Make 3.81
+Copyright (C) 2006  Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.
+There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE.
+
+This program built for i686-pc-linux-gnu
+$ ghc-pkg list
+/var/lib/ghc/package.conf.d:
+    Cabal-1.14.0
+    array-0.4.0.0
+    base-4.5.0.0
+    bin-package-db-0.0.0.0
+    binary-0.5.1.0
+    bytestring-0.9.2.1
+    containers-0.4.2.1
+    deepseq-1.3.0.0
+    directory-1.1.0.2
+    extensible-exceptions-0.1.1.4
+    filepath-1.3.0.0
+    (ghc-7.4.1)
+    ghc-prim-0.2.0.0
+    (haskell2010-1.1.0.1)
+    (haskell98-2.0.0.1)
+    hoopl-3.8.7.3
+    hpc-0.5.1.1
+    integer-gmp-0.4.0.0
+    old-locale-1.0.0.4
+    old-time-1.1.0.0
+    pretty-1.1.1.0
+    process-1.1.0.1
+    rts-1.0
+    template-haskell-2.7.0.0
+    time-1.4
+    unix-2.5.1.0
+
+/home/lewurm/.ghc/i386-linux-7.4.1/package.conf.d:
+    HUnit-1.2.4.2
+    MissingH-1.1.1.0
+    QuickCheck-2.4.2
+    binary-state-0.1.1
+    control-monad-exception-0.10.2
+    data-binary-ieee754-0.4.2.1
+    disassembler-0.1.0.1
+    failure-0.2.0.1
+    ghc-paths-0.1.0.8
+    harpy-0.4.3.0
+    haskell-src-1.0.1.5
+    heap-1.0.0
+    hs-java-0.2
+    hslogger-1.1.5
+    monadloc-0.6
+    mtl-1.1.1.1
+    mtl-2.1.1
+    network-2.3.0.13
+    parsec-2.1.0.1
+    plugins-1.5.2.1
+    random-1.0.1.1
+    regex-base-0.93.2
+    regex-compat-0.95.1
+    regex-posix-0.95.1
+    syb-0.3.6.1
+    transformers-0.3.0.0
+    utf8-string-0.3.7

@@ -1,11 +1,10 @@
-all: mate Test.class
-	./mate Test.class
+NAME := stackoverflow_segv
 
-%.class: %.java
-	javac $<
+all: $(NAME)
+	./$<
 
-mate: Mate.hs trap.c
+$(NAME): Main.hs
 	ghc --make -Wall -O2 $^ -o $@
 
 clean:
-	rm -f *.hi *.o mate
+	rm -f *.hi *.o $(NAME)
