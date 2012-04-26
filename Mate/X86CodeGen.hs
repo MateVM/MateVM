@@ -11,7 +11,7 @@ import qualified Data.Set as S
 import qualified Data.ByteString.Lazy as B
 import Control.Monad
 
-import Foreign
+import Foreign hiding (xor)
 import Foreign.C.Types
 
 import Text.Printf
@@ -234,6 +234,17 @@ emitFromBB method cls hmap =  do
         call (trapaddr - w32_calladdr)
         add esp (4 :: Word32)
     emit DUP = push (Disp 0, esp)
+    emit IASTORE = do
+        pop eax -- value
+        pop ebx -- offset
+        add ebx (1 :: Word32)
+        pop ecx -- aref
+        mov (ecx, ebx, S4) eax
+    emit IALOAD = do
+        pop ebx -- offset
+        add ebx (1 :: Word32)
+        pop ecx -- aref
+        push (ecx, ebx, S4)
     emit ARRAYLENGTH = do
         pop eax
         push (Disp 0, eax)
@@ -307,6 +318,7 @@ emitFromBB method cls hmap =  do
     emit IADD = do pop ebx; pop eax; add eax ebx; push eax
     emit ISUB = do pop ebx; pop eax; sub eax ebx; push eax
     emit IMUL = do pop ebx; pop eax; mul ebx; push eax
+    emit IXOR = do pop ebx; pop eax; xor eax ebx; push eax
     emit (IINC x imm) = do
         add (Disp (cArgs x), ebp) (s8_w32 imm)
 
