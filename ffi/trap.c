@@ -39,6 +39,7 @@ NEW_MAP(method)
 NEW_MAP(trap)
 NEW_MAP(class)
 NEW_MAP(virtual)
+NEW_MAP(strings)
 
 
 void mainresult(unsigned int a)

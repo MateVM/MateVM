@@ -19,3 +19,8 @@ void java_io_PrintStream__printf___I_V(int a)
 {
 	printf("printstream: 0x%08x\n", a);
 }
+
+void java_io_PrintStream__println___Ljava_lang_String__V(const char *a)
+{
+	printf("%s\n", a);
+}

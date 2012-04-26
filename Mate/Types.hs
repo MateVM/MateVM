@@ -49,6 +49,10 @@ type ClassMap = M.Map B.ByteString ClassInfo
 
 type FieldMap = M.Map B.ByteString Int32
 
+-- java strings are allocated once, therefore we
+-- use a hashmap to store the address for a String
+type StringsMap = M.Map B.ByteString Word32
+
 -- map "methodtable addr" to "classname"
 -- we need that to identify the actual type
 -- on the invokevirtual insn
@@ -123,6 +127,12 @@ foreign import ccall "get_virtualmap"
 foreign import ccall "set_virtualmap"
   set_virtualmap :: Ptr () -> IO ()
 
+foreign import ccall "get_stringsmap"
+  get_stringsmap :: IO (Ptr ())
+
+foreign import ccall "set_stringsmap"
+  set_stringsmap :: Ptr () -> IO ()
+
 -- TODO(bernhard): make some typeclass magic 'n stuff
 mmap2ptr :: MMap -> IO (Ptr ())
 mmap2ptr mmap = do
@@ -155,3 +165,12 @@ virtualmap2ptr cmap = do
 
 ptr2virtualmap :: Ptr () -> IO VirtualMap
 ptr2virtualmap vmap = deRefStablePtr $ ((castPtrToStablePtr vmap) :: StablePtr cmap)
+
+
+stringsmap2ptr :: StringsMap -> IO (Ptr ())
+stringsmap2ptr cmap = do
+  ptr_cmap <- newStablePtr cmap
+  return $ castStablePtrToPtr ptr_cmap
+
+ptr2stringsmap :: Ptr () -> IO StringsMap
+ptr2stringsmap vmap = deRefStablePtr $ ((castPtrToStablePtr vmap) :: StablePtr cmap)

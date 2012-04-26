@@ -26,6 +26,8 @@ import Mate.BasicBlocks
 import Mate.Types
 import Mate.Utilities
 import Mate.ClassPool
+import Mate.Strings
+
 
 foreign import ccall "dynamic"
    code_int :: FunPtr (CInt -> CInt -> IO CInt) -> (CInt -> CInt -> IO CInt)
@@ -268,6 +270,12 @@ emitFromBB method cls hmap =  do
         pop eax
         mov (Disp (cArgs x), ebp) eax
 
+    emit (LDC1 x) = emit (LDC2 $ fromIntegral x)
+    emit (LDC2 x) = do
+        let value = case (constsPool cls) M.! x of
+                      (CString s) -> unsafePerformIO $ getUniqueStringAddr s
+                      _ -> error $ "LDCI... missing impl."
+        push value
     emit (GETFIELD x) = do
         pop eax -- this pointer
         let (cname, fname) = buildFieldOffset cls x

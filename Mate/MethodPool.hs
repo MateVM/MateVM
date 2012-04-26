@@ -65,7 +65,8 @@ getMethodEntry signal_from methodtable = do
                     return $ fromIntegral entry
                   Nothing -> error $ (show method) ++ " not found. abort"
               True -> do
-                let symbol = (replace "/" "_" $ toString cm) ++ "__" ++ (toString method) ++ "__" ++ (replace "(" "_" (replace ")" "_" $ toString $ encode sig))
+                -- TODO(bernhard): cleaner please... *do'h*
+                let symbol = (replace "/" "_" $ toString cm) ++ "__" ++ (toString method) ++ "__" ++ (replace ";" "_" $ replace "/" "_" $ replace "(" "_" (replace ")" "_" $ toString $ encode sig))
                 printf "native-call: symbol: %s\n" symbol
                 nf <- loadNativeFunction symbol
                 let w32_nf = fromIntegral nf
@@ -120,6 +121,7 @@ initMethodPool = do
   tmap2ptr M.empty >>= set_trapmap
   classmap2ptr M.empty >>= set_classmap
   virtualmap2ptr M.empty >>= set_virtualmap
+  stringsmap2ptr M.empty >>= set_stringsmap
 
 
 addMethodRef :: Word32 -> MethodInfo -> [B.ByteString] -> IO ()
