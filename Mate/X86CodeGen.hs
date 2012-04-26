@@ -234,12 +234,14 @@ emitFromBB method cls hmap =  do
         call (trapaddr - w32_calladdr)
         add esp (4 :: Word32)
     emit DUP = push (Disp 0, esp)
+    emit AASTORE = emit IASTORE
     emit IASTORE = do
         pop eax -- value
         pop ebx -- offset
         add ebx (1 :: Word32)
         pop ecx -- aref
         mov (ecx, ebx, S4) eax
+    emit AALOAD = emit IALOAD
     emit IALOAD = do
         pop ebx -- offset
         add ebx (1 :: Word32)
@@ -248,6 +250,7 @@ emitFromBB method cls hmap =  do
     emit ARRAYLENGTH = do
         pop eax
         push (Disp 0, eax)
+    emit (ANEWARRAY _) = emit (NEWARRAY 10) -- 10 == T_INT
     emit (NEWARRAY typ) = do
         let tsize = case decodeS (0 :: Integer) (B.pack [typ]) of
                     T_INT -> 4
@@ -280,6 +283,7 @@ emitFromBB method cls hmap =  do
     emit (ICONST_0) = push (0 :: Word32)
     emit (ICONST_1) = push (1 :: Word32)
     emit (ICONST_2) = push (2 :: Word32)
+    emit (ICONST_3) = push (3 :: Word32)
     emit (ICONST_4) = push (4 :: Word32)
     emit (ICONST_5) = push (5 :: Word32)
     emit (ALOAD_ x) = emit (ILOAD_ x)

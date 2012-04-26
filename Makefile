@@ -68,6 +68,7 @@ test: mate $(CLASS_FILES)
 	@printf "should be:   0x%08x 0x%08x\n" 0x264 0x8
 	./$< tests/Integer1 | grep mainresult
 	@printf "should be:  0x%08x\n" 0x1337
+	./$< tests/VarArgs1 | grep mainresult
 
 %.class: %.java
 	$(JAVAC) $<

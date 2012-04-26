@@ -1,5 +1,29 @@
 #include <stdio.h>
 
+static char ascii(char s) {
+	if(s < 0x20) return '.';
+	if(s > 0x7E) return '.';
+	return s;
+}
+
+void hexdump(void *d, int len) {
+	unsigned char *data;
+	int i, off;
+	data = (unsigned char*)d;
+	for (off=0; off<len; off += 16) {
+		printf("%08x  ",off);
+		for(i=0; i<16; i++)
+			if((i+off)>=len) printf("   ");
+			else printf("%02x ",data[off+i]);
+
+		printf(" ");
+		for(i=0; i<16; i++)
+			if((i+off)>=len) printf(" ");
+			else printf("%c",ascii(data[off+i]));
+		printf("\n");
+	}
+}
+
 void tests_Native1__printSomething____V(void)
 {
 	printf("printSomething: woot \\o/\n");
@@ -23,4 +47,40 @@ void java_io_PrintStream__printf___I_V(int a)
 void java_io_PrintStream__println___Ljava_lang_String__V(const char *a)
 {
 	printf("%s\n", a);
+}
+
+struct integer {
+	unsigned int method_table_ptr;
+	int value;
+};
+
+void java_io_PrintStream__printf_1___Ljava_lang_String_Ljava_lang_Object__V
+	(struct integer *a1, const char *fmt)
+{
+	printf(fmt, a1->value);
+}
+
+void java_io_PrintStream__printf_2___Ljava_lang_String_Ljava_lang_Object_Ljava_lang_Object__V
+	(struct integer *a2, struct integer *a1, const char *fmt)
+{
+	printf(fmt, a1->value, a2->value);
+}
+
+void
+java_io_PrintStream__printf_3___Ljava_lang_String_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object__V
+	(struct integer *a3, struct integer *a2, struct integer *a1, const char *fmt)
+{
+	printf(fmt, a1->value, a2->value, a3->value);
+}
+
+void java_io_PrintStream__printf_4___Ljava_lang_String_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object__V
+	(struct integer *a4, struct integer *a3, struct integer *a2, struct integer *a1, const char *fmt)
+{
+	printf(fmt, a1->value, a2->value, a3->value, a4->value);
+}
+
+void java_io_PrintStream__printf_5___Ljava_lang_String_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object__V
+	(struct integer *a5, struct integer *a4, struct integer *a3, struct integer *a2, struct integer *a1, const char *fmt)
+{
+	printf(fmt, a1->value, a2->value, a3->value, a4->value, a5->value);
 }
