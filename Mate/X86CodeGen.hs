@@ -294,6 +294,7 @@ emitFromBB method cls hmap =  do
     emit (IINC x imm) = do
         add (Disp (cArgs x), ebp) (s8_w32 imm)
 
+    emit (IF_ACMP cond x) = emit (IF_ICMP cond x)
     emit (IF_ICMP cond _) = do
         pop eax -- value2
         pop ebx -- value1

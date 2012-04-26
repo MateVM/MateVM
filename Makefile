@@ -60,8 +60,10 @@ test: mate $(CLASS_FILES)
 	@printf "should be:  0x%08x 0x%08x\n" 0x1337 0x1337
 	./$< tests/Native2 | grep "printstream"
 	@printf "should be:   0x%08x\n" 0x1337
-	./$< tests/Native2 | grep "Hello World"
-	@printf "should be: %s" "Hello World"
+	./$< tests/Native3 | egrep -e "^Hello World"
+	@printf "should be: %s\n" "Hello World"
+	./$< tests/Strings1 | egrep -c -e "^okay :-\)"
+	@printf "should be: %d\n" 3
 
 %.class: %.java
 	$(JAVAC) $<
