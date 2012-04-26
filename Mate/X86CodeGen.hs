@@ -3,6 +3,7 @@
 module Mate.X86CodeGen where
 
 import Data.Binary
+import Data.BinaryState
 import Data.Int
 import Data.Maybe
 import qualified Data.Map as M
@@ -233,16 +234,31 @@ emitFromBB method cls hmap =  do
         call (trapaddr - w32_calladdr)
         add esp (4 :: Word32)
     emit DUP = push (Disp 0, esp)
+    emit ARRAYLENGTH = do
+        pop eax
+        push (Disp 0, eax)
+    emit (NEWARRAY typ) = do
+        let tsize = case decodeS (0 :: Integer) (B.pack [typ]) of
+                    T_INT -> 4
+                    _ -> error $ "newarray: type not implemented yet"
+        -- get length from stack, but leave it there
+        mov eax (Disp 0, esp)
+        mov ebx (tsize :: Word32)
+        -- multiple amount with native size of one element
+        mul ebx -- result is in eax
+        add eax (4 :: Word32) -- for "length" entry
+        -- push amount of bytes to allocate
+        push eax
+        callMalloc
+        pop eax -- ref to arraymemory
+        pop ebx -- length
+        mov (Disp 0, eax) ebx -- store length at offset 0
+        push eax -- push ref again
     emit (NEW objidx) = do
         let objname = buildClassID cls objidx
         amount <- liftIO $ getMethodSize objname
         push (amount :: Word32)
-        calladdr <- getCurrentOffset
-        let w32_calladdr = 5 + calladdr
-        let malloaddr = (fromIntegral getMallocAddr :: Word32)
-        call (malloaddr - w32_calladdr)
-        add esp (4 :: Word32)
-        push eax
+        callMalloc
         -- TODO(bernhard): save reference somewhere for GC
         -- set method table pointer
         mtable <- liftIO $ getMethodTable objname
@@ -328,6 +344,15 @@ emitFromBB method cls hmap =  do
         pop ebp
         ret
     emit invalid = error $ "insn not implemented yet: " ++ (show invalid)
+
+    callMalloc :: CodeGen e s ()
+    callMalloc = do
+        calladdr <- getCurrentOffset
+        let w32_calladdr = 5 + calladdr
+        let malloaddr = (fromIntegral getMallocAddr :: Word32)
+        call (malloaddr - w32_calladdr)
+        add esp (4 :: Word32)
+        push eax
 
   -- for locals we use a different storage
   cArgs :: Word8 -> Word32
