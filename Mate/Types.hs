@@ -19,8 +19,8 @@ import JVM.Assembler
 type BlockID = Int
 -- Represents a CFG node
 data BasicBlock = BasicBlock {
-                     code    :: [Instruction],
-                     successor :: BBEnd }
+  code :: [Instruction],
+  successor :: BBEnd }
 
 -- describes (leaving) edges of a CFG node
 data BBEnd = Return | FallThrough BlockID | OneTarget BlockID | TwoTarget BlockID BlockID deriving Show
@@ -28,12 +28,13 @@ data BBEnd = Return | FallThrough BlockID | OneTarget BlockID | TwoTarget BlockI
 type MapBB = M.Map BlockID BasicBlock
 
 
+
 -- Word32 = point of method call in generated code
 -- MethodInfo = relevant information about callee
-type TMap = M.Map Word32 TrapInfo
+type TrapMap = M.Map Word32 TrapInfo
 
 data TrapInfo =
-  MI MethodInfo |
+  MI MethodInfo | -- for static calls
   VI MethodInfo | -- for virtual calls
   SFI StaticFieldInfo
 
@@ -41,42 +42,20 @@ data StaticFieldInfo = StaticFieldInfo {
   sfiClassName :: B.ByteString,
   sfiFieldName :: B.ByteString }
 
+
+
 -- B.ByteString = name of method
 -- Word32 = entrypoint of method
-type MMap = M.Map MethodInfo Word32
-
-type ClassMap = M.Map B.ByteString ClassInfo
-
-type FieldMap = M.Map B.ByteString Int32
-
--- java strings are allocated once, therefore we
--- use a hashmap to store the address for a String
-type StringsMap = M.Map B.ByteString Word32
-
--- map "methodtable addr" to "classname"
--- we need that to identify the actual type
--- on the invokevirtual insn
-type VirtualMap = M.Map Word32 B.ByteString
-
-data ClassInfo = ClassInfo {
-  clName :: B.ByteString,
-  clFile :: Class Resolved,
-  clStaticMap  :: FieldMap,
-  clFieldMap :: FieldMap,
-  clMethodMap :: FieldMap,
-  clMethodBase :: Word32,
-  clInitDone :: Bool }
+type MethodMap = M.Map MethodInfo Word32
 
 data MethodInfo = MethodInfo {
   methName :: B.ByteString,
-  cName :: B.ByteString,
-  mSignature :: MethodSignature}
-
-instance Eq MethodInfo where
-  (MethodInfo m_a c_a s_a) == (MethodInfo m_b c_b s_b) =
-    (m_a == m_b) && (c_a == c_b) && (s_a == s_b)
+  methClassName :: B.ByteString,
+  methSignature :: MethodSignature
+  } deriving (Eq, Ord)
 
 -- TODO(bernhard): not really efficient. also, outsource that to hs-java
+--                 deriving should be enough?
 instance Ord MethodSignature where
   compare (MethodSignature args_a ret_a) (MethodSignature args_b ret_b)
     | cmp_args /= EQ = cmp_args
@@ -84,25 +63,46 @@ instance Ord MethodSignature where
     where
     cmp_args = (show args_a) `compare` (show args_b)
 
-instance Ord MethodInfo where
-  compare (MethodInfo m_a c_a s_a) (MethodInfo m_b c_b s_b)
-    | cmp_m /= EQ = cmp_m
-    | cmp_c /= EQ = cmp_c
-    | otherwise = s_a `compare` s_b
-    where
-    cmp_m = m_a `compare` m_b
-    cmp_c = c_a `compare` c_b
-
 instance Show MethodInfo where
   show (MethodInfo method c sig) =
     (toString c) ++ "." ++ (toString method) ++ "." ++ (show sig)
+
+
+
+-- store information of loaded classes
+type ClassMap = M.Map B.ByteString ClassInfo
+
+data ClassInfo = ClassInfo {
+  ciName :: B.ByteString,
+  ciFile :: Class Resolved,
+  ciStaticMap  :: FieldMap,
+  ciFieldMap :: FieldMap,
+  ciMethodMap :: FieldMap,
+  ciMethodBase :: Word32,
+  ciInitDone :: Bool }
+
+
+-- store field offsets in a map
+type FieldMap = M.Map B.ByteString Int32
+
+
+-- java strings are allocated only once, therefore we
+-- use a hashmap to store the address for a String
+type StringsMap = M.Map B.ByteString Word32
+
+
+-- map "methodtable addr" to "classname"
+-- we need that to identify the actual type
+-- on the invokevirtual insn
+type VirtualMap = M.Map Word32 B.ByteString
 
 
 toString :: B.ByteString -> String
 toString bstr = decodeString $ map (chr . fromIntegral) $ B.unpack bstr
 
 
--- global map hax
+-- those functions are for the "global map hax"
+-- TODO(bernhard): other solution please
 foreign import ccall "get_trapmap"
   get_trapmap :: IO (Ptr ())
 
@@ -134,21 +134,22 @@ foreign import ccall "set_stringsmap"
   set_stringsmap :: Ptr () -> IO ()
 
 -- TODO(bernhard): make some typeclass magic 'n stuff
-mmap2ptr :: MMap -> IO (Ptr ())
-mmap2ptr mmap = do
-  ptr_mmap <- newStablePtr mmap
-  return $ castStablePtrToPtr ptr_mmap
+--                 or remove that sh**
+methodmap2ptr :: MethodMap -> IO (Ptr ())
+methodmap2ptr methodmap = do
+  ptr_methodmap <- newStablePtr methodmap
+  return $ castStablePtrToPtr ptr_methodmap
 
-ptr2mmap :: Ptr () -> IO MMap
-ptr2mmap vmap = deRefStablePtr $ ((castPtrToStablePtr vmap) :: StablePtr MMap)
+ptr2methodmap :: Ptr () -> IO MethodMap
+ptr2methodmap methodmap = deRefStablePtr $ ((castPtrToStablePtr methodmap) :: StablePtr MethodMap)
 
-tmap2ptr :: TMap -> IO (Ptr ())
-tmap2ptr tmap = do
-  ptr_tmap <- newStablePtr tmap
-  return $ castStablePtrToPtr ptr_tmap
+trapmap2ptr :: TrapMap -> IO (Ptr ())
+trapmap2ptr trapmap = do
+  ptr_trapmap <- newStablePtr trapmap
+  return $ castStablePtrToPtr ptr_trapmap
 
-ptr2tmap :: Ptr () -> IO TMap
-ptr2tmap vmap = deRefStablePtr $ ((castPtrToStablePtr vmap) :: StablePtr tmap)
+ptr2trapmap :: Ptr () -> IO TrapMap
+ptr2trapmap vmap = deRefStablePtr $ ((castPtrToStablePtr vmap) :: StablePtr trapmap)
 
 classmap2ptr :: ClassMap -> IO (Ptr ())
 classmap2ptr cmap = do

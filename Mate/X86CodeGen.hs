@@ -119,7 +119,7 @@ type PatchInfo = (BlockID, EntryPointOffset)
 
 type BBStarts = M.Map BlockID Int
 
-type CompileInfo = (EntryPoint, BBStarts, Int, TMap)
+type CompileInfo = (EntryPoint, BBStarts, Int, TrapMap)
 
 
 emitFromBB :: B.ByteString -> Class Resolved -> MapBB -> CodeGen e s (CompileInfo, [Instruction])
@@ -142,7 +142,7 @@ emitFromBB method cls hmap =  do
   getLabel _ [] = error "label not found!"
   getLabel i ((x,l):xs) = if i==x then l else getLabel i xs
 
-  efBB :: (BlockID, BasicBlock) -> TMap -> BBStarts -> [(BlockID, Label)] -> CodeGen e s (TMap, BBStarts)
+  efBB :: (BlockID, BasicBlock) -> TrapMap -> BBStarts -> [(BlockID, Label)] -> CodeGen e s (TrapMap, BBStarts)
   efBB (bid, bb) calls bbstarts lmap =
         if M.member bid bbstarts then
           return (calls, bbstarts)

@@ -42,40 +42,40 @@ getClassInfo path = do
 getClassFile :: B.ByteString -> IO (Class Resolved)
 getClassFile path = do
   ci <- getClassInfo path
-  return $ clFile ci
+  return $ ciFile ci
 
 getStaticFieldOffset :: B.ByteString -> B.ByteString -> IO (CUInt)
 getStaticFieldOffset path field = do
   ci <- getClassInfo path
-  return $ fromIntegral $ (clStaticMap ci) M.! field
+  return $ fromIntegral $ (ciStaticMap ci) M.! field
 
 getFieldOffset :: B.ByteString -> B.ByteString -> IO (Int32)
 getFieldOffset path field = do
   ci <- getClassInfo path
-  return $ (clFieldMap ci) M.! field
+  return $ (ciFieldMap ci) M.! field
 
 -- method + signature plz!
 getMethodOffset :: B.ByteString -> B.ByteString -> IO (Word32)
 getMethodOffset path method = do
   ci <- getClassInfo path
-  return $ fromIntegral $ (clMethodMap ci) M.! method
+  return $ fromIntegral $ (ciMethodMap ci) M.! method
 
 getMethodTable :: B.ByteString -> IO (Word32)
 getMethodTable path = do
   ci <- getClassInfo path
-  return $ clMethodBase ci
+  return $ ciMethodBase ci
 
 getMethodSize :: B.ByteString -> IO (Word32)
 getMethodSize path = do
   ci <- getClassInfo path
   -- TODO(bernhard): correct sizes for different types...
-  let msize = fromIntegral $ M.size $ clMethodMap ci
+  let msize = fromIntegral $ M.size $ ciMethodMap ci
   return $ (1 + msize) * 4
 
 foreign export ccall getStaticFieldAddr :: CUInt -> Ptr () -> IO CUInt
 getStaticFieldAddr :: CUInt -> Ptr () -> IO CUInt
 getStaticFieldAddr from ptr_trapmap = do
-  trapmap <- ptr2tmap ptr_trapmap
+  trapmap <- ptr2trapmap ptr_trapmap
   let w32_from = fromIntegral from
   let sfi = trapmap M.! w32_from
   case sfi of
@@ -121,11 +121,11 @@ calculateFields cf superclass = do
     staticbase <- mallocBytes ((fromIntegral $ length sfields) * 4)
     let i_sb = fromIntegral $ ptrToIntPtr $ staticbase
     let sm = zipbase i_sb sfields
-    let sc_sm = getsupermap superclass clStaticMap
+    let sc_sm = getsupermap superclass ciStaticMap
     -- new fields "overwrite" old ones, if they have the same name
     let staticmap = (M.fromList sm) `M.union` sc_sm
 
-    let sc_im = getsupermap superclass clFieldMap
+    let sc_im = getsupermap superclass ciFieldMap
     -- "+ 4" for the method table pointer
     let max_off = (fromIntegral $ (M.size sc_im) * 4) + 4
     let im = zipbase max_off ifields
@@ -147,7 +147,7 @@ calculateMethodMap cf superclass = do
                   (\x -> (not . S.member ACC_STATIC . methodAccessFlags) x &&
                          ((/=) "<init>" . methodName) x)
                   (classMethods cf)
-    let sc_mm = getsupermap superclass clMethodMap
+    let sc_mm = getsupermap superclass ciMethodMap
     let max_off = fromIntegral $ (M.size sc_mm) * 4
     let mm = zipbase max_off methods
     let methodmap = (M.fromList mm) `M.union` sc_mm
@@ -166,12 +166,12 @@ loadAndInitClass path = do
     Just x -> return x
 
   -- first try to execute class initializer of superclass
-  when (path /= "java/lang/Object") ((loadAndInitClass $ superClass $ clFile ci) >> return ())
+  when (path /= "java/lang/Object") ((loadAndInitClass $ superClass $ ciFile ci) >> return ())
 
   -- execute class initializer
-  case lookupMethod "<clinit>" (clFile ci) of
+  case lookupMethod "<clinit>" (ciFile ci) of
     Just m -> do
-      hmap <- parseMethod (clFile ci) "<clinit>"
+      hmap <- parseMethod (ciFile ci) "<clinit>"
       printMapBB hmap
       case hmap of
         Just hmap' -> do
@@ -185,7 +185,7 @@ loadAndInitClass path = do
     Nothing -> return ()
 
   class_map' <- get_classmap >>= ptr2classmap
-  let new_ci = ci { clInitDone = True }
+  let new_ci = ci { ciInitDone = True }
   let class_map'' = M.insert path new_ci class_map'
   classmap2ptr class_map'' >>= set_classmap
   return new_ci

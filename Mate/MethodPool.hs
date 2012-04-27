@@ -34,8 +34,8 @@ foreign import ccall "dynamic"
 foreign export ccall getMethodEntry :: CUInt -> CUInt -> IO CUInt
 getMethodEntry :: CUInt -> CUInt -> IO CUInt
 getMethodEntry signal_from methodtable = do
-  mmap <- get_methodmap >>= ptr2mmap
-  tmap <- get_trapmap >>= ptr2tmap
+  mmap <- get_methodmap >>= ptr2methodmap
+  tmap <- get_trapmap >>= ptr2trapmap
   vmap <- get_virtualmap >>= ptr2virtualmap
 
   let w32_from = fromIntegral signal_from
@@ -71,7 +71,7 @@ getMethodEntry signal_from methodtable = do
                 nf <- loadNativeFunction symbol
                 let w32_nf = fromIntegral nf
                 let mmap' = M.insert mi' w32_nf mmap
-                mmap2ptr mmap' >>= set_methodmap
+                methodmap2ptr mmap' >>= set_methodmap
                 return nf
         Nothing -> error $ (show method) ++ " not found. abort"
     Just w32 -> return (fromIntegral w32)
@@ -117,8 +117,8 @@ loadNativeFunction sym = do
 
 initMethodPool :: IO ()
 initMethodPool = do
-  mmap2ptr M.empty >>= set_methodmap
-  tmap2ptr M.empty >>= set_trapmap
+  methodmap2ptr M.empty >>= set_methodmap
+  trapmap2ptr M.empty >>= set_trapmap
   classmap2ptr M.empty >>= set_classmap
   virtualmap2ptr M.empty >>= set_virtualmap
   stringsmap2ptr M.empty >>= set_stringsmap
@@ -126,21 +126,21 @@ initMethodPool = do
 
 addMethodRef :: Word32 -> MethodInfo -> [B.ByteString] -> IO ()
 addMethodRef entry (MethodInfo mmname _ msig) clsnames = do
-  mmap <- get_methodmap >>= ptr2mmap
+  mmap <- get_methodmap >>= ptr2methodmap
   let newmap = M.fromList $ map (\x -> ((MethodInfo mmname x msig), entry)) clsnames
-  mmap2ptr (mmap `M.union` newmap) >>= set_methodmap
+  methodmap2ptr (mmap `M.union` newmap) >>= set_methodmap
 
 
 compileBB :: MapBB -> MethodInfo -> IO Word32
 compileBB hmap methodinfo = do
-  tmap <- get_trapmap >>= ptr2tmap
+  tmap <- get_trapmap >>= ptr2trapmap
 
-  cls <- getClassFile (cName methodinfo)
+  cls <- getClassFile (methClassName methodinfo)
   let ebb = emitFromBB (methName methodinfo) cls hmap
   (_, Right ((entry, _, _, new_tmap), disasm)) <- runCodeGen ebb () ()
 
   let tmap' = M.union tmap new_tmap -- prefers elements in cmap
-  tmap2ptr tmap' >>= set_trapmap
+  trapmap2ptr tmap' >>= set_trapmap
 
   printf "disasm:\n"
   mapM_ (putStrLn . showAtt) disasm
