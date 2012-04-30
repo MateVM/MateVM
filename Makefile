@@ -31,10 +31,19 @@ ffi/native.o: ffi/native.c
 	ghc -Wall -O2 -c $< -o $@
 
 mate: Mate.hs ffi/trap.c $(HS_FILES) $(HS_BOOT) ffi/native.o
-	ghc --make $(GHC_OPT) Mate.hs ffi/trap.c -o $@ $(GHC_LD)
+	@mkdir -p build/release
+	ghc --make $(GHC_OPT) Mate.hs ffi/trap.c -o $@ $(GHC_LD) -outputdir build/release
+
+%.dbg: %.class mate.dbg
+	./mate.dbg $(basename $<)
+
+mate.dbg: Mate.hs ffi/trap.c $(HS_FILES) $(HS_BOOT) ffi/native.o
+	@mkdir -p build/debug/{ffi,Mate,}
+	gcc -Wall -DDEBUG -O0 -c ffi/trap.c -o build/debug/ffi/trap.o
+	ghc --make -DDEBUG $(GHC_OPT) Mate.hs build/debug/ffi/trap.o -o $@ $(GHC_LD) -outputdir build/debug
 
 clean:
-	rm -f {Mate/,}*.hi {Mate/,ffi/,}*.o Mate/*.{hi,o}-boot mate tests/*.class
+	rm -rf build mate mate.dbg ffi/native.o tests/*.class
 
 ghci: mate
 	ghci $(PACKAGES) $(O_FILES) Mate.hs $(GHC_LD)

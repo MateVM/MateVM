@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 module Mate.MethodPool where
@@ -9,8 +10,6 @@ import qualified Data.Set as S
 import qualified Data.ByteString.Lazy as B
 import System.Plugins
 
-import Text.Printf
-
 import Foreign.Ptr
 import Foreign.C.Types
 import Foreign.C.String
@@ -18,7 +17,11 @@ import Foreign.C.String
 import JVM.ClassFile
 
 import Harpy
+#ifdef DEBUG
 import Harpy.X86Disassembler
+
+import Text.Printf
+#endif
 
 import Mate.BasicBlocks
 import Mate.Types
@@ -49,7 +52,9 @@ getMethodEntry signal_from methodtable = do
   case M.lookup mi' mmap of
     Nothing -> do
       cls <- getClassFile cm
+#ifdef DEBUG
       printf "getMethodEntry(from 0x%08x): no method \"%s\" found. compile it\n" w32_from (show mi')
+#endif
       mm <- lookupMethodRecursive method [] cls
       case mm of
         Just (mm', clsnames, cls') -> do
@@ -57,7 +62,6 @@ getMethodEntry signal_from methodtable = do
             case S.member ACC_NATIVE flags of
               False -> do
                 hmap <- parseMethod cls' method
-                printMapBB hmap
                 case hmap of
                   Just hmap' -> do
                     entry <- compileBB hmap' (MethodInfo method (thisClass cls') sig)
@@ -67,7 +71,9 @@ getMethodEntry signal_from methodtable = do
               True -> do
                 -- TODO(bernhard): cleaner please... *do'h*
                 let symbol = (replace "/" "_" $ toString cm) ++ "__" ++ (toString method) ++ "__" ++ (replace ";" "_" $ replace "/" "_" $ replace "(" "_" (replace ")" "_" $ toString $ encode sig))
+#ifdef DEBUG
                 printf "native-call: symbol: %s\n" symbol
+#endif
                 nf <- loadNativeFunction symbol
                 let w32_nf = fromIntegral nf
                 let mmap' = M.insert mi' w32_nf mmap
@@ -137,13 +143,16 @@ compileBB hmap methodinfo = do
 
   cls <- getClassFile (methClassName methodinfo)
   let ebb = emitFromBB (methName methodinfo) cls hmap
-  (_, Right ((entry, _, _, new_tmap), disasm)) <- runCodeGen ebb () ()
+  (_, Right right) <- runCodeGen ebb () ()
 
+  let ((entry, _, _, new_tmap), _) = right
   let tmap' = M.union tmap new_tmap -- prefers elements in cmap
   trapmap2ptr tmap' >>= set_trapmap
 
+#ifdef DEBUG
   printf "disasm:\n"
-  mapM_ (putStrLn . showAtt) disasm
+  mapM_ (putStrLn . showAtt) (snd right)
+#endif
   -- UNCOMMENT NEXT LINE FOR GDB FUN
   -- _ <- getLine
   -- (1) start it with `gdb ./mate' and then `run <classfile>'

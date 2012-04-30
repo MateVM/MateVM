@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 module Mate.Strings (
@@ -8,7 +9,9 @@ import Data.Word
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as B
 import qualified Data.ByteString.Internal as BI
+#ifdef DEBUG
 import Text.Printf
+#endif
 
 import Foreign.Ptr
 import Foreign.Marshal.Alloc
@@ -39,5 +42,7 @@ allocateJavaString str = do
   BI.memset newstr 0 (fromIntegral $ strlen + 1)
   copyBytes newstr arr strlen
   let w32_ptr = fromIntegral $ ptrToIntPtr newstr
+#ifdef DEBUG
   printf "new str ptr: 0x%08x (%s)@%d\n" w32_ptr (toString str) strlen
+#endif
   return w32_ptr

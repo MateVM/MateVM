@@ -15,8 +15,8 @@ mate_output=`mktemp`
 
 diff_output=`mktemp`
 
-$openjdk $class2test | grep -e '^result:' > $openjdk_output
-$mate $class2test | grep -e '^result:' > $mate_output
+$openjdk $class2test > $openjdk_output
+$mate $class2test > $mate_output
 
 diff $openjdk_output $mate_output > $diff_output
 

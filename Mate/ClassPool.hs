@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 module Mate.ClassPool (
@@ -18,7 +19,9 @@ import qualified Data.Set as S
 import qualified Data.ByteString.Lazy as B
 import Control.Monad
 
+#ifdef DEBUG
 import Text.Printf
+#endif
 
 import Foreign.Ptr
 import Foreign.C.Types
@@ -86,7 +89,9 @@ getStaticFieldAddr from ptr_trapmap = do
 
 loadClass :: B.ByteString -> IO ClassInfo
 loadClass path = do
+#ifdef DEBUG
   printf "loadClass: \"%s\"\n" $ toString path
+#endif
   let rpath = toString $ path `B.append` ".class"
   cfile <- parseClassFile rpath
   superclass <- case (path /= "java/lang/Object") of
@@ -96,11 +101,13 @@ loadClass path = do
       False -> return $ Nothing
 
   (staticmap, fieldmap) <- calculateFields cfile superclass
+  (methodmap, mbase) <- calculateMethodMap cfile superclass
+#ifdef DEBUG
   printf "staticmap: %s @ %s\n" (show staticmap) (toString path)
   printf "fieldmap:  %s @ %s\n" (show fieldmap) (toString path)
-  (methodmap, mbase) <- calculateMethodMap cfile superclass
   printf "methodmap: %s @ %s\n" (show methodmap) (toString path)
   printf "mbase: 0x%08x\n" mbase
+#endif
 
   virtual_map <- get_virtualmap >>= ptr2virtualmap
   let virtual_map' = M.insert mbase path virtual_map
@@ -173,15 +180,18 @@ loadAndInitClass path = do
   case lookupMethod "<clinit>" (ciFile ci) of
     Just m -> do
       hmap <- parseMethod (ciFile ci) "<clinit>"
-      printMapBB hmap
       case hmap of
         Just hmap' -> do
           let mi = (MethodInfo "<clinit>" path (methodSignature m))
           entry <- compileBB hmap' mi
           addMethodRef entry mi [path]
+#ifdef DEBUG
           printf "executing static initializer from %s now\n" (toString path)
+#endif
           executeFuncPtr entry
+#ifdef DEBUG
           printf "static initializer from %s done\n" (toString path)
+#endif
         Nothing -> error $ "loadClass: static initializer not found (WTF?). abort"
     Nothing -> return ()
 

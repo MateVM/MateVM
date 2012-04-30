@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Main where
 
@@ -6,10 +7,12 @@ import Data.Char
 import Data.List
 import qualified Data.ByteString.Lazy as B
 
+#ifdef DEBUG
 import Text.Printf
 
-import JVM.ClassFile
 import JVM.Dump
+#endif
+import JVM.ClassFile
 
 import Mate.BasicBlocks
 import Mate.X86CodeGen
@@ -26,9 +29,10 @@ main = do
     [clspath] -> do
       let bclspath = B.pack $ map (fromIntegral . ord) clspath
       cls <- getClassFile bclspath
+#ifdef DEBUG
       dumpClass cls
+#endif
       hmap <- parseMethod cls "main"
-      printMapBB hmap
       case hmap of
         Just hmap' -> do
           let methods = classMethods cls; methods :: [Method Resolved]
@@ -38,7 +42,9 @@ main = do
               let mi = (MethodInfo "main" bclspath (methodSignature m))
               entry <- compileBB hmap' mi
               addMethodRef entry mi [bclspath]
+#ifdef DEBUG
               printf "executing `main' now:\n"
+#endif
               executeFuncPtr entry
             Nothing -> error "main not found"
         Nothing -> error "main not found"

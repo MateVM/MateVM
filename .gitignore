@@ -2,6 +2,7 @@
 *.o
 *.class
 mate
+mate.dbg
 tags
 *.swp
 *_stub.c

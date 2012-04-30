@@ -1,12 +1,15 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Mate.BasicBlocks(
   BlockID,
   BasicBlock (..),
   BBEnd (..),
   MapBB,
+#ifdef DEBUG
   printMapBB,
-  parseMethod,
   test_main,
+#endif
+  parseMethod,
   testCFG -- added by hs to perform benches from outside
   )where
 
@@ -29,6 +32,7 @@ type Offset = (Int, Maybe BBEnd) -- (offset in bytecode, offset to jump target)
 type OffIns = (Offset, Instruction)
 
 
+#ifdef DEBUG
 printMapBB :: Maybe MapBB -> IO ()
 printMapBB Nothing = putStrLn "No BasicBlock"
 printMapBB (Just hmap) = do
@@ -51,13 +55,17 @@ printMapBB (Just hmap) = do
                                TwoTarget t1 t2 -> putStrLn $ "Sucessor: " ++ (show t1) ++ ", " ++ (show t2) ++ "\n"
                              printMapBB' is hmap
                   Nothing -> error $ "BlockID " ++ show i ++ " not found."
+#endif
 
+#ifdef DEBUG
 testInstance :: String -> B.ByteString -> IO ()
 testInstance cf method = do
                       cls <- parseClassFile cf
                       hmap <- parseMethod cls method
                       printMapBB hmap
+#endif
 
+#ifdef DEBUG
 test_main :: IO ()
 test_main = do
   test_01
@@ -70,14 +78,19 @@ test_01 = testInstance "./tests/Fib.class" "fib"
 test_02 = testInstance "./tests/While.class" "f"
 test_03 = testInstance "./tests/While.class" "g"
 test_04 = testInstance "./tests/Fac.class" "fac"
+#endif
 
 
 parseMethod :: Class Resolved -> B.ByteString -> IO (Maybe MapBB)
 parseMethod cls method = do
+                     let maybe_bb = testCFG $ lookupMethod method cls
+#ifdef DEBUG
                      putStr "BB: analysing: "
                      let msig = methodSignature $ (classMethods cls) !! 1
                      putStrLn $ toString (method `B.append` ": " `B.append` (encode msig))
-                     return $ testCFG $ lookupMethod method cls
+                     printMapBB maybe_bb
+#endif
+                     return maybe_bb
 
 
 testCFG :: Maybe (Method Resolved) -> Maybe MapBB

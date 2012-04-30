@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 module Mate.X86CodeGen where
@@ -14,7 +15,9 @@ import Control.Monad
 import Foreign hiding (xor)
 import Foreign.C.Types
 
+#ifdef DEFINE
 import Text.Printf
+#endif
 
 import qualified JVM.Assembler as J
 import JVM.Assembler hiding (Instruction)
@@ -33,9 +36,6 @@ import Mate.Strings
 foreign import ccall "dynamic"
    code_int :: FunPtr (CInt -> CInt -> IO CInt) -> (CInt -> CInt -> IO CInt)
 
-foreign import ccall "getaddr"
-  getaddr :: CUInt
-
 foreign import ccall "getMallocAddr"
   getMallocAddr :: CUInt
 
@@ -45,73 +45,6 @@ foreign import ccall "callertrap"
 foreign import ccall "register_signal"
   register_signal :: IO ()
 
-test_01, test_02, test_03 :: IO ()
-test_01 = do
-  register_signal
-  (entry, end) <- testCase "./tests/Fib" "fib"
-  let entryFuncPtr = ((castPtrToFunPtr entry) :: FunPtr (CInt -> CInt -> IO CInt))
-
-  mapM_ (\x -> do
-    result <- code_int entryFuncPtr x 0
-    let iresult :: Int; iresult = fromIntegral result
-    let kk :: String; kk = if iresult == (fib x) then "OK" else "FAIL (" ++ (show (fib x)) ++ ")"
-    printf "result of fib(%2d): %3d\t\t%s\n" (fromIntegral x :: Int) iresult kk
-    ) $ ([0..10] :: [CInt])
-  printf "patched disasm:\n"
-  Right newdisasm <- disassembleBlock entry end
-  mapM_ (putStrLn . showAtt) newdisasm
-  where
-    fib :: CInt -> Int
-    fib n
-      | n <= 1 = 1
-      | otherwise = (fib (n - 1)) + (fib (n - 2))
-
-
-test_02 = do
-  (entry,_) <- testCase "./tests/While" "f"
-  let entryFuncPtr = ((castPtrToFunPtr entry) :: FunPtr (CInt -> CInt -> IO CInt))
-  result <- code_int entryFuncPtr 5 4
-  let iresult :: Int; iresult = fromIntegral result
-  let kk :: String; kk = if iresult == 15 then "OK" else "FAIL"
-  printf "result of f(5,4): %3d\t\t%s\n" iresult kk
-
-  result2 <- code_int entryFuncPtr 4 3
-  let iresult2 :: Int; iresult2 = fromIntegral result2
-  let kk2 :: String; kk2 = if iresult2 == 10 then "OK" else "FAIL"
-  printf "result of f(4,3): %3d\t\t%s\n" iresult2 kk2
-
-
-test_03 = do
-  (entry,_) <- testCase "./tests/While" "g"
-  let entryFuncPtr = ((castPtrToFunPtr entry) :: FunPtr (CInt -> CInt -> IO CInt))
-  result <- code_int entryFuncPtr 5 4
-  let iresult :: Int; iresult = fromIntegral result
-  let kk :: String; kk = if iresult == 15 then "OK" else "FAIL"
-  printf "result of g(5,4): %3d\t\t%s\n" iresult kk
-
-  result2 <- code_int entryFuncPtr 4 3
-  let iresult2 :: Int; iresult2 = fromIntegral result2
-  let kk2 :: String; kk2 = if iresult2 == 10 then "OK" else "FAIL"
-  printf "result of g(4,3): %3d\t\t%s\n" iresult2 kk2
-
-
-testCase :: B.ByteString -> B.ByteString -> IO (Ptr Word8, Int)
-testCase cf method = do
-      cls <- getClassFile cf
-      hmap <- parseMethod cls method
-      printMapBB hmap
-      case hmap of
-        Nothing -> error "sorry, no code generation"
-        Just hmap' -> do
-              let ebb = emitFromBB method cls hmap'
-              (_, Right ((entry, bbstarts, end, _), disasm)) <- runCodeGen ebb () ()
-              let int_entry = ((fromIntegral $ ptrToIntPtr entry) :: Int)
-              printf "disasm:\n"
-              mapM_ (putStrLn . showAtt) disasm
-              printf "basicblocks addresses:\n"
-              let b = map (\(x,y) -> (x,y + int_entry)) $ M.toList bbstarts
-              mapM_ (\(x,y) -> printf "\tBasicBlock %2d starts at 0x%08x\n" x y) b
-              return (entry, end)
 
 type EntryPoint = Ptr Word8
 type EntryPointOffset = Int
