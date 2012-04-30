@@ -8,7 +8,8 @@ module Mate.ClassPool (
   getObjectSize,
   getMethodOffset,
   getFieldOffset,
-  getStaticFieldAddr
+  getStaticFieldAddr,
+  getInterfaceMethodOffset
   ) where
 
 import Data.Int
@@ -26,6 +27,7 @@ import Text.Printf
 import Foreign.Ptr
 import Foreign.C.Types
 import Foreign.Marshal.Alloc
+import Foreign.Storable
 
 import JVM.ClassFile
 import JVM.Converter
@@ -61,7 +63,8 @@ getFieldOffset path field = do
 getMethodOffset :: B.ByteString -> B.ByteString -> IO (Word32)
 getMethodOffset path method = do
   ci <- getClassInfo path
-  return $ fromIntegral $ (ciMethodMap ci) M.! method
+  -- (4+) one slot for "interface-table-ptr"
+  return $ (+4) $ fromIntegral $ (ciMethodMap ci) M.! method
 
 getMethodTable :: B.ByteString -> IO (Word32)
 getMethodTable path = do
@@ -87,6 +90,16 @@ getStaticFieldAddr from ptr_trapmap = do
       getStaticFieldOffset cls field
     _ -> error $ "getFieldAddr: no trapInfo. abort"
 
+-- interface + method + signature plz!
+getInterfaceMethodOffset :: B.ByteString -> B.ByteString -> B.ByteString -> IO (Word32)
+getInterfaceMethodOffset ifname meth sig = do
+  loadInterface ifname
+  ifmmap <- get_interfacemethodmap >>= ptr2interfacemethodmap
+  let k = ifname `B.append` meth `B.append` sig
+  case M.lookup k ifmmap of
+    Just w32 -> return $ (+4) w32
+    Nothing -> error $ "getInterfaceMethodOffset: no offset set"
+
 loadClass :: B.ByteString -> IO ClassInfo
 loadClass path = do
 #ifdef DEBUG
@@ -94,6 +107,8 @@ loadClass path = do
 #endif
   let rpath = toString $ path `B.append` ".class"
   cfile <- parseClassFile rpath
+  -- load all interfaces, which are implemented by this class
+  sequence_ [ loadInterface i | i <- interfaces cfile ]
   superclass <- case (path /= "java/lang/Object") of
       True -> do
         sc <- loadClass $ superClass cfile
@@ -102,13 +117,24 @@ loadClass path = do
 
   (staticmap, fieldmap) <- calculateFields cfile superclass
   (methodmap, mbase) <- calculateMethodMap cfile superclass
+  immap <- get_interfacemethodmap >>= ptr2interfacemethodmap
+
+  -- allocate interface offset table for this class
+  -- TODO(bernhard): we have some duplicates in immap (i.e. some
+  --                 entries have the same offset), so we could
+  --                 save some memory here.
+  iftable <- mallocBytes ((4*) $ M.size immap)
+  let w32_iftable = fromIntegral $ ptrToIntPtr iftable :: Word32
+  -- store interface-table at offset 0 in method-table
+  pokeElemOff (intPtrToPtr $ fromIntegral mbase) 0 w32_iftable
 #ifdef DEBUG
   printf "staticmap: %s @ %s\n" (show staticmap) (toString path)
   printf "fieldmap:  %s @ %s\n" (show fieldmap) (toString path)
   printf "methodmap: %s @ %s\n" (show methodmap) (toString path)
   printf "mbase: 0x%08x\n" mbase
+  printf "interfacemethod: %s @ %s\n" (show immap) (toString path)
+  printf "iftable: 0x%08x\n" w32_iftable
 #endif
-
   virtual_map <- get_virtualmap >>= ptr2virtualmap
   let virtual_map' = M.insert mbase path virtual_map
   virtualmap2ptr virtual_map' >>= set_virtualmap
@@ -118,6 +144,47 @@ loadClass path = do
   let class_map' = M.insert path new_ci class_map
   classmap2ptr class_map' >>= set_classmap
   return new_ci
+
+
+loadInterface :: B.ByteString -> IO ()
+loadInterface path = do
+  imap <- get_interfacesmap >>= ptr2interfacesmap
+  -- interface already loaded?
+  case M.lookup path imap of
+    Just _ -> return ()
+    Nothing -> do
+#ifdef DEBUG
+      printf "interface: loading \"%s\"\n" $ toString path
+#endif
+      let ifpath = toString $ path `B.append` ".class"
+      cfile <- parseClassFile ifpath
+      -- load "superinterfaces" first
+      sequence_ [ loadInterface i | i <- interfaces cfile ]
+      immap <- get_interfacemethodmap >>= ptr2interfacemethodmap
+
+      -- load map again, because there could be new entries now
+      -- due to loading superinterfaces
+      imap' <- get_interfacesmap >>= ptr2interfacesmap
+      let max_off = fromIntegral $ (M.size immap) * 4
+      -- create index of methods by this interface
+      let mm = zipbase max_off (classMethods cfile)
+
+      -- create for each method from *every* superinterface a entry to,
+      -- but just put in the same offset as it is already in the map
+      let (ifnames, methodnames) = unzip $ concat $
+            [ zip (repeat ifname) (classMethods $ imap' M.! ifname)
+            | ifname <- interfaces cfile ]
+      let sm = zipWith (\x y -> (entry y, immap M.! (getname x y))) ifnames methodnames
+
+      -- merge all offset tables
+      let methodmap = (M.fromList sm) `M.union` (M.fromList mm) `M.union` immap
+      interfacemethodmap2ptr methodmap >>= set_interfacemethodmap
+
+      interfacesmap2ptr (M.insert path cfile imap') >>= set_interfacesmap
+  where
+  zipbase base = zipWith (\x y -> (entry y, x + base)) [0,4..]
+  entry = getname path
+  getname p y = p `B.append` (methodName y) `B.append` (encode $ methodSignature y)
 
 
 calculateFields :: Class Resolved -> Maybe ClassInfo -> IO (FieldMap, FieldMap)
@@ -160,7 +227,8 @@ calculateMethodMap cf superclass = do
     let mm = zipbase max_off methods
     let methodmap = (M.fromList mm) `M.union` sc_mm
 
-    methodbase <- mallocBytes ((fromIntegral $ M.size methodmap) * 4)
+    -- (+1): one slot for the interface-table-ptr
+    methodbase <- mallocBytes (((+1) $ fromIntegral $ M.size methodmap) * 4)
     return (methodmap, fromIntegral $ ptrToIntPtr $ methodbase)
   where zipbase base = zipWith (\x y -> (entry y, x + base)) [0,4..]
           where entry y = (methodName y) `B.append` (encode $ methodSignature y)

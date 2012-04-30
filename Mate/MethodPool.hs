@@ -33,6 +33,21 @@ import Mate.ClassPool
 foreign import ccall "dynamic"
    code_void :: FunPtr (IO ()) -> (IO ())
 
+foreign export ccall getTrapType :: CUInt -> CUInt -> IO CUInt
+getTrapType :: CUInt -> CUInt -> IO CUInt
+getTrapType signal_from from2 = do
+  tmap <- get_trapmap >>= ptr2trapmap
+  case M.lookup (fromIntegral signal_from) tmap of
+    (Just (MI _)) -> return 0
+    (Just (VI _)) -> return 1
+    (Just (SFI _)) -> return 2
+    (Just (II _)) -> return 4
+    -- maybe we've a hit on the second `from' value
+    Nothing -> case M.lookup (fromIntegral from2) tmap of
+      (Just (VI _)) -> return 1
+      (Just (II _)) -> return 4
+      (Just _) -> error $ "getTrapType: abort #1 :-("
+      Nothing -> error $ "getTrapType: abort #2 :-("
 
 foreign export ccall getMethodEntry :: CUInt -> CUInt -> IO CUInt
 getMethodEntry :: CUInt -> CUInt -> IO CUInt
@@ -47,6 +62,8 @@ getMethodEntry signal_from methodtable = do
         case mi of
           (MI x) -> x
           (VI (MethodInfo methname _ msig)) ->
+              (MethodInfo methname (vmap M.! (fromIntegral methodtable)) msig)
+          (II (MethodInfo methname _ msig)) ->
               (MethodInfo methname (vmap M.! (fromIntegral methodtable)) msig)
           _ -> error $ "getMethodEntry: no trapInfo. abort."
   case M.lookup mi' mmap of
@@ -128,6 +145,8 @@ initMethodPool = do
   classmap2ptr M.empty >>= set_classmap
   virtualmap2ptr M.empty >>= set_virtualmap
   stringsmap2ptr M.empty >>= set_stringsmap
+  interfacesmap2ptr M.empty >>= set_interfacesmap
+  interfacemethodmap2ptr M.empty >>= set_interfacemethodmap
 
 
 addMethodRef :: Word32 -> MethodInfo -> [B.ByteString] -> IO ()

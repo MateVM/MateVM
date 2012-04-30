@@ -36,11 +36,12 @@ type TrapMap = M.Map Word32 TrapInfo
 data TrapInfo =
   MI MethodInfo | -- for static calls
   VI MethodInfo | -- for virtual calls
-  SFI StaticFieldInfo
+  II MethodInfo | -- for interface calls
+  SFI StaticFieldInfo deriving Show
 
 data StaticFieldInfo = StaticFieldInfo {
   sfiClassName :: B.ByteString,
-  sfiFieldName :: B.ByteString }
+  sfiFieldName :: B.ByteString } deriving Show
 
 
 
@@ -97,6 +98,13 @@ type StringsMap = M.Map B.ByteString Word32
 type VirtualMap = M.Map Word32 B.ByteString
 
 
+-- store each parsed Interface upon first loading
+type InterfacesMap = M.Map B.ByteString (Class Resolved)
+
+-- store offset for each <Interface><Method><Signature> pair
+type InterfaceMethodMap = M.Map B.ByteString Word32
+
+
 toString :: B.ByteString -> String
 toString bstr = decodeString $ map (chr . fromIntegral) $ B.unpack bstr
 
@@ -132,6 +140,18 @@ foreign import ccall "get_stringsmap"
 
 foreign import ccall "set_stringsmap"
   set_stringsmap :: Ptr () -> IO ()
+
+foreign import ccall "get_interfacesmap"
+  get_interfacesmap :: IO (Ptr ())
+
+foreign import ccall "set_interfacesmap"
+  set_interfacesmap :: Ptr () -> IO ()
+
+foreign import ccall "get_interfacemethodmap"
+  get_interfacemethodmap :: IO (Ptr ())
+
+foreign import ccall "set_interfacemethodmap"
+  set_interfacemethodmap :: Ptr () -> IO ()
 
 -- TODO(bernhard): make some typeclass magic 'n stuff
 --                 or remove that sh**
@@ -175,3 +195,21 @@ stringsmap2ptr cmap = do
 
 ptr2stringsmap :: Ptr () -> IO StringsMap
 ptr2stringsmap vmap = deRefStablePtr $ ((castPtrToStablePtr vmap) :: StablePtr cmap)
+
+
+interfacesmap2ptr :: InterfacesMap -> IO (Ptr ())
+interfacesmap2ptr cmap = do
+  ptr_cmap <- newStablePtr cmap
+  return $ castStablePtrToPtr ptr_cmap
+
+ptr2interfacesmap :: Ptr () -> IO InterfacesMap
+ptr2interfacesmap vmap = deRefStablePtr $ ((castPtrToStablePtr vmap) :: StablePtr cmap)
+
+
+interfacemethodmap2ptr :: InterfaceMethodMap -> IO (Ptr ())
+interfacemethodmap2ptr cmap = do
+  ptr_cmap <- newStablePtr cmap
+  return $ castStablePtrToPtr ptr_cmap
+
+ptr2interfacemethodmap :: Ptr () -> IO InterfaceMethodMap
+ptr2interfacemethodmap vmap = deRefStablePtr $ ((castPtrToStablePtr vmap) :: StablePtr cmap)

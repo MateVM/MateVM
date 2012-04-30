@@ -22,8 +22,10 @@ lookupMethod name cls = look (classMethods cls)
 
 buildMethodID :: Class Resolved -> Word16 -> MethodInfo
 buildMethodID cls idx = MethodInfo (ntName nt) rc (ntSignature nt)
-  where
-  (CMethod rc nt) = (constsPool cls) M.! idx
+  where (rc, nt) = case (constsPool cls) M.! idx of
+                    (CMethod rc' nt') -> (rc', nt')
+                    (CIfaceMethod rc' nt') -> (rc', nt')
+                    _ -> error $ "buildMethodID: something wrong. abort."
 
 buildStaticFieldID :: Class Resolved -> Word16 -> StaticFieldInfo
 buildStaticFieldID cls idx = StaticFieldInfo rc (ntName fnt)
@@ -40,7 +42,10 @@ buildClassID cls idx = cl
 methodGetArgsCount :: Class Resolved -> Word16 -> Word32
 methodGetArgsCount cls idx = fromIntegral $ length args
   where
-  (CMethod _ nt) = (constsPool cls) M.! idx
+  nt = case (constsPool cls) M.! idx of
+    (CMethod _ nt') -> nt'
+    (CIfaceMethod _ nt') -> nt'
+    _ -> error $ "methodGetArgsCount: something wrong. abort."
   (MethodSignature args _) = ntSignature nt
 
 -- TODO(bernhard): Extend it to more than just int, and provide typeinformation
@@ -51,5 +56,8 @@ methodHaveReturnValue cls idx = case ret of
     (Returns (ObjectType _)) -> True;
     _ -> error "methodHaveReturnValue: todo"
   where
-  (CMethod _ nt) = (constsPool cls) M.! idx
+  nt = case (constsPool cls) M.! idx of
+    (CMethod _ nt') -> nt'
+    (CIfaceMethod _ nt') -> nt'
+    _ -> error $ "methodHaveReturnValue: something wrong. abort."
   (MethodSignature _ ret) = ntSignature nt

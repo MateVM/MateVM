@@ -15,10 +15,6 @@ import Control.Monad
 import Foreign hiding (xor)
 import Foreign.C.Types
 
-#ifdef DEFINE
-import Text.Printf
-#endif
-
 import qualified JVM.Assembler as J
 import JVM.Assembler hiding (Instruction)
 import JVM.ClassFile
@@ -123,6 +119,30 @@ emitFromBB method cls hmap =  do
     emit' :: J.Instruction -> CodeGen e s (Maybe (Word32, TrapInfo))
     emit' (INVOKESPECIAL cpidx) = emitInvoke cpidx True
     emit' (INVOKESTATIC cpidx) = emitInvoke cpidx False
+    emit' (INVOKEINTERFACE cpidx _) = do
+        -- get methodInfo entry
+        let mi@(MethodInfo methodname ifacename msig@(MethodSignature args _)) = buildMethodID cls cpidx
+        newNamedLabel (show mi) >>= defineLabel
+        -- objref lives somewhere on the argument stack
+        mov eax (Disp ((*4) $ fromIntegral $ length args), esp)
+        -- get method-table-ptr, keep it in eax (for trap handling)
+        mov eax (Disp 0, eax)
+        -- get interface-table-ptr
+        mov ebx (Disp 0, eax)
+        -- get method offset
+        offset <- liftIO $ getInterfaceMethodOffset ifacename methodname (encode msig)
+        -- make actual (indirect) call
+        calladdr <- getCurrentOffset
+        call (Disp offset, ebx)
+        -- discard arguments on stack (+4 for "this")
+        let argcnt = 4 + ((methodGetArgsCount cls cpidx) * 4)
+        when (argcnt > 0) (add esp argcnt)
+        -- push result on stack if method has a return value
+        when (methodHaveReturnValue cls cpidx) (push eax)
+        -- note, the "mi" has the wrong class reference here.
+        -- we figure that out at run-time, in the methodpool,
+        -- depending on the method-table-ptr
+        return $ Just $ (calladdr, II mi)
     emit' (INVOKEVIRTUAL cpidx) = do
         -- get methodInfo entry
         let mi@(MethodInfo methodname objname msig@(MethodSignature args _))  = buildMethodID cls cpidx
