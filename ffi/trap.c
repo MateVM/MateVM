@@ -56,7 +56,7 @@ void mainresult(unsigned int a)
 	dprintf("mainresult: 0x%08x\n", a);
 }
 
-void callertrap(int nSignal, siginfo_t *info, void *ctx)
+void staticcalltrap(int nSignal, siginfo_t *info, void *ctx)
 {
 	mcontext_t *mctx = &((ucontext_t *) ctx)->uc_mcontext;
 	unsigned int from = (unsigned int) mctx->gregs[REG_EIP] - 2;
@@ -77,70 +77,77 @@ void callertrap(int nSignal, siginfo_t *info, void *ctx)
 	mctx->gregs[REG_EIP] = (unsigned long) insn;
 }
 
-void staticfieldtrap(int nSignal, siginfo_t *info, void *ctx)
+void sigsegvtrap(int nSignal, siginfo_t *info, void *ctx)
 {
-	/* TODO(bernhard): more generic and cleaner please... */
 	mcontext_t *mctx = &((ucontext_t *) ctx)->uc_mcontext;
 	unsigned int from = (unsigned int) mctx->gregs[REG_EIP];
 	unsigned int *esp = (unsigned int *) mctx->gregs[REG_ESP];
+
 	/* if from is not *the* eip: get actual eip from stack storage */
 	unsigned int from_stack = (*esp) - 3;
-	unsigned int type = getTrapType(from, from_stack);
-	if (type == 0) {
-		dprintf("something is wrong here: abort\n");
-		exit(1);
-	} else if (type == 1) {
-		if (from > 0) {
-			dprintf("from: 0x%08x but should be 0 :-(\n", from);
-		}
-		unsigned int method_table_ptr = (unsigned int) mctx->gregs[REG_EAX];
-		unsigned char offset = *((unsigned char *) (*esp) - 1);
-		/* method entry to patch */
-		unsigned int *to_patch = (unsigned int*) (method_table_ptr + offset);
-		dprintf("invokevirtual by 0x%08x with offset 0x%08x\n", from_stack, offset);
-		dprintf(" to_patch: 0x%08x\n", (unsigned int) to_patch);
-		dprintf("*to_patch: 0x%08x\n", *to_patch);
-		*to_patch = getMethodEntry(from_stack, method_table_ptr);
-		mctx->gregs[REG_EIP] = *to_patch;
-		dprintf("*to_patch: 0x%08x\n", *to_patch);
-	} else if (type == 4) {
-		unsigned int method_table_ptr = (unsigned int) mctx->gregs[REG_EAX];
-		unsigned int interface_table_ptr = (unsigned int) mctx->gregs[REG_EBX];
-		unsigned char offset = *((unsigned char *) (*esp) - 1);
-		/* interface entry to patch */
-		unsigned int *to_patch = (unsigned int*) (interface_table_ptr + offset);
-		dprintf("invokeinterface by 0x%08x with offset 0x%08x\n", from_stack, offset);
-		dprintf(" to_patch: 0x%08x\n", (unsigned int) to_patch);
-		dprintf("*to_patch: 0x%08x\n", *to_patch);
-		*to_patch = getMethodEntry(from_stack, method_table_ptr);
-		mctx->gregs[REG_EIP] = *to_patch;
-		dprintf("*to_patch: 0x%08x\n", *to_patch);
-	} else if (type == 2) {
-	unsigned int *to_patch = (unsigned int *) (from + 2);
-	dprintf("staticfieldtrap by 0x%08x\n", from);
-	if (*to_patch != 0x00000000) {
-		dprintf("staticfieldtrap: something is wrong here. abort\n");
-		exit(0);
-	}
-	unsigned int patchme = getStaticFieldAddr(from, trap_map);
+	switch(getTrapType(from, from_stack)) {
+		default: case 0: {
+			dprintf("something is wrong here: abort\n");
+			exit(1);
+		} break;
+		case 1: { // invokevirtual
+			if (from > 0) {
+				dprintf("from: 0x%08x but should be 0 :-(\n", from);
+			}
+			unsigned int method_table_ptr = (unsigned int) mctx->gregs[REG_EAX];
+			unsigned char offset = *((unsigned char *) (*esp) - 1);
+			/* method entry to patch */
+			unsigned int *to_patch = (unsigned int*) (method_table_ptr + offset);
+			dprintf("invokevirtual by 0x%08x with offset 0x%08x\n", from_stack, offset);
+			dprintf(" to_patch: 0x%08x\n", (unsigned int) to_patch);
+			dprintf("*to_patch: 0x%08x\n", *to_patch);
+			*to_patch = getMethodEntry(from_stack, method_table_ptr);
+			mctx->gregs[REG_EIP] = *to_patch;
+			dprintf("*to_patch: 0x%08x\n", *to_patch);
+		} break;
+		case 4: { // invokeinterface
+			if (from > 0) {
+				dprintf("from: 0x%08x but should be 0 :-(\n", from);
+			}
+			unsigned int method_table_ptr = (unsigned int) mctx->gregs[REG_EAX];
+			unsigned int interface_table_ptr = (unsigned int) mctx->gregs[REG_EBX];
+			unsigned char offset = *((unsigned char *) (*esp) - 1);
+			/* interface entry to patch */
+			unsigned int *to_patch = (unsigned int*) (interface_table_ptr + offset);
+			dprintf("invokeinterface by 0x%08x with offset 0x%08x\n", from_stack, offset);
+			dprintf(" to_patch: 0x%08x\n", (unsigned int) to_patch);
+			dprintf("*to_patch: 0x%08x\n", *to_patch);
+			*to_patch = getMethodEntry(from_stack, method_table_ptr);
+			mctx->gregs[REG_EIP] = *to_patch;
+			dprintf("*to_patch: 0x%08x\n", *to_patch);
+		} break;
+		case 2: { // static field patch
+			unsigned int *to_patch = (unsigned int *) (from + 2);
+			dprintf("staticfieldtrap by 0x%08x\n", from);
+			if (*to_patch != 0x00000000) {
+				dprintf("staticfieldtrap: something is wrong here. abort\n");
+				exit(0);
+			}
+			unsigned int patchme = getStaticFieldAddr(from, trap_map);
 
-	dprintf(" to_patch: 0x%08x\n", (unsigned int) to_patch);
-	dprintf("*to_patch: 0x%08x\n", *to_patch);
-	*to_patch = patchme;
-	dprintf("*to_patch: 0x%08x\n", *to_patch);
+			dprintf(" to_patch: 0x%08x\n", (unsigned int) to_patch);
+			dprintf("*to_patch: 0x%08x\n", *to_patch);
+			*to_patch = patchme;
+			dprintf("*to_patch: 0x%08x\n", *to_patch);
+		} break;
 	}
 }
 
 void register_signal(void)
 {
 	struct sigaction illaction;
-	illaction.sa_sigaction = callertrap;
+	illaction.sa_sigaction = staticcalltrap;
 	sigemptyset(&illaction.sa_mask);
 	illaction.sa_flags = SA_SIGINFO | SA_RESTART | SA_NODEFER;
 	sigaction(SIGILL, &illaction, NULL);
 
 	struct sigaction segvaction;
-	segvaction.sa_sigaction = staticfieldtrap;
+	segvaction.sa_sigaction = sigsegvtrap;
 	sigemptyset(&segvaction.sa_mask);
 	segvaction.sa_flags = SA_SIGINFO | SA_RESTART | SA_NODEFER;
 	sigaction(SIGSEGV, &segvaction, NULL);

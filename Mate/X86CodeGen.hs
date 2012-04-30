@@ -35,9 +35,6 @@ foreign import ccall "dynamic"
 foreign import ccall "getMallocAddr"
   getMallocAddr :: CUInt
 
-foreign import ccall "callertrap"
-  callertrap :: IO ()
-
 foreign import ccall "register_signal"
   register_signal :: IO ()
 
