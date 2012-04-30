@@ -76,7 +76,7 @@ parseMethod :: Class Resolved -> B.ByteString -> IO (Maybe MapBB)
 parseMethod cls method = do
                      putStr "BB: analysing: "
                      let msig = methodSignature $ (classMethods cls) !! 1
-                     B.putStrLn (method `B.append` ": " `B.append` (encode msig))
+                     putStrLn $ toString (method `B.append` ": " `B.append` (encode msig))
                      return $ testCFG $ lookupMethod method cls
 
 
