@@ -44,15 +44,16 @@ void java_io_PrintStream__printf___I_V(int a)
 	printf("printstream: 0x%08x\n", a);
 }
 
-void java_io_PrintStream__println___Ljava_lang_String__V(const char *a)
-{
-	printf("%s\n", a);
-}
-
 struct integer {
 	unsigned int method_table_ptr;
 	int value;
 };
+
+void java_io_PrintStream__printf_0___Ljava_lang_String__V
+	(const char *fmt)
+{
+	printf("%s", fmt);
+}
 
 void java_io_PrintStream__printf_1___Ljava_lang_String_Ljava_lang_Object__V
 	(struct integer *a1, const char *fmt)
