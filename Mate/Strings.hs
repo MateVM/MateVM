@@ -7,6 +7,7 @@ module Mate.Strings (
 import Data.Word
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as B
+import qualified Data.ByteString.Internal as BI
 import Text.Printf
 
 import Foreign.Ptr
@@ -31,10 +32,11 @@ getUniqueStringAddr str = do
 allocateJavaString :: B.ByteString -> IO Word32
 allocateJavaString str = do
   -- TODO(bernhard): is this also true for UTF8 stuff?
-  -- (+1) for \0
-  let strlen = (+1) $ fromIntegral $ B.length str
+  let strlen = fromIntegral $ B.length str
   arr <- newArray $ ((map fromIntegral $ B.unpack str) :: [Word8])
-  newstr <- mallocBytes strlen
+  -- (+1) for \0
+  newstr <- mallocBytes (strlen + 1)
+  BI.memset newstr 0 (fromIntegral $ strlen + 1)
   copyBytes newstr arr strlen
   let w32_ptr = fromIntegral $ ptrToIntPtr newstr
   printf "new str ptr: 0x%08x (%s)@%d\n" w32_ptr (toString str) strlen
