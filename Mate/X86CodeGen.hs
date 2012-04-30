@@ -265,7 +265,7 @@ emitFromBB method cls hmap =  do
         push eax -- push ref again
     emit (NEW objidx) = do
         let objname = buildClassID cls objidx
-        amount <- liftIO $ getMethodSize objname
+        amount <- liftIO $ getObjectSize objname
         push (amount :: Word32)
         callMalloc
         -- TODO(bernhard): save reference somewhere for GC

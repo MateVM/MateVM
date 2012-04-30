@@ -4,7 +4,7 @@ module Mate.ClassPool (
   getClassInfo,
   getClassFile,
   getMethodTable,
-  getMethodSize,
+  getObjectSize,
   getMethodOffset,
   getFieldOffset,
   getStaticFieldAddr
@@ -65,12 +65,13 @@ getMethodTable path = do
   ci <- getClassInfo path
   return $ ciMethodBase ci
 
-getMethodSize :: B.ByteString -> IO (Word32)
-getMethodSize path = do
+getObjectSize :: B.ByteString -> IO (Word32)
+getObjectSize path = do
   ci <- getClassInfo path
   -- TODO(bernhard): correct sizes for different types...
-  let msize = fromIntegral $ M.size $ ciMethodMap ci
-  return $ (1 + msize) * 4
+  let fsize = fromIntegral $ M.size $ ciFieldMap ci
+  -- one slot for "method-table-ptr"
+  return $ (1 + fsize) * 4
 
 foreign export ccall getStaticFieldAddr :: CUInt -> Ptr () -> IO CUInt
 getStaticFieldAddr :: CUInt -> Ptr () -> IO CUInt
