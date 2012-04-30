@@ -19,7 +19,7 @@ GHC_LD := -optl-Xlinker -optl-x
 
 all: mate $(CLASS_FILES)
 
-test: mate $(TEST_CLASS_FILES)
+tests: mate $(TEST_CLASS_FILES)
 
 %: %.class mate
 	@./tools/openjdktest.sh $@
