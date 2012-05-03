@@ -1,3 +1,67 @@
+(l) proper java native interface (JNI)
+	-> atm just hackish solution.
+	-> also, arguments are passed in the wrong order
+	-> estimated effort: 3-4 days
+
+(l) exceptions
+	-> for gnu classpath absolutely necessary
+	-> estimated effort: unknown
+
+(l) gnu classpath integration
+	-> would be awwwesome
+	-> depends on: exceptions, jni (?)
+	-> estimated effort: unknown
+
+(m) testing: hunit? quickcheck? other?
+	-> we have `make tests' now, but it should be only considered as
+	   high-level test. we need something
+	-> estimated effort: for infrastructure, 2-3 days
+
+(l) instanceof, checkcast
+	-> typechecking at runtime. with displays or something
+	-> depends on: exceptions (not absolutely necessary, but preferable)
+	-> estimated effort: 1 day
+
+(h) bug (?): can there be a namespace clash with static and non-static methods?
+	-> the signature doesn't contain the static modifier
+	-> estimated effort: some hours (if a fix is needed)
+
+(h) global map hack:
+	-> it's an stupid and ugly hack. we don't want that.
+	-> estimated effort: unknown. research for a solution is needed
+
+(m) hlint
+
+(l) cabal file
+
+(h) so much cleanup...
+
+(l) check different types (byte, long, ...)
+
+(l) floating point support
+
+(h) better code generation
+	-> at least peephole optimazation would be nice (e.g. kill `push eax; pop
+	eax')
+	-> but we want more!!11 ;-)
+	-> estimated effort: 2-3 weeks
+
+(m) benchmark for presentation
+
+
+(l) ... low priority
+(m) ... medium priority
+(h) ... high priority
+
+
+what we won't do anytime soon:
+( ) garbage collection
+( ) thread support
+( ) verifier
+
+
+
+/* old stuff */
 Design Meeting - 21.March.2012
 
 
@@ -10,5 +74,3 @@ Design Meeting - 21.March.2012
 
 
 TODO: Basic-Block Analyis, Dereferencing .class file shit - during or after BBA, 
-
-
