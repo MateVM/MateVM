@@ -1,6 +1,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
+#include "debug.h"
 module Mate.Strings (
   getUniqueStringAddr
   ) where
@@ -19,6 +20,7 @@ import Foreign.Marshal.Utils
 import Foreign.Marshal.Array
 
 import Mate.Types
+import Mate.Debug
 
 
 getUniqueStringAddr :: B.ByteString -> IO Word32
@@ -42,7 +44,5 @@ allocateJavaString str = do
   BI.memset newstr 0 (fromIntegral $ strlen + 1)
   copyBytes newstr arr strlen
   let w32_ptr = fromIntegral $ ptrToIntPtr newstr
-#ifdef DEBUG
-  printf "new str ptr: 0x%08x (%s)@%d\n" w32_ptr (toString str) strlen
-#endif
+  printf_str "new str ptr: 0x%08x (%s)@%d\n" w32_ptr (toString str) strlen
   return w32_ptr

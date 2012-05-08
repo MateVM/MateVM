@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "../debug.h"
+
 /* TODO(bernhard): use {u,}int* types */
 
 #define __USE_GNU
@@ -23,7 +25,7 @@ unsigned int getMethodEntry(unsigned int, unsigned int);
 unsigned int getStaticFieldAddr(unsigned int, void*);
 unsigned int getTrapType(unsigned int, unsigned int);
 
-#ifdef DEBUG
+#ifdef DBG_TRAP
 #define dprintf(args...) do { printf (args); } while (0);
 #else
 #define dprintf(args...)

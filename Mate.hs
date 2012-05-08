@@ -1,5 +1,6 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
+#include "debug.h"
 module Main where
 
 import System.Environment
@@ -9,8 +10,6 @@ import qualified Data.ByteString.Lazy as B
 
 #ifdef DEBUG
 import Text.Printf
-
-import JVM.Dump
 #endif
 import JVM.ClassFile
 
@@ -29,9 +28,6 @@ main = do
     [clspath] -> do
       let bclspath = B.pack $ map (fromIntegral . ord) clspath
       cls <- getClassFile bclspath
-#ifdef DEBUG
-      dumpClass cls
-#endif
       hmap <- parseMethod cls "main"
       case hmap of
         Just hmap' -> do

@@ -1,6 +1,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
+#include "debug.h"
 module Mate.ClassPool (
   getClassInfo,
   getClassFile,
@@ -23,6 +24,9 @@ import Control.Monad
 #ifdef DEBUG
 import Text.Printf
 #endif
+#ifdef DBG_CLASS
+import JVM.Dump
+#endif
 
 import Foreign.Ptr
 import Foreign.C.Types
@@ -36,6 +40,7 @@ import Mate.BasicBlocks
 import {-# SOURCE #-} Mate.MethodPool
 import Mate.Types
 import Mate.Utilities
+import Mate.Debug
 
 getClassInfo :: B.ByteString -> IO ClassInfo
 getClassInfo path = do
@@ -100,13 +105,14 @@ getInterfaceMethodOffset ifname meth sig = do
     Just w32 -> return $ (+4) w32
     Nothing -> error $ "getInterfaceMethodOffset: no offset set"
 
+
 loadClass :: B.ByteString -> IO ClassInfo
 loadClass path = do
-#ifdef DEBUG
-  printf "loadClass: \"%s\"\n" $ toString path
-#endif
   let rpath = toString $ path `B.append` ".class"
   cfile <- parseClassFile rpath
+#ifdef DBG_CLASS
+  dumpClass cfile
+#endif
   -- load all interfaces, which are implemented by this class
   sequence_ [ loadInterface i | i <- interfaces cfile ]
   superclass <- case (path /= "java/lang/Object") of
@@ -127,14 +133,12 @@ loadClass path = do
   let w32_iftable = fromIntegral $ ptrToIntPtr iftable :: Word32
   -- store interface-table at offset 0 in method-table
   pokeElemOff (intPtrToPtr $ fromIntegral mbase) 0 w32_iftable
-#ifdef DEBUG
-  printf "staticmap: %s @ %s\n" (show staticmap) (toString path)
-  printf "fieldmap:  %s @ %s\n" (show fieldmap) (toString path)
-  printf "methodmap: %s @ %s\n" (show methodmap) (toString path)
-  printf "mbase: 0x%08x\n" mbase
-  printf "interfacemethod: %s @ %s\n" (show immap) (toString path)
-  printf "iftable: 0x%08x\n" w32_iftable
-#endif
+  printf_cp "staticmap: %s @ %s\n" (show staticmap) (toString path)
+  printf_cp "fieldmap:  %s @ %s\n" (show fieldmap) (toString path)
+  printf_cp "methodmap: %s @ %s\n" (show methodmap) (toString path)
+  printf_cp "mbase: 0x%08x\n" mbase
+  printf_cp "interfacemethod: %s @ %s\n" (show immap) (toString path)
+  printf_cp "iftable: 0x%08x\n" w32_iftable
   virtual_map <- get_virtualmap >>= ptr2virtualmap
   let virtual_map' = M.insert mbase path virtual_map
   virtualmap2ptr virtual_map' >>= set_virtualmap
@@ -153,9 +157,7 @@ loadInterface path = do
   case M.lookup path imap of
     Just _ -> return ()
     Nothing -> do
-#ifdef DEBUG
-      printf "interface: loading \"%s\"\n" $ toString path
-#endif
+      printf_cp "interface: loading \"%s\"\n" $ toString path
       let ifpath = toString $ path `B.append` ".class"
       cfile <- parseClassFile ifpath
       -- load "superinterfaces" first
@@ -253,13 +255,9 @@ loadAndInitClass path = do
           let mi = (MethodInfo "<clinit>" path (methodSignature m))
           entry <- compileBB hmap' mi
           addMethodRef entry mi [path]
-#ifdef DEBUG
-          printf "executing static initializer from %s now\n" (toString path)
-#endif
+          printf_cp "executing static initializer from %s now\n" (toString path)
           executeFuncPtr entry
-#ifdef DEBUG
-          printf "static initializer from %s done\n" (toString path)
-#endif
+          printf_cp "static initializer from %s done\n" (toString path)
         Nothing -> error $ "loadClass: static initializer not found (WTF?). abort"
     Nothing -> return ()
 

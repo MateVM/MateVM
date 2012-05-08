@@ -1,3 +1,4 @@
+#include "debug.h"
 module Mate.RegisterAllocation where
 
 import Data.List

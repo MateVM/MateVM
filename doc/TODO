@@ -36,6 +36,11 @@
 
 (h) so much cleanup...
 
+(h) get rid of trap.c
+	-> it's C. we don't want that.
+	-> at the moment System.Posix.Signal isn't powerful enough
+	-> wait for: http://hackage.haskell.org/trac/ghc/ticket/2451
+
 (l) check different types (byte, long, ...)
 
 (l) floating point support

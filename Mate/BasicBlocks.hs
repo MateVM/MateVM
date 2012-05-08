@@ -1,11 +1,12 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
+#include "debug.h"
 module Mate.BasicBlocks(
   BlockID,
   BasicBlock (..),
   BBEnd (..),
   MapBB,
-#ifdef DEBUG
+#ifdef DBG_BB
   printMapBB,
   test_main,
 #endif
@@ -25,6 +26,7 @@ import JVM.Assembler
 
 import Mate.Utilities
 import Mate.Types
+import Mate.Debug
 
 #ifdef DEBUG
 import Text.Printf
@@ -35,7 +37,7 @@ type Offset = (Int, Maybe BBEnd) -- (offset in bytecode, offset to jump target)
 type OffIns = (Offset, Instruction)
 
 
-#ifdef DEBUG
+#ifdef DBG_BB
 printMapBB :: Maybe MapBB -> IO ()
 printMapBB Nothing = putStrLn "No BasicBlock"
 printMapBB (Just hmap) = do
@@ -60,7 +62,7 @@ printMapBB (Just hmap) = do
                   Nothing -> error $ "BlockID " ++ show i ++ " not found."
 #endif
 
-#ifdef DEBUG
+#ifdef DBG_BB
 testInstance :: String -> B.ByteString -> IO ()
 testInstance cf method = do
                       cls <- parseClassFile cf
@@ -68,7 +70,7 @@ testInstance cf method = do
                       printMapBB hmap
 #endif
 
-#ifdef DEBUG
+#ifdef DBG_BB
 test_main :: IO ()
 test_main = do
   test_01
@@ -87,21 +89,18 @@ test_04 = testInstance "./tests/Fac.class" "fac"
 parseMethod :: Class Resolved -> B.ByteString -> IO (Maybe MapBB)
 parseMethod cls method = do
                      let maybe_bb = testCFG $ lookupMethod method cls
-#ifdef DEBUG
-                     putStr "BB: analysing: "
                      let msig = methodSignature $ (classMethods cls) !! 1
-                     putStrLn $ toString (method `B.append` ": " `B.append` (encode msig))
+                     printf_bb "BB: analysing \"%s\"\n" $ toString (method `B.append` ": " `B.append` (encode msig))
+#ifdef DBG_BB
                      printMapBB maybe_bb
 #endif
-#ifdef DEBUG
                      -- small example how to get information about
                      -- exceptions of a method
                      -- TODO: remove ;-)
                      let (Just m) = lookupMethod method cls
                      case attrByName m "Code" of
-                      Nothing -> printf "exception: no handler for this method\n"
-                      Just exceptionstream -> printf "exception: \"%s\"\n" (show $ codeExceptions $ decodeMethod exceptionstream)
-#endif
+                      Nothing -> printf_bb "exception: no handler for this method\n"
+                      Just exceptionstream -> printf_bb "exception: \"%s\"\n" (show $ codeExceptions $ decodeMethod exceptionstream)
                      return maybe_bb
 
 

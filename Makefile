@@ -11,7 +11,7 @@ O_FILES = $(shell ls Mate/*.o) $(wildcard ffi/*.o)
 PACKAGES_ := bytestring harpy hs-java
 PACKAGES := $(addprefix -package ,$(PACKAGES_))
 
-GHC_OPT := -dynamic -Wall -O0 -fno-warn-unused-do-bind
+GHC_OPT := -I. -dynamic -Wall -O0 -fno-warn-unused-do-bind
 GHC_LD := -optl-Xlinker -optl-x
 
 
@@ -37,10 +37,15 @@ mate: Mate.hs ffi/trap.c $(HS_FILES) $(HS_BOOT) ffi/native.o
 %.dbg: %.class mate.dbg
 	./mate.dbg $(basename $<)
 
+ifeq (${DBGFLAGS},)
+DEBUGFLAGS = -DDBG_JIT -DDBG_MP
+else
+DEBUGFLAGS = ${DBGFLAGS}
+endif
 mate.dbg: Mate.hs ffi/trap.c $(HS_FILES) $(HS_BOOT) ffi/native.o
 	@mkdir -p build/debug/{ffi,Mate,}
-	gcc -Wall -DDEBUG -O0 -c ffi/trap.c -o build/debug/ffi/trap.o
-	ghc --make -DDEBUG $(GHC_OPT) Mate.hs build/debug/ffi/trap.o -o $@ $(GHC_LD) -outputdir build/debug
+	gcc -Wall $(DEBUGFLAGS) -O0 -c ffi/trap.c -o build/debug/ffi/trap.o
+	ghc --make $(DEBUGFLAGS) $(GHC_OPT) Mate.hs build/debug/ffi/trap.o -o $@ $(GHC_LD) -outputdir build/debug
 
 clean:
 	rm -rf build mate mate.dbg ffi/native.o tests/*.class
