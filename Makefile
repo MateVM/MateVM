@@ -4,7 +4,7 @@ JAVAC := javac
 JAVA_FILES := $(wildcard tests/*.java java/lang/*.java java/io/*.java)
 CLASS_FILES := $(JAVA_FILES:.java=.class)
 TEST_JAVA_FILES := $(wildcard tests/*.java)
-TEST_CLASS_FILES := $(TEST_JAVA_FILES:.java=)
+TEST_CLASS_FILES := $(TEST_JAVA_FILES:.java=.test)
 HS_FILES := $(wildcard Mate/*.hs)
 HS_BOOT := $(wildcard Mate/*.hs-boot)
 O_FILES = $(shell ls Mate/*.o) $(wildcard ffi/*.o)
@@ -19,10 +19,15 @@ GHC_LD := -optl-Xlinker -optl-x
 
 all: mate $(CLASS_FILES)
 
+%: %.class mate
+	./mate $(basename $<)
+
+
 tests: mate $(TEST_CLASS_FILES)
 
-%: %.class mate
-	@./tools/openjdktest.sh $@
+%.test: %.class mate
+	@./tools/openjdktest.sh $(basename $@)
+
 
 %.class: %.java
 	$(JAVAC) $<
