@@ -26,6 +26,9 @@ import JVM.Assembler
 import Mate.Utilities
 import Mate.Types
 
+#ifdef DEBUG
+import Text.Printf
+#endif
 
 -- for immediate representation to determine BBs
 type Offset = (Int, Maybe BBEnd) -- (offset in bytecode, offset to jump target)
@@ -89,6 +92,15 @@ parseMethod cls method = do
                      let msig = methodSignature $ (classMethods cls) !! 1
                      putStrLn $ toString (method `B.append` ": " `B.append` (encode msig))
                      printMapBB maybe_bb
+#endif
+#ifdef DEBUG
+                     -- small example how to get information about
+                     -- exceptions of a method
+                     -- TODO: remove ;-)
+                     let (Just m) = lookupMethod method cls
+                     case attrByName m "Code" of
+                      Nothing -> printf "exception: no handler for this method\n"
+                      Just exceptionstream -> printf "exception: \"%s\"\n" (show $ codeExceptions $ decodeMethod exceptionstream)
 #endif
                      return maybe_bb
 
