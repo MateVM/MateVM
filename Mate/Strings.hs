@@ -1,6 +1,5 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ForeignFunctionInterface #-}
 #include "debug.h"
 module Mate.Strings (
   getUniqueStringAddr
@@ -38,7 +37,7 @@ allocateJavaString :: B.ByteString -> IO Word32
 allocateJavaString str = do
   -- TODO(bernhard): is this also true for UTF8 stuff?
   let strlen = fromIntegral $ B.length str
-  arr <- newArray $ ((map fromIntegral $ B.unpack str) :: [Word8])
+  arr <- newArray ((map fromIntegral $ B.unpack str) :: [Word8])
   -- (+1) for \0
   newstr <- mallocString (strlen + 1)
   BI.memset newstr 0 (fromIntegral $ strlen + 1)

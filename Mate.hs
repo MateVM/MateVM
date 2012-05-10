@@ -32,10 +32,10 @@ main = do
       case hmap of
         Just hmap' -> do
           let methods = classMethods cls; methods :: [Method Resolved]
-          let method = find (\x -> (methodName x) == "main") methods
+          let method = find (\x -> methodName x == "main") methods
           case method of
             Just m -> do
-              let mi = (MethodInfo "main" bclspath (methodSignature m))
+              let mi = MethodInfo "main" bclspath $ methodSignature m
               entry <- compileBB hmap' mi
               addMethodRef entry mi [bclspath]
 #ifdef DEBUG

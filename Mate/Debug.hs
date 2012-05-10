@@ -14,7 +14,7 @@ instance VarArgsFake (IO a) where
   varFake _ = return undefined
 
 instance (Show a, VarArgsFake r) => VarArgsFake (a -> r) where
-  varFake _ = \_ -> varFake []
+  varFake _ _ = varFake []
 
 printfFake :: String -> (VarArgsFake t) => t
 printfFake _ = varFake []

@@ -36,7 +36,7 @@ count p = length . filter p
 degree g@(IGraph xs) label = count (isParticipiant label) xs
 
 
-doChaitin81 :: (Eq a) => IArchitecture -> (IGraph a) -> [Assignment a]
+doChaitin81 :: (Eq a) => IArchitecture -> IGraph a -> [Assignment a]
 doChaitin81 numberOfRegisters graph = []
 
 type IState a = ([a],IGraph a)

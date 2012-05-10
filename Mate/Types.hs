@@ -60,13 +60,12 @@ data MethodInfo = MethodInfo {
 instance Ord MethodSignature where
   compare (MethodSignature args_a ret_a) (MethodSignature args_b ret_b)
     | cmp_args /= EQ = cmp_args
-    | otherwise = (show ret_a) `compare` (show ret_b)
-    where
-    cmp_args = (show args_a) `compare` (show args_b)
+    | otherwise = show ret_a `compare` show ret_b
+    where cmp_args = show args_a `compare` show args_b
 
 instance Show MethodInfo where
   show (MethodInfo method c sig) =
-    (toString c) ++ "." ++ (toString method) ++ "." ++ (show sig)
+    toString c ++ "." ++ toString method ++ "." ++ show sig
 
 
 
@@ -161,7 +160,7 @@ methodmap2ptr methodmap = do
   return $ castStablePtrToPtr ptr_methodmap
 
 ptr2methodmap :: Ptr () -> IO MethodMap
-ptr2methodmap methodmap = deRefStablePtr $ ((castPtrToStablePtr methodmap) :: StablePtr MethodMap)
+ptr2methodmap methodmap = deRefStablePtr (castPtrToStablePtr methodmap :: StablePtr MethodMap)
 
 trapmap2ptr :: TrapMap -> IO (Ptr ())
 trapmap2ptr trapmap = do
@@ -169,7 +168,7 @@ trapmap2ptr trapmap = do
   return $ castStablePtrToPtr ptr_trapmap
 
 ptr2trapmap :: Ptr () -> IO TrapMap
-ptr2trapmap vmap = deRefStablePtr $ ((castPtrToStablePtr vmap) :: StablePtr trapmap)
+ptr2trapmap vmap = deRefStablePtr (castPtrToStablePtr vmap :: StablePtr trapmap)
 
 classmap2ptr :: ClassMap -> IO (Ptr ())
 classmap2ptr cmap = do
@@ -177,7 +176,7 @@ classmap2ptr cmap = do
   return $ castStablePtrToPtr ptr_cmap
 
 ptr2classmap :: Ptr () -> IO ClassMap
-ptr2classmap vmap = deRefStablePtr $ ((castPtrToStablePtr vmap) :: StablePtr cmap)
+ptr2classmap vmap = deRefStablePtr (castPtrToStablePtr vmap :: StablePtr cmap)
 
 virtualmap2ptr :: VirtualMap -> IO (Ptr ())
 virtualmap2ptr cmap = do
@@ -185,7 +184,7 @@ virtualmap2ptr cmap = do
   return $ castStablePtrToPtr ptr_cmap
 
 ptr2virtualmap :: Ptr () -> IO VirtualMap
-ptr2virtualmap vmap = deRefStablePtr $ ((castPtrToStablePtr vmap) :: StablePtr cmap)
+ptr2virtualmap vmap = deRefStablePtr (castPtrToStablePtr vmap :: StablePtr cmap)
 
 
 stringsmap2ptr :: StringsMap -> IO (Ptr ())
@@ -194,7 +193,7 @@ stringsmap2ptr cmap = do
   return $ castStablePtrToPtr ptr_cmap
 
 ptr2stringsmap :: Ptr () -> IO StringsMap
-ptr2stringsmap vmap = deRefStablePtr $ ((castPtrToStablePtr vmap) :: StablePtr cmap)
+ptr2stringsmap vmap = deRefStablePtr (castPtrToStablePtr vmap :: StablePtr cmap)
 
 
 interfacesmap2ptr :: InterfacesMap -> IO (Ptr ())
@@ -203,7 +202,7 @@ interfacesmap2ptr cmap = do
   return $ castStablePtrToPtr ptr_cmap
 
 ptr2interfacesmap :: Ptr () -> IO InterfacesMap
-ptr2interfacesmap vmap = deRefStablePtr $ ((castPtrToStablePtr vmap) :: StablePtr cmap)
+ptr2interfacesmap vmap = deRefStablePtr (castPtrToStablePtr vmap :: StablePtr cmap)
 
 
 interfacemethodmap2ptr :: InterfaceMethodMap -> IO (Ptr ())
@@ -212,4 +211,4 @@ interfacemethodmap2ptr cmap = do
   return $ castStablePtrToPtr ptr_cmap
 
 ptr2interfacemethodmap :: Ptr () -> IO InterfaceMethodMap
-ptr2interfacemethodmap vmap = deRefStablePtr $ ((castPtrToStablePtr vmap) :: StablePtr cmap)
+ptr2interfacemethodmap vmap = deRefStablePtr (castPtrToStablePtr vmap :: StablePtr cmap)

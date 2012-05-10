@@ -54,29 +54,29 @@ getClassFile path = do
   ci <- getClassInfo path
   return $ ciFile ci
 
-getStaticFieldOffset :: B.ByteString -> B.ByteString -> IO (CUInt)
+getStaticFieldOffset :: B.ByteString -> B.ByteString -> IO CUInt
 getStaticFieldOffset path field = do
   ci <- getClassInfo path
-  return $ fromIntegral $ (ciStaticMap ci) M.! field
+  return $ fromIntegral $ ciStaticMap ci M.! field
 
-getFieldOffset :: B.ByteString -> B.ByteString -> IO (Int32)
+getFieldOffset :: B.ByteString -> B.ByteString -> IO Int32
 getFieldOffset path field = do
   ci <- getClassInfo path
-  return $ (ciFieldMap ci) M.! field
+  return $ ciFieldMap ci M.! field
 
 -- method + signature plz!
-getMethodOffset :: B.ByteString -> B.ByteString -> IO (Word32)
+getMethodOffset :: B.ByteString -> B.ByteString -> IO Word32
 getMethodOffset path method = do
   ci <- getClassInfo path
   -- (4+) one slot for "interface-table-ptr"
-  return $ (+4) $ fromIntegral $ (ciMethodMap ci) M.! method
+  return $ (+4) $ fromIntegral $ ciMethodMap ci M.! method
 
-getMethodTable :: B.ByteString -> IO (Word32)
+getMethodTable :: B.ByteString -> IO Word32
 getMethodTable path = do
   ci <- getClassInfo path
   return $ ciMethodBase ci
 
-getObjectSize :: B.ByteString -> IO (Word32)
+getObjectSize :: B.ByteString -> IO Word32
 getObjectSize path = do
   ci <- getClassInfo path
   -- TODO(bernhard): correct sizes for different types...
@@ -91,19 +91,18 @@ getStaticFieldAddr from ptr_trapmap = do
   let w32_from = fromIntegral from
   let sfi = trapmap M.! w32_from
   case sfi of
-    (SFI (StaticFieldInfo cls field)) -> do
-      getStaticFieldOffset cls field
-    _ -> error $ "getFieldAddr: no trapInfo. abort"
+    (SFI (StaticFieldInfo cls field)) -> getStaticFieldOffset cls field
+    _ -> error "getFieldAddr: no trapInfo. abort"
 
 -- interface + method + signature plz!
-getInterfaceMethodOffset :: B.ByteString -> B.ByteString -> B.ByteString -> IO (Word32)
+getInterfaceMethodOffset :: B.ByteString -> B.ByteString -> B.ByteString -> IO Word32
 getInterfaceMethodOffset ifname meth sig = do
   loadInterface ifname
   ifmmap <- get_interfacemethodmap >>= ptr2interfacemethodmap
   let k = ifname `B.append` meth `B.append` sig
   case M.lookup k ifmmap of
-    Just w32 -> return $ (+4) w32
-    Nothing -> error $ "getInterfaceMethodOffset: no offset set"
+    Just w32 -> return $ w32 + 4
+    Nothing -> error "getInterfaceMethodOffset: no offset set"
 
 
 loadClass :: B.ByteString -> IO ClassInfo
@@ -115,11 +114,11 @@ loadClass path = do
 #endif
   -- load all interfaces, which are implemented by this class
   sequence_ [ loadInterface i | i <- interfaces cfile ]
-  superclass <- case (path /= "java/lang/Object") of
-      True -> do
+  superclass <- if path /= "java/lang/Object"
+      then do
         sc <- loadClass $ superClass cfile
-        return $ Just $ sc
-      False -> return $ Nothing
+        return $ Just sc
+      else return Nothing
 
   (staticmap, fieldmap) <- calculateFields cfile superclass
   (methodmap, mbase) <- calculateMethodMap cfile superclass
@@ -167,26 +166,26 @@ loadInterface path = do
       -- load map again, because there could be new entries now
       -- due to loading superinterfaces
       imap' <- get_interfacesmap >>= ptr2interfacesmap
-      let max_off = fromIntegral $ (M.size immap) * 4
+      let max_off = fromIntegral $ M.size immap * 4
       -- create index of methods by this interface
       let mm = zipbase max_off (classMethods cfile)
 
       -- create for each method from *every* superinterface a entry to,
       -- but just put in the same offset as it is already in the map
-      let (ifnames, methodnames) = unzip $ concat $
+      let (ifnames, methodnames) = unzip $ concat
             [ zip (repeat ifname) (classMethods $ imap' M.! ifname)
             | ifname <- interfaces cfile ]
-      let sm = zipWith (\x y -> (entry y, immap M.! (getname x y))) ifnames methodnames
+      let sm = zipWith (\x y -> (entry y, immap M.! getname x y)) ifnames methodnames
 
       -- merge all offset tables
-      let methodmap = (M.fromList sm) `M.union` (M.fromList mm) `M.union` immap
+      let methodmap = M.fromList sm `M.union` M.fromList mm `M.union` immap
       interfacemethodmap2ptr methodmap >>= set_interfacemethodmap
 
       interfacesmap2ptr (M.insert path cfile imap') >>= set_interfacesmap
   where
   zipbase base = zipWith (\x y -> (entry y, x + base)) [0,4..]
   entry = getname path
-  getname p y = p `B.append` (methodName y) `B.append` (encode $ methodSignature y)
+  getname p y = p `B.append` methodName y `B.append` encode (methodSignature y)
 
 
 calculateFields :: Class Resolved -> Maybe ClassInfo -> IO (FieldMap, FieldMap)
@@ -195,19 +194,19 @@ calculateFields cf superclass = do
 
     let (sfields, ifields) = span (S.member ACC_STATIC . fieldAccessFlags) (classFields cf)
 
-    staticbase <- mallocClassData ((fromIntegral $ length sfields) * 4)
-    let i_sb = fromIntegral $ ptrToIntPtr $ staticbase
+    staticbase <- mallocClassData $ fromIntegral (length sfields) * 4
+    let i_sb = fromIntegral $ ptrToIntPtr staticbase
     let sm = zipbase i_sb sfields
     let sc_sm = getsupermap superclass ciStaticMap
     -- new fields "overwrite" old ones, if they have the same name
-    let staticmap = (M.fromList sm) `M.union` sc_sm
+    let staticmap = M.fromList sm `M.union` sc_sm
 
     let sc_im = getsupermap superclass ciFieldMap
     -- "+ 4" for the method table pointer
-    let max_off = (fromIntegral $ (M.size sc_im) * 4) + 4
+    let max_off = (4+) $ fromIntegral $ M.size sc_im * 4
     let im = zipbase max_off ifields
     -- new fields "overwrite" old ones, if they have the same name
-    let fieldmap = (M.fromList im) `M.union` sc_im
+    let fieldmap = M.fromList im `M.union` sc_im
 
     return (staticmap, fieldmap)
   where
@@ -225,15 +224,15 @@ calculateMethodMap cf superclass = do
                          ((/=) "<init>" . methodName) x)
                   (classMethods cf)
     let sc_mm = getsupermap superclass ciMethodMap
-    let max_off = fromIntegral $ (M.size sc_mm) * 4
+    let max_off = fromIntegral $ M.size sc_mm * 4
     let mm = zipbase max_off methods
-    let methodmap = (M.fromList mm) `M.union` sc_mm
+    let methodmap = M.fromList mm `M.union` sc_mm
 
     -- (+1): one slot for the interface-table-ptr
     methodbase <- mallocClassData (((+1) $ fromIntegral $ M.size methodmap) * 4)
-    return (methodmap, fromIntegral $ ptrToIntPtr $ methodbase)
+    return (methodmap, fromIntegral $ ptrToIntPtr methodbase)
   where zipbase base = zipWith (\x y -> (entry y, x + base)) [0,4..]
-          where entry y = (methodName y) `B.append` (encode $ methodSignature y)
+          where entry y = methodName y `B.append` encode (methodSignature y)
 
 
 loadAndInitClass :: B.ByteString -> IO ClassInfo
@@ -244,7 +243,7 @@ loadAndInitClass path = do
     Just x -> return x
 
   -- first try to execute class initializer of superclass
-  when (path /= "java/lang/Object") ((loadAndInitClass $ superClass $ ciFile ci) >> return ())
+  when (path /= "java/lang/Object") (void $ loadAndInitClass $ superClass $ ciFile ci)
 
   -- execute class initializer
   case lookupMethod "<clinit>" (ciFile ci) of
@@ -252,13 +251,13 @@ loadAndInitClass path = do
       hmap <- parseMethod (ciFile ci) "<clinit>"
       case hmap of
         Just hmap' -> do
-          let mi = (MethodInfo "<clinit>" path (methodSignature m))
+          let mi = MethodInfo "<clinit>" path (methodSignature m)
           entry <- compileBB hmap' mi
           addMethodRef entry mi [path]
           printfCp "executing static initializer from %s now\n" (toString path)
           executeFuncPtr entry
           printfCp "static initializer from %s done\n" (toString path)
-        Nothing -> error $ "loadClass: static initializer not found (WTF?). abort"
+        Nothing -> error "loadClass: static initializer not found (WTF?). abort"
     Nothing -> return ()
 
   class_map' <- get_classmap >>= ptr2classmap
