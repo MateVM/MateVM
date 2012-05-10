@@ -62,3 +62,12 @@ tags: mate
 	@# @-fforce-recomp, see
 	@# http://stackoverflow.com/questions/7137414/how-do-i-force-interpretation-in-hint
 	ghc -fforce-recomp -e :ctags $(PACKAGES) $(HS_FILES) $(O_FILES) Mate.hs
+
+hlint:
+	@# hlint isn't able to evaluate CPP comments correctly *sigh*
+	@cp debug.h debug_tmp.h
+	@# so we remove them "by hand", for hlint
+	@gcc -E -x c -fpreprocessed -dD -E debug_tmp.h | grep -v 'debug_tmp.h' > debug.h
+	@# ignore error code from hlint
+	-hlint Mate.hs Mate/
+	@mv debug_tmp.h debug.h
