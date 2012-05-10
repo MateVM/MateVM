@@ -70,7 +70,7 @@ getMethodEntry signal_from methodtable = do
   case M.lookup mi' mmap of
     Nothing -> do
       cls <- getClassFile cm
-      printf_mp "getMethodEntry(from 0x%08x): no method \"%s\" found. compile it\n" w32_from (show mi')
+      printfMp "getMethodEntry(from 0x%08x): no method \"%s\" found. compile it\n" w32_from (show mi')
       mm <- lookupMethodRecursive method [] cls
       case mm of
         Just (mm', clsnames, cls') -> do
@@ -87,7 +87,7 @@ getMethodEntry signal_from methodtable = do
               True -> do
                 -- TODO(bernhard): cleaner please... *do'h*
                 let symbol = (replace "/" "_" $ toString cm) ++ "__" ++ (toString method) ++ "__" ++ (replace ";" "_" $ replace "/" "_" $ replace "(" "_" (replace ")" "_" $ toString $ encode sig))
-                printf_mp "native-call: symbol: %s\n" symbol
+                printfMp "native-call: symbol: %s\n" symbol
                 nf <- loadNativeFunction symbol
                 let w32_nf = fromIntegral nf
                 let mmap' = M.insert mi' w32_nf mmap
@@ -165,9 +165,9 @@ compileBB hmap methodinfo = do
   let tmap' = M.union tmap new_tmap -- prefers elements in cmap
   trapmap2ptr tmap' >>= set_trapmap
 
-  printf_jit "generated code of \"%s\":\n" (toString $ methName methodinfo)
-  mapM_ (printf_jit "%s\n" . showAtt) (snd right)
-  printf_jit "\n\n"
+  printfJit "generated code of \"%s\":\n" (toString $ methName methodinfo)
+  mapM_ (printfJit "%s\n" . showAtt) (snd right)
+  printfJit "\n\n"
   -- UNCOMMENT NEXT LINE FOR GDB FUN
   -- _ <- getLine
   -- (1) start it with `gdb ./mate' and then `run <classfile>'

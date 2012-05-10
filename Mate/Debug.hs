@@ -16,32 +16,32 @@ instance VarArgsFake (IO a) where
 instance (Show a, VarArgsFake r) => VarArgsFake (a -> r) where
   varFake _ = \_ -> varFake []
 
-printf_fake :: String -> (VarArgsFake t) => t
-printf_fake _ = varFake []
+printfFake :: String -> (VarArgsFake t) => t
+printfFake _ = varFake []
 
 
 -- see counterpart at `debug.h'
 #ifndef DBG_JIT
-printf_jit :: String -> (VarArgsFake t) => t
-printf_jit = printf_fake
+printfJit :: String -> (VarArgsFake t) => t
+printfJit = printfFake
 #endif
 
 #ifndef DBG_BB
-printf_bb :: String -> (VarArgsFake t) => t
-printf_bb = printf_fake
+printfBb :: String -> (VarArgsFake t) => t
+printfBb = printfFake
 #endif
 
 #ifndef DBG_MP
-printf_mp :: String -> (VarArgsFake t) => t
-printf_mp = printf_fake
+printfMp :: String -> (VarArgsFake t) => t
+printfMp = printfFake
 #endif
 
 #ifndef DBG_CP
-printf_cp :: String -> (VarArgsFake t) => t
-printf_cp = printf_fake
+printfCp :: String -> (VarArgsFake t) => t
+printfCp = printfFake
 #endif
 
 #ifndef DBG_STR
-printf_str :: String -> (VarArgsFake t) => t
-printf_str = printf_fake
+printfStr :: String -> (VarArgsFake t) => t
+printfStr = printfFake
 #endif

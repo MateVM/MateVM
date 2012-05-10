@@ -44,5 +44,5 @@ allocateJavaString str = do
   BI.memset newstr 0 (fromIntegral $ strlen + 1)
   copyBytes newstr arr strlen
   let w32_ptr = fromIntegral $ ptrToIntPtr newstr
-  printf_str "new str ptr: 0x%08x (%s)@%d\n" w32_ptr (toString str) strlen
+  printfStr "new str ptr: 0x%08x (%s)@%d\n" w32_ptr (toString str) strlen
   return w32_ptr

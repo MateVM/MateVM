@@ -133,12 +133,12 @@ loadClass path = do
   let w32_iftable = fromIntegral $ ptrToIntPtr iftable :: Word32
   -- store interface-table at offset 0 in method-table
   pokeElemOff (intPtrToPtr $ fromIntegral mbase) 0 w32_iftable
-  printf_cp "staticmap: %s @ %s\n" (show staticmap) (toString path)
-  printf_cp "fieldmap:  %s @ %s\n" (show fieldmap) (toString path)
-  printf_cp "methodmap: %s @ %s\n" (show methodmap) (toString path)
-  printf_cp "mbase: 0x%08x\n" mbase
-  printf_cp "interfacemethod: %s @ %s\n" (show immap) (toString path)
-  printf_cp "iftable: 0x%08x\n" w32_iftable
+  printfCp "staticmap: %s @ %s\n" (show staticmap) (toString path)
+  printfCp "fieldmap:  %s @ %s\n" (show fieldmap) (toString path)
+  printfCp "methodmap: %s @ %s\n" (show methodmap) (toString path)
+  printfCp "mbase: 0x%08x\n" mbase
+  printfCp "interfacemethod: %s @ %s\n" (show immap) (toString path)
+  printfCp "iftable: 0x%08x\n" w32_iftable
   virtual_map <- get_virtualmap >>= ptr2virtualmap
   let virtual_map' = M.insert mbase path virtual_map
   virtualmap2ptr virtual_map' >>= set_virtualmap
@@ -157,7 +157,7 @@ loadInterface path = do
   case M.lookup path imap of
     Just _ -> return ()
     Nothing -> do
-      printf_cp "interface: loading \"%s\"\n" $ toString path
+      printfCp "interface: loading \"%s\"\n" $ toString path
       let ifpath = toString $ path `B.append` ".class"
       cfile <- parseClassFile ifpath
       -- load "superinterfaces" first
@@ -255,9 +255,9 @@ loadAndInitClass path = do
           let mi = (MethodInfo "<clinit>" path (methodSignature m))
           entry <- compileBB hmap' mi
           addMethodRef entry mi [path]
-          printf_cp "executing static initializer from %s now\n" (toString path)
+          printfCp "executing static initializer from %s now\n" (toString path)
           executeFuncPtr entry
-          printf_cp "static initializer from %s done\n" (toString path)
+          printfCp "static initializer from %s done\n" (toString path)
         Nothing -> error $ "loadClass: static initializer not found (WTF?). abort"
     Nothing -> return ()
 

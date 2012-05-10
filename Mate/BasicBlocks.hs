@@ -90,7 +90,7 @@ parseMethod :: Class Resolved -> B.ByteString -> IO (Maybe MapBB)
 parseMethod cls method = do
                      let maybe_bb = testCFG $ lookupMethod method cls
                      let msig = methodSignature $ (classMethods cls) !! 1
-                     printf_bb "BB: analysing \"%s\"\n" $ toString (method `B.append` ": " `B.append` (encode msig))
+                     printfBb "BB: analysing \"%s\"\n" $ toString (method `B.append` ": " `B.append` (encode msig))
 #ifdef DBG_BB
                      printMapBB maybe_bb
 #endif
@@ -99,8 +99,8 @@ parseMethod cls method = do
                      -- TODO: remove ;-)
                      let (Just m) = lookupMethod method cls
                      case attrByName m "Code" of
-                      Nothing -> printf_bb "exception: no handler for this method\n"
-                      Just exceptionstream -> printf_bb "exception: \"%s\"\n" (show $ codeExceptions $ decodeMethod exceptionstream)
+                      Nothing -> printfBb "exception: no handler for this method\n"
+                      Just exceptionstream -> printfBb "exception: \"%s\"\n" (show $ codeExceptions $ decodeMethod exceptionstream)
                      return maybe_bb
 
 

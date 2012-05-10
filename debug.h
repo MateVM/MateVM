@@ -3,7 +3,7 @@
  * DBG_MP ..... MethodPool.hs
  * DBG_CP ..... ClassPool.hs
  * DBG_STR .... Strings.hs
- * // no printf_* defined
+ * // no printf* defined
  * DBG_TRAP ... show information @ trap.c
  * DBG_CLASS .. dump classfile
  */
@@ -46,27 +46,27 @@
 #endif
 
 /* it would be awesome if we could just write
- * > printf_fake = printf
+ * > printfFake = printf
  * here, but the type can't be infered, since `PrintfType'
  * isn't visible (at least this is my explanation :/).
  * if I'm wrong, move this to `Mate/Debug.hs'
  */
 #ifdef DBG_JIT
-#define printf_jit printf
+#define printfJit printf
 #endif
 
 #ifdef DBG_BB
-#define printf_bb printf
+#define printfBb printf
 #endif
 
 #ifdef DBG_MP
-#define printf_mp printf
+#define printfMp printf
 #endif
 
 #ifdef DBG_CP
-#define printf_cp printf
+#define printfCp printf
 #endif
 
 #ifdef DBG_STR
-#define printf_str printf
+#define printfStr printf
 #endif
