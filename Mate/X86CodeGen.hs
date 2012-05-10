@@ -33,8 +33,8 @@ import Mate.Strings
 foreign import ccall "dynamic"
    code_int :: FunPtr (CInt -> CInt -> IO CInt) -> (CInt -> CInt -> IO CInt)
 
-foreign import ccall "getMallocAddr"
-  getMallocAddr :: CUInt
+foreign import ccall "getMallocObjectAddr"
+  getMallocObjectAddr :: CUInt
 
 foreign import ccall "register_signal"
   register_signal :: IO ()
@@ -311,7 +311,7 @@ emitFromBB method cls hmap =  do
     callMalloc = do
         calladdr <- getCurrentOffset
         let w32_calladdr = 5 + calladdr
-        let malloaddr = (fromIntegral getMallocAddr :: Word32)
+        let malloaddr = (fromIntegral getMallocObjectAddr :: Word32)
         call (malloaddr - w32_calladdr)
         add esp (4 :: Word32)
         push eax

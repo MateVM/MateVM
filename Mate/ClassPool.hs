@@ -30,7 +30,6 @@ import JVM.Dump
 
 import Foreign.Ptr
 import Foreign.C.Types
-import Foreign.Marshal.Alloc
 import Foreign.Storable
 
 import JVM.ClassFile
@@ -41,6 +40,7 @@ import {-# SOURCE #-} Mate.MethodPool
 import Mate.Types
 import Mate.Utilities
 import Mate.Debug
+import Mate.GarbageAlloc
 
 getClassInfo :: B.ByteString -> IO ClassInfo
 getClassInfo path = do
@@ -129,7 +129,7 @@ loadClass path = do
   -- TODO(bernhard): we have some duplicates in immap (i.e. some
   --                 entries have the same offset), so we could
   --                 save some memory here.
-  iftable <- mallocBytes ((4*) $ M.size immap)
+  iftable <- mallocClassData ((4*) $ M.size immap)
   let w32_iftable = fromIntegral $ ptrToIntPtr iftable :: Word32
   -- store interface-table at offset 0 in method-table
   pokeElemOff (intPtrToPtr $ fromIntegral mbase) 0 w32_iftable
@@ -195,7 +195,7 @@ calculateFields cf superclass = do
 
     let (sfields, ifields) = span (S.member ACC_STATIC . fieldAccessFlags) (classFields cf)
 
-    staticbase <- mallocBytes ((fromIntegral $ length sfields) * 4)
+    staticbase <- mallocClassData ((fromIntegral $ length sfields) * 4)
     let i_sb = fromIntegral $ ptrToIntPtr $ staticbase
     let sm = zipbase i_sb sfields
     let sc_sm = getsupermap superclass ciStaticMap
@@ -230,7 +230,7 @@ calculateMethodMap cf superclass = do
     let methodmap = (M.fromList mm) `M.union` sc_mm
 
     -- (+1): one slot for the interface-table-ptr
-    methodbase <- mallocBytes (((+1) $ fromIntegral $ M.size methodmap) * 4)
+    methodbase <- mallocClassData (((+1) $ fromIntegral $ M.size methodmap) * 4)
     return (methodmap, fromIntegral $ ptrToIntPtr $ methodbase)
   where zipbase base = zipWith (\x y -> (entry y, x + base)) [0,4..]
           where entry y = (methodName y) `B.append` (encode $ methodSignature y)

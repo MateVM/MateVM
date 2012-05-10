@@ -15,12 +15,12 @@ import Text.Printf
 #endif
 
 import Foreign.Ptr
-import Foreign.Marshal.Alloc
 import Foreign.Marshal.Utils
 import Foreign.Marshal.Array
 
 import Mate.Types
 import Mate.Debug
+import Mate.GarbageAlloc
 
 
 getUniqueStringAddr :: B.ByteString -> IO Word32
@@ -40,7 +40,7 @@ allocateJavaString str = do
   let strlen = fromIntegral $ B.length str
   arr <- newArray $ ((map fromIntegral $ B.unpack str) :: [Word8])
   -- (+1) for \0
-  newstr <- mallocBytes (strlen + 1)
+  newstr <- mallocString (strlen + 1)
   BI.memset newstr 0 (fromIntegral $ strlen + 1)
   copyBytes newstr arr strlen
   let w32_ptr = fromIntegral $ ptrToIntPtr newstr

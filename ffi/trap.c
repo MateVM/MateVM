@@ -24,6 +24,7 @@
 unsigned int getMethodEntry(unsigned int, unsigned int);
 unsigned int getStaticFieldAddr(unsigned int, void*);
 unsigned int getTrapType(unsigned int, unsigned int);
+unsigned int mallocObject(int);
 
 #ifdef DBG_TRAP
 #define dprintf(args...) do { printf (args); } while (0);
@@ -160,7 +161,7 @@ unsigned int getaddr(void)
 	return (unsigned int) mainresult;
 }
 
-unsigned int getMallocAddr(void)
+unsigned int getMallocObjectAddr(void)
 {
-	return (unsigned int) malloc;
+	return (unsigned int) mallocObject;
 }
