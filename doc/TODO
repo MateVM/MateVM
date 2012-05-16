@@ -30,11 +30,18 @@
 	-> it's an stupid and ugly hack. we don't want that.
 	-> estimated effort: unknown. research for a solution is needed
 
-(m) hlint
-
 (l) cabal file
 
 (h) so much cleanup...
+	-> define constant for native size stuff
+	-> and much more
+
+(m) enable easy recompiliation of a method
+	-> we need a map where all callers are stored
+	   in order to patch those to the new address
+	-> free old code region. maybe replace it with
+	   some magic values, e.g. which produce a signal
+	   in order to enable easier debugging
 
 (h) get rid of trap.c
 	-> it's C. we don't want that.
@@ -52,6 +59,9 @@
 	-> estimated effort: 2-3 weeks
 
 (m) benchmark for presentation
+
+(l) get rid of missingh
+	-> huge dependency and we just need one function of it
 
 
 (l) ... low priority
