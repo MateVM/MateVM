@@ -26,21 +26,21 @@ diff_lines=`cat $diff_output | wc -l`
 
 function quit {
 	rm -rf $1 $2 $3
-	exit
+	exit $4
 }
 
 if [ $openjdk_lines = 0 ]
 then
 	echo -e '\033[01;31mFAIL\033[0m:    ' $class2test
 	echo "no output by openjdk? abort"
-	quit $openjdk_output $mate_output $diff_output
+	quit $openjdk_output $mate_output $diff_output 1
 fi
 
 if [ $mate_lines = 0 ]
 then
 	echo -e '\033[01;31mFAIL\033[0m:    ' $class2test
 	echo "no output by mate? abort"
-	quit $openjdk_output $mate_output $diff_output
+	quit $openjdk_output $mate_output $diff_output 2
 fi
 
 if [ $diff_lines = 0 ]
@@ -53,4 +53,4 @@ else
 fi
 
 
-quit $openjdk_output $mate_output $diff_output
+quit $openjdk_output $mate_output $diff_output 0
