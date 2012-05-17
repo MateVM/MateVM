@@ -22,7 +22,7 @@
 #include <sys/ucontext.h>
 
 unsigned int getMethodEntry(unsigned int, unsigned int);
-unsigned int getStaticFieldAddr(unsigned int, void*);
+unsigned int getStaticFieldAddr(unsigned int);
 unsigned int getTrapType(unsigned int, unsigned int);
 unsigned int mallocObject(int);
 
@@ -131,7 +131,7 @@ void sigsegvtrap(int nSignal, siginfo_t *info, void *ctx)
 				dprintf("staticfieldtrap: something is wrong here. abort\n");
 				exit(0);
 			}
-			unsigned int patchme = getStaticFieldAddr(from, trap_map);
+			unsigned int patchme = getStaticFieldAddr(from);
 
 			dprintf(" to_patch: 0x%08x\n", (unsigned int) to_patch);
 			dprintf("*to_patch: 0x%08x\n", *to_patch);

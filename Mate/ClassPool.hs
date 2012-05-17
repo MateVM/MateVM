@@ -84,10 +84,10 @@ getObjectSize path = do
   -- one slot for "method-table-ptr"
   return $ (1 + fsize) * 4
 
-foreign export ccall getStaticFieldAddr :: CUInt -> Ptr () -> IO CUInt
-getStaticFieldAddr :: CUInt -> Ptr () -> IO CUInt
-getStaticFieldAddr from ptr_trapmap = do
-  trapmap <- ptr2trapmap ptr_trapmap
+foreign export ccall getStaticFieldAddr :: CUInt -> IO CUInt
+getStaticFieldAddr :: CUInt -> IO CUInt
+getStaticFieldAddr from = do
+  trapmap <- get_trapmap >>= ptr2trapmap
   let w32_from = fromIntegral from
   let sfi = trapmap M.! w32_from
   case sfi of
