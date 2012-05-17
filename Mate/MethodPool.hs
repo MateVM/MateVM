@@ -37,7 +37,7 @@ foreign import ccall "dynamic"
 foreign export ccall getTrapType :: CUInt -> CUInt -> IO CUInt
 getTrapType :: CUInt -> CUInt -> IO CUInt
 getTrapType signal_from from2 = do
-  tmap <- get_trapmap >>= ptr2trapmap
+  tmap <- getTrapMap
   case M.lookup (fromIntegral signal_from) tmap of
     (Just (MI _)) -> return 0
     (Just (VI _)) -> return 1
@@ -53,9 +53,9 @@ getTrapType signal_from from2 = do
 foreign export ccall getMethodEntry :: CUInt -> CUInt -> IO CUInt
 getMethodEntry :: CUInt -> CUInt -> IO CUInt
 getMethodEntry signal_from methodtable = do
-  mmap <- get_methodmap >>= ptr2methodmap
-  tmap <- get_trapmap >>= ptr2trapmap
-  vmap <- get_virtualmap >>= ptr2virtualmap
+  mmap <- getMethodMap
+  tmap <- getTrapMap
+  vmap <- getVirtualMap
 
   let w32_from = fromIntegral signal_from
   let mi = tmap M.! w32_from
@@ -85,8 +85,7 @@ getMethodEntry signal_from methodtable = do
                 printfMp "native-call: symbol: %s\n" symbol
                 nf <- loadNativeFunction symbol
                 let w32_nf = fromIntegral nf
-                let mmap' = M.insert mi' w32_nf mmap
-                methodmap2ptr mmap' >>= set_methodmap
+                setMethodMap $ M.insert mi' w32_nf mmap
                 return nf
               else do
                 hmap <- parseMethod cls' method
@@ -139,34 +138,26 @@ loadNativeFunction sym = do
 --   demo_mmap -- access Data.Map from C
 
 initMethodPool :: IO ()
-initMethodPool = do
-  methodmap2ptr M.empty >>= set_methodmap
-  trapmap2ptr M.empty >>= set_trapmap
-  classmap2ptr M.empty >>= set_classmap
-  virtualmap2ptr M.empty >>= set_virtualmap
-  stringsmap2ptr M.empty >>= set_stringsmap
-  interfacesmap2ptr M.empty >>= set_interfacesmap
-  interfacemethodmap2ptr M.empty >>= set_interfacemethodmap
+initMethodPool = ctx2ptr emptyMateCtx >>= set_mate_context
 
 
 addMethodRef :: Word32 -> MethodInfo -> [B.ByteString] -> IO ()
 addMethodRef entry (MethodInfo mmname _ msig) clsnames = do
-  mmap <- get_methodmap >>= ptr2methodmap
+  mmap <- getMethodMap
   let newmap = M.fromList $ map (\x -> (MethodInfo mmname x msig, entry)) clsnames
-  methodmap2ptr (mmap `M.union` newmap) >>= set_methodmap
+  setMethodMap $ mmap `M.union` newmap
 
 
 compileBB :: MapBB -> MethodInfo -> IO Word32
 compileBB hmap methodinfo = do
-  tmap <- get_trapmap >>= ptr2trapmap
+  tmap <- getTrapMap
 
   cls <- getClassFile (methClassName methodinfo)
   let ebb = emitFromBB (methName methodinfo) cls hmap
   (_, Right right) <- runCodeGen ebb () ()
 
   let ((entry, _, _, new_tmap), _) = right
-  let tmap' = tmap `M.union` new_tmap -- prefers elements in tmap
-  trapmap2ptr tmap' >>= set_trapmap
+  setTrapMap $ tmap `M.union` new_tmap -- prefers elements in tmap
 
   printfJit "generated code of \"%s\":\n" (toString $ methName methodinfo)
   mapM_ (printfJit "%s\n" . showAtt) (snd right)

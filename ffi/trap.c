@@ -32,27 +32,17 @@ unsigned int mallocObject(int);
 #define dprintf(args...)
 #endif
 
-#define NEW_MAP(prefix) \
-	void* prefix ## _map = NULL; \
-	void set_ ## prefix ## map(void *map) \
-	{ \
-		dprintf("set_%s: 0x%08x\n", #prefix , (unsigned int) map); \
-		prefix ## _map = map; \
-	} \
-	void *get_ ## prefix ## map() \
-	{ \
-		dprintf("get_%s: 0x%08x\n", #prefix , (unsigned int) prefix ## _map); \
-		return prefix ## _map; \
-	}
+void *mate_ctx = NULL;
 
-NEW_MAP(method)
-NEW_MAP(trap)
-NEW_MAP(class)
-NEW_MAP(virtual)
-NEW_MAP(strings)
-NEW_MAP(interfaces)
-NEW_MAP(interfacemethod)
+void *get_mate_context()
+{
+	return mate_ctx;
+}
 
+void *set_mate_context(void *ctx)
+{
+	mate_ctx = ctx;
+}
 
 void mainresult(unsigned int a)
 {

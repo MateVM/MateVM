@@ -88,7 +88,7 @@ type FieldMap = M.Map B.ByteString Int32
 
 -- java strings are allocated only once, therefore we
 -- use a hashmap to store the address for a String
-type StringsMap = M.Map B.ByteString Word32
+type StringMap = M.Map B.ByteString Word32
 
 
 -- map "methodtable addr" to "classname"
@@ -98,7 +98,7 @@ type VirtualMap = M.Map Word32 B.ByteString
 
 
 -- store each parsed Interface upon first loading
-type InterfacesMap = M.Map B.ByteString (Class Resolved)
+type InterfaceMap = M.Map B.ByteString (Class Resolved)
 
 -- store offset for each <Interface><Method><Signature> pair
 type InterfaceMethodMap = M.Map B.ByteString Word32
@@ -110,105 +110,105 @@ toString bstr = decodeString $ map (chr . fromIntegral) $ B.unpack bstr
 
 -- those functions are for the "global map hax"
 -- TODO(bernhard): other solution please
-foreign import ccall "get_trapmap"
-  get_trapmap :: IO (Ptr ())
+foreign import ccall "set_mate_context"
+  set_mate_context :: Ptr () -> IO ()
 
-foreign import ccall "set_trapmap"
-  set_trapmap :: Ptr () -> IO ()
+foreign import ccall "get_mate_context"
+  get_mate_context :: IO (Ptr ())
 
-foreign import ccall "get_methodmap"
-  get_methodmap :: IO (Ptr ())
+data MateCtx = MateCtx {
+  ctxMethodMap :: MethodMap,
+  ctxTrapMap :: TrapMap,
+  ctxClassMap :: ClassMap,
+  ctxVirtualMap :: VirtualMap,
+  ctxStringMap :: StringMap,
+  ctxInterfaceMap :: InterfaceMap,
+  ctxInterfaceMethodMap :: InterfaceMethodMap }
 
-foreign import ccall "set_methodmap"
-  set_methodmap :: Ptr () -> IO ()
+emptyMateCtx :: MateCtx
+emptyMateCtx = MateCtx M.empty M.empty M.empty M.empty M.empty M.empty M.empty
 
-foreign import ccall "get_classmap"
-  get_classmap :: IO (Ptr ())
+ctx2ptr :: MateCtx -> IO (Ptr ())
+ctx2ptr ctx = do
+  ptr <- newStablePtr ctx
+  return $ castStablePtrToPtr ptr
 
-foreign import ccall "set_classmap"
-  set_classmap :: Ptr () -> IO ()
-
-foreign import ccall "get_virtualmap"
-  get_virtualmap :: IO (Ptr ())
-
-foreign import ccall "set_virtualmap"
-  set_virtualmap :: Ptr () -> IO ()
-
-foreign import ccall "get_stringsmap"
-  get_stringsmap :: IO (Ptr ())
-
-foreign import ccall "set_stringsmap"
-  set_stringsmap :: Ptr () -> IO ()
-
-foreign import ccall "get_interfacesmap"
-  get_interfacesmap :: IO (Ptr ())
-
-foreign import ccall "set_interfacesmap"
-  set_interfacesmap :: Ptr () -> IO ()
-
-foreign import ccall "get_interfacemethodmap"
-  get_interfacemethodmap :: IO (Ptr ())
-
-foreign import ccall "set_interfacemethodmap"
-  set_interfacemethodmap :: Ptr () -> IO ()
-
--- TODO(bernhard): make some typeclass magic 'n stuff
---                 or remove that sh**
-methodmap2ptr :: MethodMap -> IO (Ptr ())
-methodmap2ptr methodmap = do
-  ptr_methodmap <- newStablePtr methodmap
-  return $ castStablePtrToPtr ptr_methodmap
-
-ptr2methodmap :: Ptr () -> IO MethodMap
-ptr2methodmap methodmap = deRefStablePtr (castPtrToStablePtr methodmap :: StablePtr MethodMap)
-
-trapmap2ptr :: TrapMap -> IO (Ptr ())
-trapmap2ptr trapmap = do
-  ptr_trapmap <- newStablePtr trapmap
-  return $ castStablePtrToPtr ptr_trapmap
-
-ptr2trapmap :: Ptr () -> IO TrapMap
-ptr2trapmap vmap = deRefStablePtr (castPtrToStablePtr vmap :: StablePtr trapmap)
-
-classmap2ptr :: ClassMap -> IO (Ptr ())
-classmap2ptr cmap = do
-  ptr_cmap <- newStablePtr cmap
-  return $ castStablePtrToPtr ptr_cmap
-
-ptr2classmap :: Ptr () -> IO ClassMap
-ptr2classmap vmap = deRefStablePtr (castPtrToStablePtr vmap :: StablePtr cmap)
-
-virtualmap2ptr :: VirtualMap -> IO (Ptr ())
-virtualmap2ptr cmap = do
-  ptr_cmap <- newStablePtr cmap
-  return $ castStablePtrToPtr ptr_cmap
-
-ptr2virtualmap :: Ptr () -> IO VirtualMap
-ptr2virtualmap vmap = deRefStablePtr (castPtrToStablePtr vmap :: StablePtr cmap)
+ptr2ctx :: Ptr () -> IO MateCtx
+ptr2ctx ptr = deRefStablePtr (castPtrToStablePtr ptr :: StablePtr MateCtx)
 
 
-stringsmap2ptr :: StringsMap -> IO (Ptr ())
-stringsmap2ptr cmap = do
-  ptr_cmap <- newStablePtr cmap
-  return $ castStablePtrToPtr ptr_cmap
+setMethodMap :: MethodMap -> IO ()
+setMethodMap m = do
+  ctx <- get_mate_context >>= ptr2ctx
+  ctx2ptr ctx { ctxMethodMap = m } >>= set_mate_context
 
-ptr2stringsmap :: Ptr () -> IO StringsMap
-ptr2stringsmap vmap = deRefStablePtr (castPtrToStablePtr vmap :: StablePtr cmap)
-
-
-interfacesmap2ptr :: InterfacesMap -> IO (Ptr ())
-interfacesmap2ptr cmap = do
-  ptr_cmap <- newStablePtr cmap
-  return $ castStablePtrToPtr ptr_cmap
-
-ptr2interfacesmap :: Ptr () -> IO InterfacesMap
-ptr2interfacesmap vmap = deRefStablePtr (castPtrToStablePtr vmap :: StablePtr cmap)
+getMethodMap :: IO MethodMap
+getMethodMap = do
+  ctx <- get_mate_context >>= ptr2ctx
+  return $ ctxMethodMap ctx
 
 
-interfacemethodmap2ptr :: InterfaceMethodMap -> IO (Ptr ())
-interfacemethodmap2ptr cmap = do
-  ptr_cmap <- newStablePtr cmap
-  return $ castStablePtrToPtr ptr_cmap
+setTrapMap :: TrapMap -> IO ()
+setTrapMap m = do
+  ctx <- get_mate_context >>= ptr2ctx
+  ctx2ptr ctx { ctxTrapMap = m } >>= set_mate_context
 
-ptr2interfacemethodmap :: Ptr () -> IO InterfaceMethodMap
-ptr2interfacemethodmap vmap = deRefStablePtr (castPtrToStablePtr vmap :: StablePtr cmap)
+getTrapMap :: IO TrapMap
+getTrapMap = do
+  ctx <- get_mate_context >>= ptr2ctx
+  return $ ctxTrapMap ctx
+
+
+setClassMap :: ClassMap -> IO ()
+setClassMap m = do
+  ctx <- get_mate_context >>= ptr2ctx
+  ctx2ptr ctx { ctxClassMap = m } >>= set_mate_context
+
+getClassMap :: IO ClassMap
+getClassMap = do
+  ctx <- get_mate_context >>= ptr2ctx
+  return $ ctxClassMap ctx
+
+
+setVirtualMap :: VirtualMap -> IO ()
+setVirtualMap m = do
+  ctx <- get_mate_context >>= ptr2ctx
+  ctx2ptr ctx { ctxVirtualMap = m } >>= set_mate_context
+
+getVirtualMap :: IO VirtualMap
+getVirtualMap = do
+  ctx <- get_mate_context >>= ptr2ctx
+  return $ ctxVirtualMap ctx
+
+
+setStringMap :: StringMap -> IO ()
+setStringMap m = do
+  ctx <- get_mate_context >>= ptr2ctx
+  ctx2ptr ctx { ctxStringMap = m } >>= set_mate_context
+
+getStringMap :: IO StringMap
+getStringMap = do
+  ctx <- get_mate_context >>= ptr2ctx
+  return $ ctxStringMap ctx
+
+
+setInterfaceMap :: InterfaceMap -> IO ()
+setInterfaceMap m = do
+  ctx <- get_mate_context >>= ptr2ctx
+  ctx2ptr ctx { ctxInterfaceMap = m } >>= set_mate_context
+
+getInterfaceMap :: IO InterfaceMap
+getInterfaceMap = do
+  ctx <- get_mate_context >>= ptr2ctx
+  return $ ctxInterfaceMap ctx
+
+
+setInterfaceMethodMap :: InterfaceMethodMap -> IO ()
+setInterfaceMethodMap m = do
+  ctx <- get_mate_context >>= ptr2ctx
+  ctx2ptr ctx { ctxInterfaceMethodMap = m } >>= set_mate_context
+
+getInterfaceMethodMap :: IO InterfaceMethodMap
+getInterfaceMethodMap = do
+  ctx <- get_mate_context >>= ptr2ctx
+  return $ ctxInterfaceMethodMap ctx

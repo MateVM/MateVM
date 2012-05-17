@@ -44,7 +44,7 @@ import Mate.GarbageAlloc
 
 getClassInfo :: B.ByteString -> IO ClassInfo
 getClassInfo path = do
-  class_map <- get_classmap >>= ptr2classmap
+  class_map <- getClassMap
   case M.lookup path class_map of
     Nothing -> loadAndInitClass path
     Just ci -> return ci
@@ -87,7 +87,7 @@ getObjectSize path = do
 foreign export ccall getStaticFieldAddr :: CUInt -> IO CUInt
 getStaticFieldAddr :: CUInt -> IO CUInt
 getStaticFieldAddr from = do
-  trapmap <- get_trapmap >>= ptr2trapmap
+  trapmap <- getTrapMap
   let w32_from = fromIntegral from
   let sfi = trapmap M.! w32_from
   case sfi of
@@ -98,7 +98,7 @@ getStaticFieldAddr from = do
 getInterfaceMethodOffset :: B.ByteString -> B.ByteString -> B.ByteString -> IO Word32
 getInterfaceMethodOffset ifname meth sig = do
   loadInterface ifname
-  ifmmap <- get_interfacemethodmap >>= ptr2interfacemethodmap
+  ifmmap <- getInterfaceMethodMap
   let k = ifname `B.append` meth `B.append` sig
   case M.lookup k ifmmap of
     Just w32 -> return $ w32 + 4
@@ -122,7 +122,7 @@ loadClass path = do
 
   (staticmap, fieldmap) <- calculateFields cfile superclass
   (methodmap, mbase) <- calculateMethodMap cfile superclass
-  immap <- get_interfacemethodmap >>= ptr2interfacemethodmap
+  immap <- getInterfaceMethodMap
 
   -- allocate interface offset table for this class
   -- TODO(bernhard): we have some duplicates in immap (i.e. some
@@ -138,20 +138,18 @@ loadClass path = do
   printfCp "mbase: 0x%08x\n" mbase
   printfCp "interfacemethod: %s @ %s\n" (show immap) (toString path)
   printfCp "iftable: 0x%08x\n" w32_iftable
-  virtual_map <- get_virtualmap >>= ptr2virtualmap
-  let virtual_map' = M.insert mbase path virtual_map
-  virtualmap2ptr virtual_map' >>= set_virtualmap
+  virtual_map <- getVirtualMap
+  setVirtualMap $ M.insert mbase path virtual_map
 
-  class_map <- get_classmap >>= ptr2classmap
+  class_map <- getClassMap
   let new_ci = ClassInfo path cfile staticmap fieldmap methodmap mbase False
-  let class_map' = M.insert path new_ci class_map
-  classmap2ptr class_map' >>= set_classmap
+  setClassMap $ M.insert path new_ci class_map
   return new_ci
 
 
 loadInterface :: B.ByteString -> IO ()
 loadInterface path = do
-  imap <- get_interfacesmap >>= ptr2interfacesmap
+  imap <- getInterfaceMap
   -- interface already loaded?
   case M.lookup path imap of
     Just _ -> return ()
@@ -161,11 +159,11 @@ loadInterface path = do
       cfile <- parseClassFile ifpath
       -- load "superinterfaces" first
       sequence_ [ loadInterface i | i <- interfaces cfile ]
-      immap <- get_interfacemethodmap >>= ptr2interfacemethodmap
+      immap <- getInterfaceMethodMap
 
       -- load map again, because there could be new entries now
       -- due to loading superinterfaces
-      imap' <- get_interfacesmap >>= ptr2interfacesmap
+      imap' <- getInterfaceMap
       let max_off = fromIntegral $ M.size immap * 4
       -- create index of methods by this interface
       let mm = zipbase max_off (classMethods cfile)
@@ -178,10 +176,8 @@ loadInterface path = do
       let sm = zipWith (\x y -> (entry y, immap M.! getname x y)) ifnames methodnames
 
       -- merge all offset tables
-      let methodmap = M.fromList sm `M.union` M.fromList mm `M.union` immap
-      interfacemethodmap2ptr methodmap >>= set_interfacemethodmap
-
-      interfacesmap2ptr (M.insert path cfile imap') >>= set_interfacesmap
+      setInterfaceMethodMap $ M.fromList sm `M.union` M.fromList mm `M.union` immap
+      setInterfaceMap $ M.insert path cfile imap'
   where
   zipbase base = zipWith (\x y -> (entry y, x + base)) [0,4..]
   entry = getname path
@@ -237,7 +233,7 @@ calculateMethodMap cf superclass = do
 
 loadAndInitClass :: B.ByteString -> IO ClassInfo
 loadAndInitClass path = do
-  class_map <- get_classmap >>= ptr2classmap
+  class_map <- getClassMap
   ci <- case M.lookup path class_map of
     Nothing -> loadClass path
     Just x -> return x
@@ -260,8 +256,7 @@ loadAndInitClass path = do
         Nothing -> error "loadClass: static initializer not found (WTF?). abort"
     Nothing -> return ()
 
-  class_map' <- get_classmap >>= ptr2classmap
+  class_map' <- getClassMap
   let new_ci = ci { ciInitDone = True }
-  let class_map'' = M.insert path new_ci class_map'
-  classmap2ptr class_map'' >>= set_classmap
+  setClassMap $ M.insert path new_ci class_map'
   return new_ci

@@ -24,12 +24,11 @@ import Mate.GarbageAlloc
 
 getUniqueStringAddr :: B.ByteString -> IO Word32
 getUniqueStringAddr str = do
-  smap <- get_stringsmap >>= ptr2stringsmap
+  smap <- getStringMap
   case M.lookup str smap of
     Nothing -> do
       addr <- allocateJavaString str
-      let smap' = M.insert str addr smap
-      stringsmap2ptr smap' >>= set_stringsmap
+      setStringMap $ M.insert str addr smap
       return addr
     Just addr -> return addr
 
