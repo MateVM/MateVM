@@ -29,7 +29,7 @@ cc-options:
 ld-options:
 pkgconfig-depends:
 frameworks:
-c-sources:
+c-sources: trap.c native.c
 default-language:
 other-languages:
 default-extensions:
