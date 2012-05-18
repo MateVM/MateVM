@@ -50,6 +50,7 @@ else
 	echo -en '\033[01;31mFAIL\033[0m:    ' $class2test
 	echo "                                diff:"
 	cat $diff_output
+	quit $openjdk_output $mate_output $diff_output 3
 fi
 
 
