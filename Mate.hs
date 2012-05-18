@@ -23,7 +23,6 @@ main ::  IO ()
 main = do
   args <- getArgs
   register_signal
-  initMethodPool
   case args of
     [clspath] -> do
       let bclspath = B.pack $ map (fromIntegral . ord) clspath

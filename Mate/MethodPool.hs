@@ -137,10 +137,6 @@ loadNativeFunction sym = do
 --   mmap2ptr mmap >>= set_mmap
 --   demo_mmap -- access Data.Map from C
 
-initMethodPool :: IO ()
-initMethodPool = ctx2ptr emptyMateCtx >>= set_mate_context
-
-
 addMethodRef :: Word32 -> MethodInfo -> [B.ByteString] -> IO ()
 addMethodRef entry (MethodInfo mmname _ msig) clsnames = do
   mmap <- getMethodMap

@@ -32,18 +32,6 @@ unsigned int mallocObject(int);
 #define dprintf(args...)
 #endif
 
-void *mate_ctx = NULL;
-
-void *get_mate_context()
-{
-	return mate_ctx;
-}
-
-void *set_mate_context(void *ctx)
-{
-	mate_ctx = ctx;
-}
-
 void mainresult(unsigned int a)
 {
 	dprintf("mainresult: 0x%08x\n", a);

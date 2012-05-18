@@ -9,8 +9,8 @@ import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as B
 import Codec.Binary.UTF8.String hiding (encode,decode)
 
-import Foreign.Ptr
-import Foreign.StablePtr
+import Data.IORef
+import System.IO.Unsafe
 
 import JVM.ClassFile
 import JVM.Assembler
@@ -108,14 +108,6 @@ toString :: B.ByteString -> String
 toString bstr = decodeString $ map (chr . fromIntegral) $ B.unpack bstr
 
 
--- those functions are for the "global map hax"
--- TODO(bernhard): other solution please
-foreign import ccall "set_mate_context"
-  set_mate_context :: Ptr () -> IO ()
-
-foreign import ccall "get_mate_context"
-  get_mate_context :: IO (Ptr ())
-
 data MateCtx = MateCtx {
   ctxMethodMap :: MethodMap,
   ctxTrapMap :: TrapMap,
@@ -128,87 +120,83 @@ data MateCtx = MateCtx {
 emptyMateCtx :: MateCtx
 emptyMateCtx = MateCtx M.empty M.empty M.empty M.empty M.empty M.empty M.empty
 
-ctx2ptr :: MateCtx -> IO (Ptr ())
-ctx2ptr ctx = do
-  ptr <- newStablePtr ctx
-  return $ castStablePtrToPtr ptr
-
-ptr2ctx :: Ptr () -> IO MateCtx
-ptr2ctx ptr = deRefStablePtr (castPtrToStablePtr ptr :: StablePtr MateCtx)
+mateCtx :: IORef MateCtx
+{-# NOINLINE mateCtx #-}
+mateCtx = unsafePerformIO $ newIORef emptyMateCtx
 
 
 setMethodMap :: MethodMap -> IO ()
 setMethodMap m = do
-  ctx <- get_mate_context >>= ptr2ctx
-  ctx2ptr ctx { ctxMethodMap = m } >>= set_mate_context
+  ctx <- readIORef mateCtx
+  writeIORef mateCtx $ ctx { ctxMethodMap = m }
 
 getMethodMap :: IO MethodMap
 getMethodMap = do
-  ctx <- get_mate_context >>= ptr2ctx
+  ctx <- readIORef mateCtx
   return $ ctxMethodMap ctx
 
 
 setTrapMap :: TrapMap -> IO ()
 setTrapMap m = do
-  ctx <- get_mate_context >>= ptr2ctx
-  ctx2ptr ctx { ctxTrapMap = m } >>= set_mate_context
+  ctx <- readIORef mateCtx
+  writeIORef mateCtx $ ctx { ctxTrapMap = m }
 
 getTrapMap :: IO TrapMap
 getTrapMap = do
-  ctx <- get_mate_context >>= ptr2ctx
+  ctx <- readIORef mateCtx
   return $ ctxTrapMap ctx
 
 
 setClassMap :: ClassMap -> IO ()
 setClassMap m = do
-  ctx <- get_mate_context >>= ptr2ctx
-  ctx2ptr ctx { ctxClassMap = m } >>= set_mate_context
+  ctx <- readIORef mateCtx
+  writeIORef mateCtx $ ctx { ctxClassMap = m }
 
 getClassMap :: IO ClassMap
 getClassMap = do
-  ctx <- get_mate_context >>= ptr2ctx
+  ctx <- readIORef mateCtx
   return $ ctxClassMap ctx
 
 
 setVirtualMap :: VirtualMap -> IO ()
 setVirtualMap m = do
-  ctx <- get_mate_context >>= ptr2ctx
-  ctx2ptr ctx { ctxVirtualMap = m } >>= set_mate_context
+  ctx <- readIORef mateCtx
+  writeIORef mateCtx $ ctx { ctxVirtualMap = m }
 
 getVirtualMap :: IO VirtualMap
 getVirtualMap = do
-  ctx <- get_mate_context >>= ptr2ctx
+  ctx <- readIORef mateCtx
   return $ ctxVirtualMap ctx
 
 
 setStringMap :: StringMap -> IO ()
 setStringMap m = do
-  ctx <- get_mate_context >>= ptr2ctx
-  ctx2ptr ctx { ctxStringMap = m } >>= set_mate_context
+  ctx <- readIORef mateCtx
+  writeIORef mateCtx $ ctx { ctxStringMap = m }
 
 getStringMap :: IO StringMap
 getStringMap = do
-  ctx <- get_mate_context >>= ptr2ctx
+  ctx <- readIORef mateCtx
   return $ ctxStringMap ctx
 
 
 setInterfaceMap :: InterfaceMap -> IO ()
 setInterfaceMap m = do
-  ctx <- get_mate_context >>= ptr2ctx
-  ctx2ptr ctx { ctxInterfaceMap = m } >>= set_mate_context
+  ctx <- readIORef mateCtx
+  writeIORef mateCtx $ ctx { ctxInterfaceMap = m }
 
 getInterfaceMap :: IO InterfaceMap
 getInterfaceMap = do
-  ctx <- get_mate_context >>= ptr2ctx
+  ctx <- readIORef mateCtx
   return $ ctxInterfaceMap ctx
 
 
 setInterfaceMethodMap :: InterfaceMethodMap -> IO ()
 setInterfaceMethodMap m = do
-  ctx <- get_mate_context >>= ptr2ctx
-  ctx2ptr ctx { ctxInterfaceMethodMap = m } >>= set_mate_context
+  ctx <- readIORef mateCtx
+  writeIORef mateCtx $ ctx { ctxInterfaceMethodMap = m }
 
 getInterfaceMethodMap :: IO InterfaceMethodMap
 getInterfaceMethodMap = do
-  ctx <- get_mate_context >>= ptr2ctx
+  ctx <- readIORef mateCtx
   return $ ctxInterfaceMethodMap ctx
