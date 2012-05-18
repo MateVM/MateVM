@@ -1,5 +1,8 @@
-#include "debug.h"
+{-# LANGUAGE CPP #-}
 module Mate.RegisterAllocation where
+
+
+#include "debug.h"
 
 import Data.List
 import Data.Maybe

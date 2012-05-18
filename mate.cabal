@@ -1,0 +1,108 @@
+name: mate
+version: 0.0.1
+cabal-version: -any
+build-type: Simple
+license: GPL-3
+license-file: ""
+copyright:
+maintainer: lewurm@gmail.com, haraldsteinlechner@gmail.com
+build-depends: base -any, 
+               mate-common -any, 
+               hs-java ==0.2.*,
+               bytestring -any,
+               harpy ==0.4.3.0,
+               heap -any,
+               containers -any,
+               binary -any,
+               plugins ==1.5.*,
+               MissingH ==1.1.*,
+               utf8-string -any,
+               binary-state -any
+stability:
+homepage:
+package-url:
+bug-reports:
+synopsis:
+description: MateVM is a Java JIT compiler written in Haskell, using already existing
+             libaries, namly `harpy' [1] and `hs-java' [2].
+             .
+             We use `hs-java' to parse Java Classfiles in order to get a Java Bytecode
+             representation. Afterwards we perform a basic-block analysis and generate a
+             control-flow-graph (CFG). We apply several program-analyses, transformations
+             and optimizations. Given the annotated CFG we emit native code with `harpy'
+             (i386) in an on demand manner.
+             .
+             At the moment we try to minimize effort, by focusing on essential features of
+             the JVM, e.g. no exception handling. 
+             Performance will be evaluated using a dedicated testsuite which can be handeld
+             in our limited implementation.
+             .
+             .
+             [1] http://hackage.haskell.org/package/harpy
+             [2] http://hackage.haskell.org/package/hs-java
+category:
+author: Bernhard Urban, Harald Steinlechner
+tested-with:
+data-files:
+data-dir: ""
+extra-source-files: 
+extra-tmp-files:
+exposed-modules: Mate.BasicBlocks Mate.ClassPool Mate.Debug
+                 Mate.GarbageAlloc Mate.MethodPool Mate.RegisterAllocation
+                 Mate.Strings Mate.Types Mate.Utilities Mate.X86CodeGen
+exposed: True
+buildable: True
+build-tools:
+cpp-options:
+cc-options:
+ld-options:
+pkgconfig-depends:
+frameworks:
+c-sources: 
+default-language:
+other-languages:
+default-extensions:
+other-extensions:
+extensions:
+extra-libraries:
+extra-lib-dirs:
+includes: 
+install-includes:
+include-dirs: "."
+hs-source-dirs: 
+other-modules:
+ghc-prof-options:
+ghc-shared-options:
+ghc-options: -I. -dynamic -Wall -O0 -fno-warn-unused-do-bind 
+hugs-options:
+nhc98-options:
+jhc-options:
+ 
+executable: mate
+main-is: Mate.hs
+buildable: True
+build-tools:
+cpp-options:
+cc-options:
+ld-options:
+pkgconfig-depends:
+frameworks:
+c-sources:
+default-language:
+other-languages:
+default-extensions:
+other-extensions:
+extensions:
+extra-libraries:
+extra-lib-dirs:
+includes:
+install-includes:
+include-dirs:
+hs-source-dirs: 
+other-modules:
+ghc-prof-options:
+ghc-shared-options:
+ghc-options: -I. -dynamic -Wall -O0 -fno-warn-unused-do-bind 
+hugs-options:
+nhc98-options:
+jhc-options:

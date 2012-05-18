@@ -1,3 +1,4 @@
+{-# LANGUAGE ForeignFunctionInterface #-}
 module Mate.GarbageAlloc where
 
 import Foreign
