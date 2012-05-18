@@ -28,29 +28,10 @@ void trap(int nSignal, siginfo_t *info, void *ctx)
 	mcontext_t *mctx = &((ucontext_t *) ctx)->uc_mcontext;
 	unsigned int from = (unsigned int) mctx->gregs[REG_EIP];
 
-	mateTrapHandler(nSignal, info, ctx, from);
+	//mateTrapHandler(nSignal, info, ctx, from);
 
 	printf("from: 0x%08x\n", from);
 	exit(0);
-}
-
-void registerSignalHandlers(void)
-{
-	printf("registering\n");
-	struct sigaction illaction;
-	illaction.sa_sigaction = trap;
-	sigemptyset(&illaction.sa_mask);
-	illaction.sa_flags = SA_SIGINFO | SA_RESTART | SA_NODEFER;
-	sigaction(SIGILL, &illaction, NULL);
-
-
-/*
-	struct sigaction segvaction;
-	segvaction.sa_sigaction = trap;
-	sigemptyset(&segvaction.sa_mask);
-	segvaction.sa_flags = SA_SIGINFO | SA_RESTART | SA_NODEFER;
-	sigaction(SIGSEGV, &segvaction, NULL);
-*/
 }
 
 

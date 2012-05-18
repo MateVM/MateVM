@@ -22,17 +22,12 @@ foreign import ccall "static sys/mman.h"
 foreign import ccall "static stdlib.h"
   memalign :: CUInt -> CUInt -> IO (Ptr a)
 
-foreign import ccall safe "prototypes.h"
-  registerSignalHandlers :: IO ()
 
 foreign import ccall "wrapper"
   wrap :: (CUInt -> Ptr SigInfo -> Ptr Context -> IO ()) -> IO (FunPtr (CUInt -> Ptr SigInfo -> Ptr Context -> IO ()))
 
 foreign import ccall "prototypes.h"
   registerSignalHandlers2 :: FunPtr (CUInt -> Ptr SigInfo -> Ptr Context -> IO ()) -> IO ()
-
-foreign export ccall
-    mateTrapHandler :: CUInt -> Ptr SigInfo -> Ptr Context -> CUInt -> IO ()
 
 type SigInfo = ()
 type Context = ()              
@@ -48,6 +43,7 @@ type AppDomain = ()  -- classpath etc
 runMateKernel :: AppDomain -> IO ()
 runMateKernel _ = do    
   compileAndRun
+
 
 -- use FFI to unpack sigInfo and ctx....
 handler mateCtx signal sigInfo ctx = do 
@@ -95,13 +91,3 @@ compileAndRun = do
 
 senseless :: IO Int
 senseless = getStdRandom (randomR (1,100))
-
-
-mateTrapHandler :: CUInt -> Ptr SigInfo -> Ptr Context -> CUInt -> IO ()
-mateTrapHandler signal sigInfo ctx eip = do
-  putStr "mateTrapHandler says: "
-  let eip' = (fromIntegral eip) :: Int
-  printf "source, eip: 0x%08x" eip'
-  print eip'
-
-
