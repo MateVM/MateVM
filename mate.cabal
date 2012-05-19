@@ -67,7 +67,7 @@ extensions:
 extra-libraries:
 extra-lib-dirs:
 includes: 
-install-includes: .
+install-includes: 
 include-dirs: "."
 hs-source-dirs: 
 other-modules:
