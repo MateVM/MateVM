@@ -34,23 +34,7 @@ import Mate.Debug
 foreign import ccall "dynamic"
    code_void :: FunPtr (IO ()) -> IO ()
 
-foreign export ccall getTrapType :: CUInt -> CUInt -> IO CUInt
-getTrapType :: CUInt -> CUInt -> IO CUInt
-getTrapType signal_from from2 = do
-  tmap <- getTrapMap
-  case M.lookup (fromIntegral signal_from) tmap of
-    (Just (MI _)) -> return 0
-    (Just (VI _)) -> return 1
-    (Just (SFI _)) -> return 2
-    (Just (II _)) -> return 4
-    -- maybe we've a hit on the second `from' value
-    Nothing -> case M.lookup (fromIntegral from2) tmap of
-      (Just (VI _)) -> return 1
-      (Just (II _)) -> return 4
-      (Just _) -> error "getTrapType: abort #1 :-("
-      Nothing -> error "getTrapType: abort #2 :-("
 
-foreign export ccall getMethodEntry :: CUInt -> CUInt -> IO CUInt
 getMethodEntry :: CUInt -> CUInt -> IO CUInt
 getMethodEntry signal_from methodtable = do
   mmap <- getMethodMap

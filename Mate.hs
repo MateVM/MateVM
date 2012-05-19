@@ -14,10 +14,10 @@ import Text.Printf
 import JVM.ClassFile
 
 import Mate.BasicBlocks
-import Mate.X86CodeGen
 import Mate.MethodPool
 import Mate.Types
 import Mate.ClassPool
+import Mate.X86TrapHandling
 
 main ::  IO ()
 main = do

@@ -84,7 +84,6 @@ getObjectSize path = do
   -- one slot for "method-table-ptr"
   return $ (1 + fsize) * 4
 
-foreign export ccall getStaticFieldAddr :: CUInt -> IO CUInt
 getStaticFieldAddr :: CUInt -> IO CUInt
 getStaticFieldAddr from = do
   trapmap <- getTrapMap

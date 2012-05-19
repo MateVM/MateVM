@@ -36,10 +36,6 @@ foreign import ccall "dynamic"
 foreign import ccall "getMallocObjectAddr"
   getMallocObjectAddr :: CUInt
 
-foreign import ccall "register_signal"
-  register_signal :: IO ()
-
-
 type EntryPoint = Ptr Word8
 type EntryPointOffset = Int
 type PatchInfo = (BlockID, EntryPointOffset)
@@ -110,7 +106,8 @@ emitFromBB method cls hmap =  do
         when (argcnt > 0) (add esp argcnt)
         -- push result on stack if method has a return value
         when (methodHaveReturnValue cls cpidx) (push eax)
-        return $ Just (calladdr, MI l)
+        -- +2 is for correcting eip in trap context
+        return $ Just (calladdr + 2, MI l)
 
     emit' :: J.Instruction -> CodeGen e s (Maybe (Word32, TrapInfo))
     emit' (INVOKESPECIAL cpidx) = emitInvoke cpidx True
