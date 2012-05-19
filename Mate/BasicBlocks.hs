@@ -24,7 +24,6 @@ import JVM.ClassFile
 import JVM.Converter
 import JVM.Assembler
 
-import Mate.Utilities
 import Mate.Types
 import Mate.Debug
 
@@ -86,7 +85,7 @@ test_04 = testInstance "./tests/Fac.class" "fac"
 #endif
 
 
-parseMethod :: Class Resolved -> B.ByteString -> IO (Maybe MapBB)
+parseMethod :: Class Direct -> B.ByteString -> IO (Maybe MapBB)
 parseMethod cls method = do
                      let maybe_bb = testCFG $ lookupMethod method cls
                      let msig = methodSignature $ classMethods cls !! 1
@@ -104,7 +103,7 @@ parseMethod cls method = do
                      return maybe_bb
 
 
-testCFG :: Maybe (Method Resolved) -> Maybe MapBB
+testCFG :: Maybe (Method Direct) -> Maybe MapBB
 testCFG (Just m) = case attrByName m "Code" of
        Nothing -> Nothing
        Just bytecode -> Just $ buildCFG $ codeInstructions $ decodeMethod bytecode

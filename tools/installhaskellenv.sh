@@ -23,7 +23,6 @@ rm -rf harpy
 
 git clone git://wien.tomnetworks.com/hs-java.git
 cd hs-java
-git checkout -t origin/v0.2
 cabal install --enable-shared
 cd ..
 rm -rf hs-java

@@ -27,7 +27,6 @@ import Text.Printf
 import Mate.BasicBlocks
 import Mate.Types
 import Mate.X86CodeGen
-import Mate.Utilities
 import Mate.ClassPool
 import Mate.Debug
 
@@ -82,8 +81,8 @@ getMethodEntry signal_from methodtable = do
         Nothing -> error $ show method ++ " not found. abort"
     Just w32 -> return (fromIntegral w32)
 
-lookupMethodRecursive :: B.ByteString -> [B.ByteString] -> Class Resolved
-                         -> IO (Maybe (Method Resolved, [B.ByteString], Class Resolved))
+lookupMethodRecursive :: B.ByteString -> [B.ByteString] -> Class Direct
+                         -> IO (Maybe (Method Direct, [B.ByteString], Class Direct))
 lookupMethodRecursive name clsnames cls =
   case res of
     Just x -> return $ Just (x, nextclsn, cls)

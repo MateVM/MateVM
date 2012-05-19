@@ -45,7 +45,7 @@ type BBStarts = M.Map BlockID Int
 type CompileInfo = (EntryPoint, BBStarts, Int, TrapMap)
 
 
-emitFromBB :: B.ByteString -> Class Resolved -> MapBB -> CodeGen e s (CompileInfo, [Instruction])
+emitFromBB :: B.ByteString -> Class Direct -> MapBB -> CodeGen e s (CompileInfo, [Instruction])
 emitFromBB method cls hmap =  do
         llmap <- sequence [newNamedLabel ("bb_" ++ show x) | (x,_) <- M.toList hmap]
         let lmap = zip (Prelude.fst $ unzip $ M.toList hmap) llmap

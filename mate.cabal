@@ -8,7 +8,7 @@ copyright:
 maintainer: lewurm@gmail.com, haraldsteinlechner@gmail.com
 build-depends: base -any, 
                mate-common -any, 
-               hs-java ==0.2.0.99,
+               hs-java ==0.3.1,
                bytestring -any,
                harpy ==0.4.3.99,
                heap -any,

@@ -2,12 +2,10 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
 module Mate.Types where
 
-import Data.Char
 import Data.Word
 import Data.Int
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as B
-import Codec.Binary.UTF8.String hiding (encode,decode)
 
 import Data.IORef
 import System.IO.Unsafe
@@ -74,7 +72,7 @@ type ClassMap = M.Map B.ByteString ClassInfo
 
 data ClassInfo = ClassInfo {
   ciName :: B.ByteString,
-  ciFile :: Class Resolved,
+  ciFile :: Class Direct,
   ciStaticMap  :: FieldMap,
   ciFieldMap :: FieldMap,
   ciMethodMap :: FieldMap,
@@ -98,14 +96,16 @@ type VirtualMap = M.Map Word32 B.ByteString
 
 
 -- store each parsed Interface upon first loading
-type InterfaceMap = M.Map B.ByteString (Class Resolved)
+type InterfaceMap = M.Map B.ByteString (Class Direct)
 
 -- store offset for each <Interface><Method><Signature> pair
 type InterfaceMethodMap = M.Map B.ByteString Word32
 
 
+{-
 toString :: B.ByteString -> String
 toString bstr = decodeString $ map (chr . fromIntegral) $ B.unpack bstr
+-}
 
 
 data MateCtx = MateCtx {

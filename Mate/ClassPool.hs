@@ -38,7 +38,6 @@ import JVM.Converter
 import Mate.BasicBlocks
 import {-# SOURCE #-} Mate.MethodPool
 import Mate.Types
-import Mate.Utilities
 import Mate.Debug
 import Mate.GarbageAlloc
 
@@ -49,7 +48,7 @@ getClassInfo path = do
     Nothing -> loadAndInitClass path
     Just ci -> return ci
 
-getClassFile :: B.ByteString -> IO (Class Resolved)
+getClassFile :: B.ByteString -> IO (Class Direct)
 getClassFile path = do
   ci <- getClassInfo path
   return $ ciFile ci
@@ -183,7 +182,7 @@ loadInterface path = do
   getname p y = p `B.append` methodName y `B.append` encode (methodSignature y)
 
 
-calculateFields :: Class Resolved -> Maybe ClassInfo -> IO (FieldMap, FieldMap)
+calculateFields :: Class Direct -> Maybe ClassInfo -> IO (FieldMap, FieldMap)
 calculateFields cf superclass = do
     -- TODO(bernhard): correct sizes. int only atm
 
@@ -212,7 +211,7 @@ getsupermap :: Maybe ClassInfo -> (ClassInfo -> FieldMap) -> FieldMap
 getsupermap superclass getter = case superclass of Just x -> getter x; Nothing -> M.empty
 
 
-calculateMethodMap :: Class Resolved -> Maybe ClassInfo -> IO (FieldMap, Word32)
+calculateMethodMap :: Class Direct -> Maybe ClassInfo -> IO (FieldMap, Word32)
 calculateMethodMap cf superclass = do
     let methods = filter
                   (\x -> (not . S.member ACC_STATIC . methodAccessFlags) x &&

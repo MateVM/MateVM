@@ -13,6 +13,8 @@ import qualified Data.ByteString.Internal as BI
 import Text.Printf
 #endif
 
+import JVM.ClassFile
+
 import Foreign.Ptr
 import Foreign.Marshal.Utils
 import Foreign.Marshal.Array
