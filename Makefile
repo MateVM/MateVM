@@ -53,7 +53,7 @@ mate.dbg: Mate.hs ffi/trap.c $(HS_FILES) $(HS_BOOT) ffi/native.o
 	ghc --make $(DEBUGFLAGS) $(GHC_OPT) Mate.hs build/debug/ffi/trap.o -o $@ $(GHC_LD) -outputdir build/debug
 
 clean:
-	rm -rf build mate mate.dbg ffi/native.o tests/*.class
+	rm -rf build mate mate.dbg ffi/native.o tests/*.class Mate/*_stub.*
 
 ghci: mate
 	ghci $(PACKAGES) $(O_FILES) Mate.hs $(GHC_LD)
