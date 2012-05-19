@@ -10,7 +10,9 @@ module Mate.ClassPool (
   getMethodOffset,
   getFieldOffset,
   getStaticFieldAddr,
-  getInterfaceMethodOffset
+  getInterfaceMethodOffset,
+  addClassPath,
+  addClassPathJAR
   ) where
 
 import Data.Int
@@ -32,8 +34,14 @@ import Foreign.Ptr
 import Foreign.C.Types
 import Foreign.Storable
 
+import Data.IORef
+import System.IO.Unsafe
+import System.Directory
+
 import JVM.ClassFile
 import JVM.Converter
+import Java.ClassPath hiding (Directory)
+import Java.JAR
 
 import Mate.BasicBlocks
 import {-# SOURCE #-} Mate.MethodPool
@@ -103,10 +111,9 @@ getInterfaceMethodOffset ifname meth sig = do
     Nothing -> error "getInterfaceMethodOffset: no offset set"
 
 
-loadClass :: B.ByteString -> IO ClassInfo
-loadClass path = do
-  let rpath = toString $ path `B.append` ".class"
-  cfile <- parseClassFile rpath
+readClass :: B.ByteString -> IO ClassInfo
+readClass path = do
+  cfile <- readClassFile $ toString path
 #ifdef DBG_CLASS
   dumpClass cfile
 #endif
@@ -114,7 +121,7 @@ loadClass path = do
   sequence_ [ loadInterface i | i <- interfaces cfile ]
   superclass <- if path /= "java/lang/Object"
       then do
-        sc <- loadClass $ superClass cfile
+        sc <- readClass $ superClass cfile
         return $ Just sc
       else return Nothing
 
@@ -153,8 +160,7 @@ loadInterface path = do
     Just _ -> return ()
     Nothing -> do
       printfCp "interface: loading \"%s\"\n" $ toString path
-      let ifpath = toString $ path `B.append` ".class"
-      cfile <- parseClassFile ifpath
+      cfile <- readClassFile $ toString path
       -- load "superinterfaces" first
       sequence_ [ loadInterface i | i <- interfaces cfile ]
       immap <- getInterfaceMethodMap
@@ -233,7 +239,7 @@ loadAndInitClass :: B.ByteString -> IO ClassInfo
 loadAndInitClass path = do
   class_map <- getClassMap
   ci <- case M.lookup path class_map of
-    Nothing -> loadClass path
+    Nothing -> readClass path
     Just x -> return x
 
   -- first try to execute class initializer of superclass
@@ -251,10 +257,48 @@ loadAndInitClass path = do
           printfCp "executing static initializer from %s now\n" (toString path)
           executeFuncPtr entry
           printfCp "static initializer from %s done\n" (toString path)
-        Nothing -> error "loadClass: static initializer not found (WTF?). abort"
+        Nothing -> error "readClass: static initializer not found (WTF?). abort"
     Nothing -> return ()
 
   class_map' <- getClassMap
   let new_ci = ci { ciInitDone = True }
   setClassMap $ M.insert path new_ci class_map'
   return new_ci
+
+
+readClassFile :: String -> IO (Class Direct)
+readClassFile path = readIORef classPaths >>= rcf
+  where
+  rcf :: [MClassPath] -> IO (Class Direct)
+  rcf [] = error $ "readClassFile: Class \"" ++ (show path) ++ "\" not found."
+  rcf ((Directory pre):xs) = do
+    let cf = pre ++ path ++ ".class"
+    b <- doesFileExist cf
+    if b
+      then parseClassFile cf
+      else rcf xs
+  rcf ((JAR p):xs) = do
+    entry <- getEntry p path
+    case entry of
+      Just (LoadedJAR _ cls) -> return cls
+      Nothing -> rcf xs
+      _ -> error $ "readClassFile: Class \"" ++ show path ++ "\" in JAR not found. #1"
+
+data MClassPath =
+  Directory String |
+  JAR [Tree CPEntry]
+
+classPaths :: IORef [MClassPath]
+{-# NOINLINE classPaths #-}
+classPaths = unsafePerformIO $ newIORef []
+
+addClassPath :: String -> IO ()
+addClassPath x = do
+  cps <- readIORef classPaths
+  writeIORef classPaths (Directory x:cps)
+
+addClassPathJAR :: String -> IO ()
+addClassPathJAR x = do
+  cps <- readIORef classPaths
+  t <- execClassPath $ addJAR x
+  writeIORef classPaths (JAR t:cps)

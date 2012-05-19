@@ -10,3 +10,4 @@ tags
 *.hi-boot
 *.o-boot
 dist
+*.jar
