@@ -8,6 +8,7 @@ cabal update
 cabal install missingh --enable-shared
 cabal install heap --enable-shared
 cabal install plugins --enable-shared
+cabal install split --enable-shared
 
 git clone git://wien.tomnetworks.com/disassembler.git
 cd disassembler

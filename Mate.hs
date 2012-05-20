@@ -6,7 +6,7 @@ module Main where
 import System.Environment
 import Data.Char
 import Data.List
-import Data.String.Utils
+import Data.List.Split
 import qualified Data.ByteString.Lazy as B
 
 #ifdef DEBUG
@@ -25,23 +25,39 @@ main ::  IO ()
 main = do
   args <- getArgs
   register_signal
-  addClassPath "./"
-  case args of
-    [clspath] -> do
-      let bclspath = B.pack $ map (fromIntegral . ord) clspath
+  parseArgs args False
+
+parseArgs :: [String] -> Bool -> IO ()
+parseArgs ("-jar":jarpath:_) stdcp = do
+  if not stdcp then addClassPath "./" else return ()
+  addClassPathJAR jarpath
+  res <- readMainClass jarpath
+  case res of
+    Nothing -> error "JAR: no MainClass entry found. Try to pass the jar file via -cp instead."
+    Just mc -> do
+      let bclspath = B.pack $ map (fromIntegral . ord) mc
       cls <- getClassFile bclspath
       executeMain bclspath cls
-    ["-jar", jarpath] -> do
-      addClassPathJAR jarpath
-      res <- readMainClass jarpath
-      case res of
-        Nothing -> error "JAR: no MainClass entry found. Try to pass the jar file via -cp instead."
-        Just mc -> do
-          let mc' = replace "." "/" mc
-          let bclspath = B.pack $ map (fromIntegral . ord) mc'
-          cls <- getClassFile bclspath
-          executeMain bclspath cls
-    _ -> error "Usage: mate [<class-file> | -jar <jar-file>]"
+parseArgs ("-cp":cps) cpset = parseArgs ("-classpath":cps) cpset
+parseArgs ("-classpath":cps:xs) False = do
+  let paths = splitOn ":" cps
+  mapM_ addStuff paths
+  parseArgs xs True
+  where
+  addStuff :: String -> IO ()
+  addStuff x
+    | ".jar" `isSuffixOf` x = addClassPathJAR x
+    | otherwise = addClassPath $ x ++ "/"
+parseArgs ("-classpath":xs) _ = parseArgs ("-":xs) True -- usage
+parseArgs (('-':_):_) _ = error "Usage: mate [-cp|-classpath <cp1:cp2:..>] [<class-file> | -jar <jar-file>]"
+-- first argument which isn't prefixed by '-' should be a class file
+parseArgs (clspath:_) stdcp = do
+  if not stdcp then addClassPath "./" else return ()
+  let bclspath = B.pack $ map (fromIntegral . ord) clspath
+  cls <- getClassFile bclspath
+  executeMain bclspath cls
+parseArgs _ _ = parseArgs ["-"] False
+
 
 executeMain :: B.ByteString -> Class Direct -> IO ()
 executeMain bclspath cls = do

@@ -21,6 +21,7 @@ import Data.Binary
 import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.ByteString.Lazy as B
+import Data.String.Utils
 import Control.Monad
 
 #ifdef DEBUG
@@ -267,17 +268,20 @@ loadAndInitClass path = do
 
 
 readClassFile :: String -> IO (Class Direct)
-readClassFile path = readIORef classPaths >>= rcf
+readClassFile path' = readIORef classPaths >>= rcf
   where
+  path = replace "." "/" path'
   rcf :: [MClassPath] -> IO (Class Direct)
   rcf [] = error $ "readClassFile: Class \"" ++ (show path) ++ "\" not found."
   rcf ((Directory pre):xs) = do
     let cf = pre ++ path ++ ".class"
+    printfCp "rcf: searching @ %s for %s\n" (show pre) (show path)
     b <- doesFileExist cf
     if b
       then parseClassFile cf
       else rcf xs
   rcf ((JAR p):xs) = do
+    printfCp "rcf: searching %s in JAR\n" (show path)
     entry <- getEntry p path
     case entry of
       Just (LoadedJAR _ cls) -> return cls
