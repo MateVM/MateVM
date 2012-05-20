@@ -51,6 +51,7 @@ getMethodEntry signal_from methodtable = do
           (II _ (MethodInfo methname _ msig)) ->
               MethodInfo methname (vmap M.! fromIntegral methodtable) msig
           _ -> error "getMethodEntry: no trapInfo. abort."
+  setTrapMap $ M.delete w32_from tmap
   case M.lookup mi' mmap of
     Nothing -> do
       cls <- getClassFile cm

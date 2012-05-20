@@ -97,6 +97,7 @@ getStaticFieldAddr from = do
   trapmap <- getTrapMap
   let w32_from = fromIntegral from
   let sfi = trapmap M.! w32_from
+  setTrapMap $ M.delete w32_from trapmap
   case sfi of
     (SFI (StaticFieldInfo cls field)) -> getStaticFieldOffset cls field
     _ -> error "getFieldAddr: no trapInfo. abort"
