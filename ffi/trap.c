@@ -43,6 +43,9 @@ void chandler(int nSignal, siginfo_t *info, void *ctx)
 	unsigned int eax = (unsigned int) mctx->gregs[REG_EAX];
 	unsigned int ebx = (unsigned int) mctx->gregs[REG_EBX];
 	unsigned int esp = (unsigned int) mctx->gregs[REG_ESP];
+	dprintf("trap: type %d, eip 0x%08x, eax 0x%08x, ebx 0x%08x, "
+			"esp 0x%08x, *esp 0x%08x\n", nSignal, eip,
+			eax, ebx, esp, *(unsigned int*) esp);
 
 	mctx->gregs[REG_EIP] = mateHandler(eip, eax, ebx, esp);
 }
