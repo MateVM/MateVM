@@ -7,6 +7,7 @@ public class Generics1 implements Cmp<Integer> {
 	}
 
 	public static Cmp<Integer> sb = new Generics1();
+	public static int lalelu = 0;
 
 	public static void main(String []args) {
 		Generics1 foo = new Generics1();

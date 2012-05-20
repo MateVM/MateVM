@@ -197,7 +197,14 @@ calculateFields :: Class Direct -> Maybe ClassInfo -> IO (FieldMap, FieldMap)
 calculateFields cf superclass = do
     -- TODO(bernhard): correct sizes. int only atm
 
-    let (sfields, ifields) = span (S.member ACC_STATIC . fieldAccessFlags) (classFields cf)
+    -- TODO(bernhard): nicer replacement for `myspan'
+    let (sfields, ifields) = myspan (S.member ACC_STATIC . fieldAccessFlags) (classFields cf)
+        myspan :: (a -> Bool) -> [a] -> ([a], [a])
+        myspan _ [] = ([],[])
+        myspan p (x:xs)
+          | p x = (x:ns, ni)
+          | otherwise = (ns, x:ni)
+          where (ns,ni) = myspan p xs
 
     staticbase <- mallocClassData $ fromIntegral (length sfields) * 4
     let i_sb = fromIntegral $ ptrToIntPtr staticbase
