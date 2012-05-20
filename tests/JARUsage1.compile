@@ -1,0 +1,1 @@
+javac -classpath tests/jar1.jar tests/JARUsage1.java

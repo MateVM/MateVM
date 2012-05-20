@@ -25,12 +25,18 @@ all: mate $(CLASS_FILES)
 
 tests: mate $(TEST_CLASS_FILES)
 
+CALLF = $(basename $@).call
+testcase = ./tools/openjdktest.sh "$(1) $(basename $@)"
 %.test: %.class mate
-	@./tools/openjdktest.sh $(basename $@)
+	@if [ -f $(CALLF) ]; \
+		then $(call testcase,`cat $(CALLF)`); \
+		else $(call testcase, ); fi
 
-
+COMPILEF = $(basename $@).compile
 %.class: %.java
-	$(JAVAC) $<
+	@if [ -f $(COMPILEF) ]; \
+		then $(SHELL) $(COMPILEF); \
+		else $(JAVAC) $<; fi
 
 ffi/native.o: ffi/native.c
 	ghc -Wall -O2 -c $< -o $@
