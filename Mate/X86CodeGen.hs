@@ -4,6 +4,7 @@
 #include "debug.h"
 module Mate.X86CodeGen where
 
+import Prelude hiding (and)
 import Data.Binary
 import Data.BinaryState
 import Data.Int
@@ -181,12 +182,23 @@ emitFromBB method cls hmap =  do
         add ebx (1 :: Word32)
         pop ecx -- aref
         mov (ecx, ebx, S4) eax
+    emit CASTORE = do
+        pop eax -- value
+        pop ebx -- offset
+        add ebx (1 :: Word32)
+        pop ecx -- aref
+        mov (ecx, ebx, S1) eax -- TODO(bernhard): char is two byte
     emit AALOAD = emit IALOAD
     emit IALOAD = do
         pop ebx -- offset
         add ebx (1 :: Word32)
         pop ecx -- aref
         push (ecx, ebx, S4)
+    emit CALOAD = do
+        pop ebx -- offset
+        add ebx (1 :: Word32)
+        pop ecx -- aref
+        push (ecx, ebx, S1) -- TODO(bernhard): char is two byte
     emit ARRAYLENGTH = do
         pop eax
         push (Disp 0, eax)
@@ -194,6 +206,7 @@ emitFromBB method cls hmap =  do
     emit (NEWARRAY typ) = do
         let tsize = case decodeS (0 :: Integer) (B.pack [typ]) of
                     T_INT -> 4
+                    T_CHAR -> 2
                     _ -> error "newarray: type not implemented yet"
         -- get length from stack, but leave it there
         mov eax (Disp 0, esp)
@@ -218,6 +231,10 @@ emitFromBB method cls hmap =  do
         mtable <- liftIO $ getMethodTable objname
         mov (Disp 0, eax) mtable
     emit (CHECKCAST _) = nop -- TODO(bernhard): ...
+    emit I2C = do
+      pop eax
+      and eax (0x000000ff :: Word32)
+      push eax
     emit (BIPUSH val) = push (fromIntegral val :: Word32)
     emit (SIPUSH val) = push (fromIntegral (fromIntegral val :: Int16) :: Word32)
     emit (ICONST_0) = push (0 :: Word32)

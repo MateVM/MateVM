@@ -37,6 +37,7 @@ COMPILEF = $(basename $@).compile
 	@if [ -f $(COMPILEF) ]; \
 		then $(SHELL) $(COMPILEF); \
 		else $(JAVAC) $<; fi
+	@echo "JAVAC $<"
 
 ffi/native.o: ffi/native.c
 	ghc -Wall -O2 -c $< -o $@

@@ -44,8 +44,9 @@ methodHaveReturnValue :: Class Direct -> Word16 -> Bool
 methodHaveReturnValue cls idx = case ret of
     ReturnsVoid -> False;
     (Returns IntType) -> True;
+    (Returns (Array _ _)) -> True
     (Returns (ObjectType _)) -> True;
-    _ -> error "methodHaveReturnValue: todo"
+    _ -> error $ "methodHaveReturnValue: todo: " ++ show ret
   where
   nt = case constsPool cls M.! idx of
     (CMethod _ nt') -> nt'
