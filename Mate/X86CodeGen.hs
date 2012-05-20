@@ -237,6 +237,10 @@ emitFromBB method sig cls hmap =  do
         mtable <- liftIO $ getMethodTable objname
         mov (Disp 0, eax) mtable
     emit (CHECKCAST _) = nop -- TODO(bernhard): ...
+    -- TODO(bernhard): ...
+    emit (INSTANCEOF _) = do
+      pop eax
+      push (1 :: Word32)
     emit ATHROW = nop -- TODO(bernhard): ...
     emit I2C = do
       pop eax
