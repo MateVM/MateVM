@@ -141,8 +141,10 @@ compileBB hmap methodinfo = do
   printfJit "generated code of \"%s\":\n" (toString $ methName methodinfo)
   mapM_ (printfJit "%s\n" . showAtt) (snd right)
   printfJit "\n\n"
-  -- UNCOMMENT NEXT LINE FOR GDB FUN
-  -- _ <- getLine
+  -- UNCOMMENT NEXT LINES FOR GDB FUN
+  --if (toString $ methName methodinfo) == "thejavamethodIwant2debug"
+  --  then getLine
+  --  else return "foo"
   -- (1) start it with `gdb ./mate' and then `run <classfile>'
   -- (2) on getLine, press ctrl+c
   -- (3) `br *0x<addr>'; obtain the address from the disasm above

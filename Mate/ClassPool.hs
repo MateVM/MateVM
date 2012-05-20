@@ -114,43 +114,47 @@ getInterfaceMethodOffset ifname meth sig = do
 
 readClass :: B.ByteString -> IO ClassInfo
 readClass path = do
-  cfile <- readClassFile $ toString path
+  class_map' <- getClassMap
+  case M.lookup path class_map' of
+    Just cm -> return cm
+    Nothing -> do
+      cfile <- readClassFile $ toString path
 #ifdef DBG_CLASS
-  dumpClass cfile
+      dumpClass cfile
 #endif
-  -- load all interfaces, which are implemented by this class
-  sequence_ [ loadInterface i | i <- interfaces cfile ]
-  superclass <- if path /= "java/lang/Object"
-      then do
-        sc <- readClass $ superClass cfile
-        return $ Just sc
-      else return Nothing
+      -- load all interfaces, which are implemented by this class
+      sequence_ [ loadInterface i | i <- interfaces cfile ]
+      superclass <- if path /= "java/lang/Object"
+          then do
+            sc <- readClass $ superClass cfile
+            return $ Just sc
+          else return Nothing
 
-  (staticmap, fieldmap) <- calculateFields cfile superclass
-  (methodmap, mbase) <- calculateMethodMap cfile superclass
-  immap <- getInterfaceMethodMap
+      (staticmap, fieldmap) <- calculateFields cfile superclass
+      (methodmap, mbase) <- calculateMethodMap cfile superclass
+      immap <- getInterfaceMethodMap
 
-  -- allocate interface offset table for this class
-  -- TODO(bernhard): we have some duplicates in immap (i.e. some
-  --                 entries have the same offset), so we could
-  --                 save some memory here.
-  iftable <- mallocClassData ((4*) $ M.size immap)
-  let w32_iftable = fromIntegral $ ptrToIntPtr iftable :: Word32
-  -- store interface-table at offset 0 in method-table
-  pokeElemOff (intPtrToPtr $ fromIntegral mbase) 0 w32_iftable
-  printfCp "staticmap: %s @ %s\n" (show staticmap) (toString path)
-  printfCp "fieldmap:  %s @ %s\n" (show fieldmap) (toString path)
-  printfCp "methodmap: %s @ %s\n" (show methodmap) (toString path)
-  printfCp "mbase: 0x%08x\n" mbase
-  printfCp "interfacemethod: %s @ %s\n" (show immap) (toString path)
-  printfCp "iftable: 0x%08x\n" w32_iftable
-  virtual_map <- getVirtualMap
-  setVirtualMap $ M.insert mbase path virtual_map
+      -- allocate interface offset table for this class
+      -- TODO(bernhard): we have some duplicates in immap (i.e. some
+      --                 entries have the same offset), so we could
+      --                 save some memory here.
+      iftable <- mallocClassData ((4*) $ M.size immap)
+      let w32_iftable = fromIntegral $ ptrToIntPtr iftable :: Word32
+      -- store interface-table at offset 0 in method-table
+      pokeElemOff (intPtrToPtr $ fromIntegral mbase) 0 w32_iftable
+      printfCp "staticmap: %s @ %s\n" (show staticmap) (toString path)
+      printfCp "fieldmap:  %s @ %s\n" (show fieldmap) (toString path)
+      printfCp "methodmap: %s @ %s\n" (show methodmap) (toString path)
+      printfCp "mbase: 0x%08x\n" mbase
+      printfCp "interfacemethod: %s @ %s\n" (show immap) (toString path)
+      printfCp "iftable: 0x%08x\n" w32_iftable
+      virtual_map <- getVirtualMap
+      setVirtualMap $ M.insert mbase path virtual_map
 
-  class_map <- getClassMap
-  let new_ci = ClassInfo path cfile staticmap fieldmap methodmap mbase False
-  setClassMap $ M.insert path new_ci class_map
-  return new_ci
+      class_map <- getClassMap
+      let new_ci = ClassInfo path cfile staticmap fieldmap methodmap mbase False
+      setClassMap $ M.insert path new_ci class_map
+      return new_ci
 
 
 loadInterface :: B.ByteString -> IO ()
