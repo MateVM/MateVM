@@ -139,7 +139,8 @@ emitFromBB method sig cls hmap =  do
         -- note, the "mi" has the wrong class reference here.
         -- we figure that out at run-time, in the methodpool,
         -- depending on the method-table-ptr
-        return $ Just (calladdr, II mi)
+        let imm8 = is8BitOffset offset
+        return $ Just (calladdr + (if imm8 then 3 else 6), II imm8 mi)
     emit' (INVOKEVIRTUAL cpidx) = do
         -- get methodInfo entry
         let mi@(MethodInfo methodname objname msig@(MethodSignature args _))  = buildMethodID cls cpidx
@@ -162,7 +163,8 @@ emitFromBB method sig cls hmap =  do
         -- note, the "mi" has the wrong class reference here.
         -- we figure that out at run-time, in the methodpool,
         -- depending on the method-table-ptr
-        return $ Just (calladdr, VI mi)
+        let imm8 = is8BitOffset offset
+        return $ Just (calladdr + (if imm8 then 3 else 6), VI imm8 mi)
     emit' (PUTSTATIC cpidx) = do
         pop eax
         trapaddr <- getCurrentOffset
@@ -360,3 +362,7 @@ emitFromBB method sig cls hmap =  do
   s8_w32 :: Word8 -> Word32
   s8_w32 w8 = fromIntegral s8
     where s8 = fromIntegral w8 :: Int8
+
+  is8BitOffset :: Word32 -> Bool
+  is8BitOffset w32 = s32 < 128 && s32 > (-127)
+    where s32 = fromIntegral w32 :: Int32

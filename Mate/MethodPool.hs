@@ -46,9 +46,9 @@ getMethodEntry signal_from methodtable = do
   let mi'@(MethodInfo method cm sig) =
         case mi of
           (MI x) -> x
-          (VI (MethodInfo methname _ msig)) ->
+          (VI  _(MethodInfo methname _ msig)) ->
               MethodInfo methname (vmap M.! fromIntegral methodtable) msig
-          (II (MethodInfo methname _ msig)) ->
+          (II _ (MethodInfo methname _ msig)) ->
               MethodInfo methname (vmap M.! fromIntegral methodtable) msig
           _ -> error "getMethodEntry: no trapInfo. abort."
   case M.lookup mi' mmap of

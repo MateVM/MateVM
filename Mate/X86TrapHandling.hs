@@ -13,7 +13,6 @@ import Mate.Types
 import Mate.MethodPool
 import Mate.ClassPool
 
-
 foreign import ccall "register_signal"
   register_signal :: IO ()
 
@@ -27,20 +26,24 @@ getTrapType signal_from from2 = do
     (Just _) -> error "getTrapMap: doesn't happen"
     -- maybe we've a hit on the second `from' value
     Nothing -> case M.lookup (fromIntegral from2) tmap of
-      (Just (VI _)) -> return 1
-      (Just (II _)) -> return 4
+      (Just (VI True _)) -> return 1
+      (Just (VI False _)) -> return 5
+      (Just (II True _)) -> return 4
+      (Just (II False _)) -> return 8
       (Just _) -> error "getTrapType: abort #1 :-("
-      Nothing -> error "getTrapType: abort #2 :-("
+      Nothing -> error $ "getTrapType: abort #2 :-(" ++ show signal_from ++ ", " ++ show from2 ++ ", " ++ show tmap
 
 foreign export ccall mateHandler :: CUInt -> CUInt -> CUInt -> CUInt -> IO CUInt
 mateHandler :: CUInt -> CUInt -> CUInt -> CUInt -> IO CUInt
 mateHandler eip eax ebx esp = do
   callerAddr <- callerAddrFromStack esp
-  blah <- getTrapType eip (callerAddr - 3)
+  blah <- getTrapType eip callerAddr
   case blah of
     0 -> staticCallHandler eip
-    1 -> invokeHandler eax eax esp
-    4 -> invokeHandler eax ebx esp
+    1 -> invokeHandler eax eax esp True
+    5 -> invokeHandler eax eax esp False
+    4 -> invokeHandler eax ebx esp True
+    8 -> invokeHandler eax ebx esp False
     2 -> staticFieldHandler eip
     x -> error $ "wtf: " ++ (show x)
 
@@ -77,12 +80,12 @@ staticFieldHandler eip = do
       return eip
     False -> error "staticFieldHandler: something is wrong here. abort.\n"
 
-invokeHandler :: CUInt -> CUInt -> CUInt -> IO CUInt
-invokeHandler method_table table2patch esp = do
+invokeHandler :: CUInt -> CUInt -> CUInt -> Bool -> IO CUInt
+invokeHandler method_table table2patch esp imm8 = do
   -- table2patch: note, that can be a method-table or a interface-table
   callerAddr <- callerAddrFromStack esp
-  offset <- offsetOfCallInsn esp
-  entryAddr <- getMethodEntry (callerAddr - 3) method_table
+  offset <- if imm8 then offsetOfCallInsn8 esp else offsetOfCallInsn32 esp
+  entryAddr <- getMethodEntry callerAddr method_table
   let call_insn = intPtrToPtr (fromIntegral $ table2patch + (fromIntegral offset))
   poke call_insn entryAddr
   return entryAddr
@@ -91,8 +94,16 @@ invokeHandler method_table table2patch esp = do
 callerAddrFromStack :: CUInt -> IO CUInt
 callerAddrFromStack = peek . intPtrToPtr . fromIntegral
 
-offsetOfCallInsn :: CUInt -> IO CUChar
-offsetOfCallInsn esp = do
+offsetOfCallInsn8 :: CUInt -> IO CUInt
+offsetOfCallInsn8 esp = do
   let ret_ptr = intPtrToPtr (fromIntegral esp) :: Ptr CUInt
   ret <- peek ret_ptr
-  peek (intPtrToPtr $ fromIntegral (ret - 1))
+  retval <- peek (intPtrToPtr (fromIntegral (ret - 1)) :: Ptr CUChar)
+  return $ fromIntegral retval
+
+offsetOfCallInsn32 :: CUInt -> IO CUInt
+offsetOfCallInsn32 esp = do
+  let ret_ptr = intPtrToPtr (fromIntegral esp) :: Ptr CUInt
+  ret <- peek ret_ptr
+  retval <- peek (intPtrToPtr $ fromIntegral (ret - 4))
+  return retval

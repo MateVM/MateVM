@@ -33,8 +33,8 @@ type TrapMap = M.Map Word32 TrapInfo
 
 data TrapInfo =
   MI MethodInfo | -- for static calls
-  VI MethodInfo | -- for virtual calls
-  II MethodInfo | -- for interface calls
+  VI Bool MethodInfo | -- for virtual calls
+  II Bool MethodInfo | -- for interface calls
   SFI StaticFieldInfo deriving Show
 
 data StaticFieldInfo = StaticFieldInfo {
