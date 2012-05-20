@@ -4,7 +4,7 @@
 #include "debug.h"
 module Mate.X86CodeGen where
 
-import Prelude hiding (and)
+import Prelude hiding (and, div)
 import Data.Binary
 import Data.BinaryState
 import Data.Int
@@ -29,6 +29,10 @@ import Mate.Types
 import Mate.Utilities
 import Mate.ClassPool
 import Mate.Strings
+import Mate.Debug
+#ifdef DEBUG
+import Text.Printf
+#endif
 
 
 foreign import ccall "dynamic"
@@ -175,6 +179,7 @@ emitFromBB method sig cls hmap =  do
     emit :: J.Instruction -> CodeGen e s ()
     emit POP = add esp (4 :: Word32) -- drop value
     emit DUP = push (Disp 0, esp)
+    emit DUP_X1 = do pop eax; pop ebx; push eax; push ebx; push eax
     emit AASTORE = emit IASTORE
     emit IASTORE = do
         pop eax -- value
@@ -231,12 +236,15 @@ emitFromBB method sig cls hmap =  do
         mtable <- liftIO $ getMethodTable objname
         mov (Disp 0, eax) mtable
     emit (CHECKCAST _) = nop -- TODO(bernhard): ...
+    emit ATHROW = nop -- TODO(bernhard): ...
     emit I2C = do
       pop eax
       and eax (0x000000ff :: Word32)
       push eax
     emit (BIPUSH val) = push (fromIntegral val :: Word32)
     emit (SIPUSH val) = push (fromIntegral (fromIntegral val :: Int16) :: Word32)
+    emit ACONST_NULL = push (0 :: Word32)
+    emit (ICONST_M1) = push ((-1) :: Word32)
     emit (ICONST_0) = push (0 :: Word32)
     emit (ICONST_1) = push (1 :: Word32)
     emit (ICONST_2) = push (2 :: Word32)
@@ -273,10 +281,15 @@ emitFromBB method sig cls hmap =  do
     emit IADD = do pop ebx; pop eax; add eax ebx; push eax
     emit ISUB = do pop ebx; pop eax; sub eax ebx; push eax
     emit IMUL = do pop ebx; pop eax; mul ebx; push eax
+    emit IDIV = do pop ebx; pop eax; div ebx; push eax
+    emit IREM = do pop ebx; pop eax; div ebx; push edx
     emit IXOR = do pop ebx; pop eax; xor eax ebx; push eax
+    emit INEG = do pop eax; neg eax; push eax
     emit (IINC x imm) =
         add (Disp (cArgs x), ebp) (s8_w32 imm)
 
+    emit (IFNONNULL x) = emit (IF C_NE x)
+    emit (IFNULL x) = emit (IF C_EQ x)
     emit (IF_ACMP cond x) = emit (IF_ICMP cond x)
     emit (IF_ICMP cond _) = do
         pop eax -- value2

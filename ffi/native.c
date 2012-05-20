@@ -102,3 +102,7 @@ void java_io_PrintStream__printf_5___Ljava_lang_String_Ljava_lang_Object_Ljava_l
 {
 	printf(&fmt->value->str, a1->value, a2->value, a3->value, a4->value, a5->value);
 }
+
+void gnu_classpath_VMSystemProperties__preInit___Ljava_util_Properties__V() {
+	return;
+}

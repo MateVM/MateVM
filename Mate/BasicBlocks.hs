@@ -195,6 +195,8 @@ calculateInstructionOffset = cio' (0, Nothing)
       IF _ w16 -> twotargets w16
       IF_ICMP _ w16 -> twotargets w16
       IF_ACMP _ w16 -> twotargets w16
+      IFNONNULL w16 -> twotargets w16
+      IFNULL w16 -> twotargets w16
       GOTO w16 -> onetarget w16
       IRETURN -> notarget
       ARETURN -> notarget
