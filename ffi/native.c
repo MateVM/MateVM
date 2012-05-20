@@ -49,39 +49,56 @@ struct integer {
 	int value;
 };
 
+struct string {
+	unsigned int method_table_ptr;
+	struct chararray *value;
+};
+
+struct chararray {
+	unsigned int length;
+	char str;
+};
+
 void java_io_PrintStream__printf_0___Ljava_lang_String__V
-	(const char *fmt)
+	(struct string *fmt)
 {
-	printf("%s", fmt);
+	printf("%s", &fmt->value->str);
 }
 
 void java_io_PrintStream__printf_1___Ljava_lang_String_Ljava_lang_Object__V
-	(struct integer *a1, const char *fmt)
+	(struct integer *a1, struct string *fmt)
 {
-	printf(fmt, a1->value);
+#if 0
+	printf("fmt:        0x%08x\n", (unsigned int) fmt);
+	printf("fmt->value: 0x%08x\n", (unsigned int) fmt->value);
+	printf("fmt->val.len: 0x%08x\n", (unsigned int) (*fmt->value).length);
+	printf("first: %d\n", fmt->value->length);
+	printf("*fmt: %s\n", &fmt->value->str);
+#endif
+	printf(&fmt->value->str, a1->value);
 }
 
 void java_io_PrintStream__printf_2___Ljava_lang_String_Ljava_lang_Object_Ljava_lang_Object__V
-	(struct integer *a2, struct integer *a1, const char *fmt)
+	(struct integer *a2, struct integer *a1, struct string *fmt)
 {
-	printf(fmt, a1->value, a2->value);
+	printf(&fmt->value->str, a1->value, a2->value);
 }
 
 void
 java_io_PrintStream__printf_3___Ljava_lang_String_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object__V
-	(struct integer *a3, struct integer *a2, struct integer *a1, const char *fmt)
+	(struct integer *a3, struct integer *a2, struct integer *a1, struct string *fmt)
 {
-	printf(fmt, a1->value, a2->value, a3->value);
+	printf(&fmt->value->str, a1->value, a2->value, a3->value);
 }
 
 void java_io_PrintStream__printf_4___Ljava_lang_String_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object__V
-	(struct integer *a4, struct integer *a3, struct integer *a2, struct integer *a1, const char *fmt)
+	(struct integer *a4, struct integer *a3, struct integer *a2, struct integer *a1, struct string *fmt)
 {
-	printf(fmt, a1->value, a2->value, a3->value, a4->value);
+	printf(&fmt->value->str, a1->value, a2->value, a3->value, a4->value);
 }
 
 void java_io_PrintStream__printf_5___Ljava_lang_String_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object__V
-	(struct integer *a5, struct integer *a4, struct integer *a3, struct integer *a2, struct integer *a1, const char *fmt)
+	(struct integer *a5, struct integer *a4, struct integer *a3, struct integer *a2, struct integer *a1, struct string *fmt)
 {
-	printf(fmt, a1->value, a2->value, a3->value, a4->value, a5->value);
+	printf(&fmt->value->str, a1->value, a2->value, a3->value, a4->value, a5->value);
 }

@@ -15,11 +15,11 @@ import Text.Printf
 
 import JVM.ClassFile
 
-import Foreign.Ptr
-import Foreign.Marshal.Utils
-import Foreign.Marshal.Array
+import Foreign
+import Foreign.C.Types
 
 import Mate.Types
+import Mate.ClassPool
 import Mate.Debug
 import Mate.GarbageAlloc
 
@@ -36,13 +36,50 @@ getUniqueStringAddr str = do
 
 allocateJavaString :: B.ByteString -> IO Word32
 allocateJavaString str = do
-  -- TODO(bernhard): is this also true for UTF8 stuff?
-  let strlen = fromIntegral $ B.length str
+  {- we have to build a java object layout here, where String object looks like
+   -
+   -  this -+
+   -        |
+   -        v
+   -  +-------------+-------+-------+----------------+--------+
+   -  | MethodTable | value | count | cachedhashcode | offset |
+   -  +-------------+-------+-------+----------------+--------+
+   -        |           |
+   -        |           +------------+
+   -        v                        v
+   -  java/lang/String           +--------+--------+--------+-----+------------------+
+   -                             | length | str[0] | str[1] | ... | str [length - 1] |
+   -                             +--------+--------+--------+-----+------------------+
+   -  all cells are 32bit wide, except str[i] of course (they're 8bit [but
+   -  should be 16bit, TODO]).
+   -}
+  -- build object layout
+  fsize <- getObjectSize "java/lang/String"
+  printfStr "string: fsize: %d (should be 4 * 5)\n" fsize
+  tblptr <- mallocObject $ fromIntegral fsize
+  let ptr = intPtrToPtr (fromIntegral tblptr) :: Ptr CUInt
+  mtbl <- getMethodTable "java/lang/String"
+  poke ptr $ fromIntegral mtbl
+
+  -- build array layout
+  let strlen = (fromIntegral $ B.length str)
+  -- (+1) for \0, (+4) for length
+  newstr <- mallocString (strlen + 5)
+  BI.memset newstr 0 (fromIntegral $ strlen + 5)
   arr <- newArray ((map fromIntegral $ B.unpack str) :: [Word8])
-  -- (+1) for \0
-  newstr <- mallocString (strlen + 1)
-  BI.memset newstr 0 (fromIntegral $ strlen + 1)
-  copyBytes newstr arr strlen
-  let w32_ptr = fromIntegral $ ptrToIntPtr newstr
-  printfStr "new str ptr: 0x%08x (%s)@%d\n" w32_ptr (toString str) strlen
-  return w32_ptr
+  copyBytes (plusPtr newstr 4) arr strlen
+  printfStr "new str ptr: (%s)@%d\n" (toString str) strlen
+
+  let newstr_length = castPtr newstr :: Ptr CUInt
+  poke newstr_length $ fromIntegral strlen
+
+  -- set value pointer
+  poke (plusPtr ptr 4) (fromIntegral (ptrToIntPtr newstr) :: CUInt)
+  -- set count field
+  poke (plusPtr ptr 8) (fromIntegral strlen :: CUInt)
+  -- set hash code (TODO)
+  poke (plusPtr ptr 12) (0 :: CUInt)
+  -- set offset
+  poke (plusPtr ptr 16) (0 :: CUInt)
+
+  return $ fromIntegral tblptr
