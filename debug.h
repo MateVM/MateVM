@@ -9,6 +9,10 @@
  */
 
 /* ooops defines */
+#ifdef BG_ALL
+#define DBG_ALL
+#endif
+
 #ifdef BG_JIT
 #define DBG_JIT
 #endif
@@ -41,8 +45,20 @@
  * libraries like Text.Printf
  * needed for gettting proper `-Wall' output on a release build */
 
-#if defined(DBG_JIT) || defined(DBG_BB) || defined(DBG_MP) || defined(DBG_CP) || defined(DBG_STR)
+#if defined(DBG_ALL) || defined(DBG_JIT) || defined(DBG_BB) || defined(DBG_MP) || defined(DBG_CP) || defined(DBG_STR)
 #define DEBUG
+#endif
+
+#if defined(DBG_ALL)
+#define DBG_JIT
+#define DBG_BB
+#define DBG_MP
+#define DBG_CP
+#define DBG_STR
+#define DBG_TRAP
+#if 0
+#define DBG_CLASS
+#endif
 #endif
 
 /* it would be awesome if we could just write
