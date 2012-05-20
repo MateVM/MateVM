@@ -29,7 +29,6 @@ import Mate.Types
 import Mate.Utilities
 import Mate.ClassPool
 import Mate.Strings
-import Mate.Debug
 #ifdef DEBUG
 import Text.Printf
 #endif
@@ -268,7 +267,7 @@ emitFromBB method sig cls hmap =  do
     emit (LDC2 x) = do
         value <- case constsPool cls M.! x of
                       (CString s) -> liftIO $ getUniqueStringAddr s
-                      _ -> error "LDCI... missing impl."
+                      e -> error $ "LDCI... missing impl.: " ++ show e
         push value
     emit (GETFIELD x) = do
         offset <- emitFieldOffset x
@@ -281,8 +280,8 @@ emitFromBB method sig cls hmap =  do
     emit IADD = do pop ebx; pop eax; add eax ebx; push eax
     emit ISUB = do pop ebx; pop eax; sub eax ebx; push eax
     emit IMUL = do pop ebx; pop eax; mul ebx; push eax
-    emit IDIV = do pop ebx; pop eax; div ebx; push eax
-    emit IREM = do pop ebx; pop eax; div ebx; push edx
+    emit IDIV = do pop ebx; pop eax; xor edx edx; div ebx; push eax
+    emit IREM = do pop ebx; pop eax; xor edx edx; div ebx; push edx
     emit IXOR = do pop ebx; pop eax; xor eax ebx; push eax
     emit INEG = do pop eax; neg eax; push eax
     emit (IINC x imm) =
