@@ -61,14 +61,13 @@ parseArgs _ _ = parseArgs ["-"] False
 
 executeMain :: B.ByteString -> Class Direct -> IO ()
 executeMain bclspath cls = do
-  hmap <- parseMethod cls "main"
-  case hmap of
-    Just hmap' -> do
-      let methods = classMethods cls; methods :: [Method Direct]
-      let method = find (\x -> methodName x == "main") methods
-      case method of
-        Just m -> do
-          let mi = MethodInfo "main" bclspath $ methodSignature m
+  let methods = classMethods cls; methods :: [Method Direct]
+  case find (\x -> methodName x == "main") methods of
+    Just m -> do
+      let mi = MethodInfo "main" bclspath $ methodSignature m
+      hmap <- parseMethod cls "main" $ methodSignature m
+      case hmap of
+        Just hmap' -> do
           entry <- compileBB hmap' mi
           addMethodRef entry mi [bclspath]
 #ifdef DEBUG

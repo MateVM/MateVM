@@ -29,6 +29,7 @@ import Mate.Types
 import Mate.X86CodeGen
 import Mate.ClassPool
 import Mate.Debug
+import Mate.Utilities
 
 foreign import ccall "dynamic"
    code_void :: FunPtr (IO ()) -> IO ()
@@ -54,7 +55,7 @@ getMethodEntry signal_from methodtable = do
     Nothing -> do
       cls <- getClassFile cm
       printfMp "getMethodEntry(from 0x%08x): no method \"%s\" found. compile it\n" w32_from (show mi')
-      mm <- lookupMethodRecursive method [] cls
+      mm <- lookupMethodRecursive method sig [] cls
       case mm of
         Just (mm', clsnames, cls') -> do
             let flags = methodAccessFlags mm'
@@ -71,7 +72,7 @@ getMethodEntry signal_from methodtable = do
                 setMethodMap $ M.insert mi' w32_nf mmap
                 return nf
               else do
-                hmap <- parseMethod cls' method
+                hmap <- parseMethod cls' method sig
                 case hmap of
                   Just hmap' -> do
                     entry <- compileBB hmap' (MethodInfo method (thisClass cls') sig)
@@ -81,18 +82,18 @@ getMethodEntry signal_from methodtable = do
         Nothing -> error $ show method ++ " not found. abort"
     Just w32 -> return (fromIntegral w32)
 
-lookupMethodRecursive :: B.ByteString -> [B.ByteString] -> Class Direct
+lookupMethodRecursive :: B.ByteString -> MethodSignature -> [B.ByteString] -> Class Direct
                          -> IO (Maybe (Method Direct, [B.ByteString], Class Direct))
-lookupMethodRecursive name clsnames cls =
+lookupMethodRecursive name sig clsnames cls =
   case res of
     Just x -> return $ Just (x, nextclsn, cls)
     Nothing -> if thisname == "java/lang/Object"
       then return Nothing
       else do
         supercl <- getClassFile (superClass cls)
-        lookupMethodRecursive name nextclsn supercl
+        lookupMethodRecursive name sig nextclsn supercl
   where
-  res = lookupMethod name cls
+  res = lookupMethodSig name sig cls
   thisname = thisClass cls
   nextclsn :: [B.ByteString]
   nextclsn = thisname:clsnames
@@ -132,13 +133,13 @@ compileBB hmap methodinfo = do
   tmap <- getTrapMap
 
   cls <- getClassFile (methClassName methodinfo)
-  let ebb = emitFromBB (methName methodinfo) cls hmap
+  let ebb = emitFromBB (methName methodinfo) (methSignature methodinfo) cls hmap
   (_, Right right) <- runCodeGen ebb () ()
 
   let ((entry, _, _, new_tmap), _) = right
   setTrapMap $ tmap `M.union` new_tmap -- prefers elements in tmap
 
-  printfJit "generated code of \"%s\":\n" (toString $ methName methodinfo)
+  printfJit "generated code of \"%s\" from \"%s\":\n" (toString $ methName methodinfo) (toString $ methClassName methodinfo)
   mapM_ (printfJit "%s\n" . showAtt) (snd right)
   printfJit "\n\n"
   -- UNCOMMENT NEXT LINES FOR GDB FUN

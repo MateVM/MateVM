@@ -260,7 +260,7 @@ loadAndInitClass path = do
   -- execute class initializer
   case lookupMethod "<clinit>" (ciFile ci) of
     Just m -> do
-      hmap <- parseMethod (ciFile ci) "<clinit>"
+      hmap <- parseMethod (ciFile ci) "<clinit>" $ MethodSignature [] ReturnsVoid
       case hmap of
         Just hmap' -> do
           let mi = MethodInfo "<clinit>" path (methodSignature m)

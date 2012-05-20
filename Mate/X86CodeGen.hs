@@ -46,8 +46,8 @@ type BBStarts = M.Map BlockID Int
 type CompileInfo = (EntryPoint, BBStarts, Int, TrapMap)
 
 
-emitFromBB :: B.ByteString -> Class Direct -> MapBB -> CodeGen e s (CompileInfo, [Instruction])
-emitFromBB method cls hmap =  do
+emitFromBB :: B.ByteString -> MethodSignature -> Class Direct -> MapBB -> CodeGen e s (CompileInfo, [Instruction])
+emitFromBB method sig cls hmap =  do
         llmap <- sequence [newNamedLabel ("bb_" ++ show x) | (x,_) <- M.toList hmap]
         let lmap = zip (Prelude.fst $ unzip $ M.toList hmap) llmap
         ep <- getEntryPoint
@@ -336,8 +336,8 @@ emitFromBB method cls hmap =  do
   thisMethodArgCnt :: Word32
   thisMethodArgCnt = isNonStatic + fromIntegral (length args)
     where
-    (Just m) = lookupMethod method cls
-    (MethodSignature args _) = methodSignature m
+    (Just m) = lookupMethodSig method sig cls
+    (MethodSignature args _) = sig
     isNonStatic = if S.member ACC_STATIC (methodAccessFlags m)
         then 0 else 1 -- one argument for the this pointer
 

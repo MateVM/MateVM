@@ -8,7 +8,6 @@ module Mate.BasicBlocks(
   MapBB,
 #ifdef DBG_BB
   printMapBB,
-  test_main,
 #endif
   parseMethod,
   testCFG -- added by hs to perform benches from outside
@@ -26,6 +25,7 @@ import JVM.Assembler
 
 import Mate.Types
 import Mate.Debug
+import Mate.Utilities
 
 #ifdef DEBUG
 import Text.Printf
@@ -61,11 +61,12 @@ printMapBB (Just hmap) = do
                   Nothing -> error $ "BlockID " ++ show i ++ " not found."
 #endif
 
+#if 0
 #ifdef DBG_BB
-testInstance :: String -> B.ByteString -> IO ()
-testInstance cf method = do
+testInstance :: String -> B.ByteString -> MethodSignature -> IO ()
+testInstance cf method sig = do
                       cls <- parseClassFile cf
-                      hmap <- parseMethod cls method
+                      hmap <- parseMethod cls method sig
                       printMapBB hmap
 #endif
 
@@ -83,11 +84,12 @@ test_02 = testInstance "./tests/While.class" "f"
 test_03 = testInstance "./tests/While.class" "g"
 test_04 = testInstance "./tests/Fac.class" "fac"
 #endif
+#endif
 
 
-parseMethod :: Class Direct -> B.ByteString -> IO (Maybe MapBB)
-parseMethod cls method = do
-                     let maybe_bb = testCFG $ lookupMethod method cls
+parseMethod :: Class Direct -> B.ByteString -> MethodSignature -> IO (Maybe MapBB)
+parseMethod cls method sig = do
+                     let maybe_bb = testCFG $ lookupMethodSig method sig cls
                      let msig = methodSignature $ classMethods cls !! 1
                      printfBb "BB: analysing \"%s\"\n" $ toString (method `B.append` ": " `B.append` encode msig)
 #ifdef DBG_BB
@@ -96,7 +98,7 @@ parseMethod cls method = do
                      -- small example how to get information about
                      -- exceptions of a method
                      -- TODO: remove ;-)
-                     let (Just m) = lookupMethod method cls
+                     let (Just m) = lookupMethodSig method sig cls
                      case attrByName m "Code" of
                       Nothing -> printfBb "exception: no handler for this method\n"
                       Just exceptionstream -> printfBb "exception: \"%s\"\n" (show $ codeExceptions $ decodeMethod exceptionstream)

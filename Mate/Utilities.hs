@@ -53,3 +53,11 @@ methodHaveReturnValue cls idx = case ret of
     (CIfaceMethod _ nt') -> nt'
     _ -> error "methodHaveReturnValue: something wrong. abort."
   (MethodSignature _ ret) = ntSignature nt
+
+lookupMethodSig :: B.ByteString -> MethodSignature -> Class Direct -> Maybe (Method Direct)
+lookupMethodSig name sig cls = look (classMethods cls)
+  where
+  look [] = Nothing
+  look (f:fs)
+    | methodName f == name && methodSignature f == sig = Just f
+    | otherwise = look fs
