@@ -11,22 +11,13 @@ cabal install heap $CABAL_OPT
 cabal install plugins $CABAL_OPT
 cabal install split $CABAL_OPT
 
-git clone git://wien.tomnetworks.com/disassembler.git
-cd disassembler
-cabal install $CABAL_OPT
-cd ..
-rm -rf disassembler
-
-git clone git://wien.tomnetworks.com/harpy.git
-cd harpy
-cabal install $CABAL_OPT
-cd ..
-rm -rf harpy
-
 git clone git://wien.tomnetworks.com/hs-java.git
 cd hs-java
 cabal install $CABAL_OPT
 cd ..
 rm -rf hs-java
+
+cabal install disassembler $CABAL_OPT
+cabal install harpy $CABAL_OPT
 
 echo DONE

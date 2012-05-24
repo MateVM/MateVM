@@ -10,14 +10,15 @@ build-depends: base -any,
                mate-common -any, 
                hs-java ==0.3.1,
                bytestring -any,
-               harpy ==0.4.3.99,
+               harpy == 0.5.0.0,
                heap -any,
                containers -any,
                binary -any,
                plugins ==1.5.*,
                MissingH ==1.1.*,
                utf8-string -any,
-               binary-state -any
+               binary-state -any,
+               split -any
 stability:
 homepage:
 package-url:
