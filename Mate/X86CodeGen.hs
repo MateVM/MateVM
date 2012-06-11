@@ -34,11 +34,8 @@ import Text.Printf
 #endif
 
 
-foreign import ccall "dynamic"
-   code_int :: FunPtr (CInt -> CInt -> IO CInt) -> CInt -> CInt -> IO CInt
-
-foreign import ccall "getMallocObjectAddr"
-  getMallocObjectAddr :: CUInt
+foreign import ccall "&mallocObject"
+  mallocObjectAddr :: FunPtr (Int -> IO CUInt)
 
 type EntryPoint = Ptr Word8
 type EntryPointOffset = Int
@@ -333,10 +330,7 @@ emitFromBB method sig cls hmap =  do
 
     callMalloc :: CodeGen e s ()
     callMalloc = do
-        calladdr <- getCurrentOffset
-        let w32_calladdr = 5 + calladdr
-        let malloaddr = fromIntegral getMallocObjectAddr :: Word32
-        call (malloaddr - w32_calladdr)
+        call mallocObjectAddr
         add esp (4 :: Word32)
         push eax
 

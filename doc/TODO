@@ -50,6 +50,9 @@
 
 (l) check different types (byte, long, ...)
 
+(l) get rid of CUInt where appropriate
+	-> CPtrdiff and CSize (ptrdiff_t and size_t) is more portable
+
 (l) floating point support
 
 (h) better code generation

@@ -21,7 +21,6 @@
 
 #include <sys/ucontext.h>
 
-unsigned int mallocObject(int);
 unsigned int mateHandler(unsigned int, unsigned int, unsigned int, unsigned int);
 
 #ifdef DBG_TRAP
@@ -29,11 +28,6 @@ unsigned int mateHandler(unsigned int, unsigned int, unsigned int, unsigned int)
 #else
 #define dprintf(args...)
 #endif
-
-void mainresult(unsigned int a)
-{
-	dprintf("mainresult: 0x%08x\n", a);
-}
 
 void chandler(int nSignal, siginfo_t *info, void *ctx)
 {
@@ -63,14 +57,4 @@ void register_signal(void)
 	sigemptyset(&segvaction.sa_mask);
 	segvaction.sa_flags = SA_SIGINFO | SA_RESTART | SA_NODEFER;
 	sigaction(SIGSEGV, &segvaction, NULL);
-}
-
-unsigned int getaddr(void)
-{
-	return (unsigned int) mainresult;
-}
-
-unsigned int getMallocObjectAddr(void)
-{
-	return (unsigned int) mallocObject;
 }
