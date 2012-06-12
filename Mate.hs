@@ -8,6 +8,7 @@ import Data.Char
 import Data.List
 import Data.List.Split
 import qualified Data.ByteString.Lazy as B
+import Control.Monad
 
 #ifdef DEBUG
 import Text.Printf
@@ -29,7 +30,7 @@ main = do
 
 parseArgs :: [String] -> Bool -> IO ()
 parseArgs ("-jar":jarpath:_) stdcp = do
-  if not stdcp then addClassPath "./" else return ()
+  unless stdcp $ addClassPath "./"
   addClassPathJAR jarpath
   res <- readMainClass jarpath
   case res of
@@ -52,7 +53,7 @@ parseArgs ("-classpath":xs) _ = parseArgs ("-":xs) True -- usage
 parseArgs (('-':_):_) _ = error "Usage: mate [-cp|-classpath <cp1:cp2:..>] [<class-file> | -jar <jar-file>]"
 -- first argument which isn't prefixed by '-' should be a class file
 parseArgs (clspath:_) stdcp = do
-  if not stdcp then addClassPath "./" else return ()
+  unless stdcp $ addClassPath "./"
   let bclspath = B.pack $ map (fromIntegral . ord) clspath
   cls <- getClassFile bclspath
   executeMain bclspath cls

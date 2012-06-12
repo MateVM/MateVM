@@ -62,7 +62,7 @@ allocateJavaString str = do
   poke ptr $ fromIntegral mtbl
 
   -- build array layout
-  let strlen = (fromIntegral $ B.length str)
+  let strlen = fromIntegral $ B.length str
   -- (+1) for \0, (+4) for length
   newstr <- mallocString (strlen + 5)
   BI.memset newstr 0 (fromIntegral $ strlen + 5)

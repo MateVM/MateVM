@@ -1,6 +1,5 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ForeignFunctionInterface #-}
 #include "debug.h"
 module Mate.ClassPool (
   getClassInfo,
@@ -284,15 +283,15 @@ readClassFile path' = readIORef classPaths >>= rcf
   where
   path = replace "." "/" path'
   rcf :: [MClassPath] -> IO (Class Direct)
-  rcf [] = error $ "readClassFile: Class \"" ++ (show path) ++ "\" not found."
-  rcf ((Directory pre):xs) = do
+  rcf [] = error $ "readClassFile: Class \"" ++ show path ++ "\" not found."
+  rcf (Directory pre:xs) = do
     let cf = pre ++ path ++ ".class"
     printfCp "rcf: searching @ %s for %s\n" (show pre) (show path)
     b <- doesFileExist cf
     if b
       then parseClassFile cf
       else rcf xs
-  rcf ((JAR p):xs) = do
+  rcf (JAR p:xs) = do
     printfCp "rcf: searching %s in JAR\n" (show path)
     entry <- getEntry p path
     case entry of

@@ -45,7 +45,7 @@ mateHandler eip eax ebx esp = do
     4 -> invokeHandler eax ebx esp True
     8 -> invokeHandler eax ebx esp False
     2 -> staticFieldHandler eip
-    x -> error $ "wtf: " ++ (show x)
+    x -> error $ "wtf: " ++ show x
 
 staticCallHandler :: CUInt -> IO CUInt
 staticCallHandler eip = do
@@ -86,7 +86,7 @@ invokeHandler method_table table2patch esp imm8 = do
   callerAddr <- callerAddrFromStack esp
   offset <- if imm8 then offsetOfCallInsn8 esp else offsetOfCallInsn32 esp
   entryAddr <- getMethodEntry callerAddr method_table
-  let call_insn = intPtrToPtr (fromIntegral $ table2patch + (fromIntegral offset))
+  let call_insn = intPtrToPtr (fromIntegral $ table2patch + fromIntegral offset)
   poke call_insn entryAddr
   return entryAddr
 
@@ -105,5 +105,4 @@ offsetOfCallInsn32 :: CUInt -> IO CUInt
 offsetOfCallInsn32 esp = do
   let ret_ptr = intPtrToPtr (fromIntegral esp) :: Ptr CUInt
   ret <- peek ret_ptr
-  retval <- peek (intPtrToPtr $ fromIntegral (ret - 4))
-  return retval
+  peek (intPtrToPtr $ fromIntegral (ret - 4))
