@@ -110,6 +110,19 @@ emitFromBB method sig cls hmap =  do
         -- +2 is for correcting eip in trap context
         return $ Just (calladdr + 2, StaticMethod l)
 
+    invokeEpilog :: Word16 -> Word32 -> (Bool -> TrapCause) -> CodeGen e s (Maybe (Word32, TrapCause))
+    invokeEpilog cpidx offset trapcause = do
+        -- make actual (indirect) call
+        calladdr <- getCurrentOffset
+        call (Disp offset, eax)
+        -- discard arguments on stack (+4 for "this")
+        let argcnt = 4 + 4 * methodGetArgsCount cls cpidx
+        when (argcnt > 0) (add esp argcnt)
+        -- push result on stack if method has a return value
+        when (methodHaveReturnValue cls cpidx) (push eax)
+        let imm8 = is8BitOffset offset
+        return $ Just (calladdr + (if imm8 then 3 else 6), trapcause imm8)
+
     emit' :: J.Instruction -> CodeGen e s (Maybe (Word32, TrapCause))
     emit' (INVOKESPECIAL cpidx) = emitInvoke cpidx True
     emit' (INVOKESTATIC cpidx) = emitInvoke cpidx False
@@ -125,19 +138,10 @@ emitFromBB method sig cls hmap =  do
         mov ebx (Disp 0, eax)
         -- get method offset
         offset <- liftIO $ getInterfaceMethodOffset ifacename methodname (encode msig)
-        -- make actual (indirect) call
-        calladdr <- getCurrentOffset
-        call (Disp offset, ebx)
-        -- discard arguments on stack (+4 for "this")
-        let argcnt = 4 + 4 * methodGetArgsCount cls cpidx
-        when (argcnt > 0) (add esp argcnt)
-        -- push result on stack if method has a return value
-        when (methodHaveReturnValue cls cpidx) (push eax)
-        -- note, the "mi" has the wrong class reference here.
+        -- note, that "mi" has the wrong class reference here.
         -- we figure that out at run-time, in the methodpool,
         -- depending on the method-table-ptr
-        let imm8 = is8BitOffset offset
-        return $ Just (calladdr + (if imm8 then 3 else 6), InterfaceMethod imm8 mi)
+        invokeEpilog cpidx offset (\x -> InterfaceMethod x mi)
     emit' (INVOKEVIRTUAL cpidx) = do
         -- get methodInfo entry
         let mi@(MethodInfo methodname objname msig@(MethodSignature args _))  = buildMethodID cls cpidx
@@ -149,19 +153,10 @@ emitFromBB method sig cls hmap =  do
         -- get method offset
         let nameAndSig = methodname `B.append` encode msig
         offset <- liftIO $ getMethodOffset objname nameAndSig
-        -- make actual (indirect) call
-        calladdr <- getCurrentOffset
-        call (Disp offset, eax)
-        -- discard arguments on stack (+4 for "this")
-        let argcnt = 4 + 4 * methodGetArgsCount cls cpidx
-        when (argcnt > 0) (add esp argcnt)
-        -- push result on stack if method has a return value
-        when (methodHaveReturnValue cls cpidx) (push eax)
-        -- note, the "mi" has the wrong class reference here.
+        -- note, that "mi" has the wrong class reference here.
         -- we figure that out at run-time, in the methodpool,
         -- depending on the method-table-ptr
-        let imm8 = is8BitOffset offset
-        return $ Just (calladdr + (if imm8 then 3 else 6), VirtualMethod imm8 mi)
+        invokeEpilog cpidx offset (\x -> VirtualMethod x mi)
     emit' (PUTSTATIC cpidx) = do
         pop eax
         trapaddr <- getCurrentOffset
