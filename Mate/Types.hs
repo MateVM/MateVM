@@ -28,13 +28,13 @@ type MapBB = M.Map BlockID BasicBlock
 
 -- Word32 = point of method call in generated code
 -- MethodInfo = relevant information about callee
-type TrapMap = M.Map Word32 TrapInfo
+type TrapMap = M.Map Word32 TrapCause
 
-data TrapInfo =
-  MI MethodInfo | -- for static calls
-  VI Bool MethodInfo | -- for virtual calls
-  II Bool MethodInfo | -- for interface calls
-  SFI StaticFieldInfo deriving Show
+data TrapCause =
+  StaticMethod MethodInfo | -- for static calls
+  VirtualMethod Bool MethodInfo | -- for virtual calls
+  InterfaceMethod Bool MethodInfo | -- for interface calls
+  StaticField StaticFieldInfo deriving Show
 
 data StaticFieldInfo = StaticFieldInfo {
   sfiClassName :: B.ByteString,

@@ -94,7 +94,7 @@ emitFromBB method sig cls hmap =  do
       offset <- getCodeOffset
       return $ w32_ep + fromIntegral offset
 
-    emitInvoke :: Word16 -> Bool -> CodeGen e s (Maybe (Word32, TrapInfo))
+    emitInvoke :: Word16 -> Bool -> CodeGen e s (Maybe (Word32, TrapCause))
     emitInvoke cpidx hasThis = do
         let l = buildMethodID cls cpidx
         calladdr <- getCurrentOffset
@@ -108,9 +108,9 @@ emitFromBB method sig cls hmap =  do
         -- push result on stack if method has a return value
         when (methodHaveReturnValue cls cpidx) (push eax)
         -- +2 is for correcting eip in trap context
-        return $ Just (calladdr + 2, MI l)
+        return $ Just (calladdr + 2, StaticMethod l)
 
-    emit' :: J.Instruction -> CodeGen e s (Maybe (Word32, TrapInfo))
+    emit' :: J.Instruction -> CodeGen e s (Maybe (Word32, TrapCause))
     emit' (INVOKESPECIAL cpidx) = emitInvoke cpidx True
     emit' (INVOKESTATIC cpidx) = emitInvoke cpidx False
     emit' (INVOKEINTERFACE cpidx _) = do
@@ -137,7 +137,7 @@ emitFromBB method sig cls hmap =  do
         -- we figure that out at run-time, in the methodpool,
         -- depending on the method-table-ptr
         let imm8 = is8BitOffset offset
-        return $ Just (calladdr + (if imm8 then 3 else 6), II imm8 mi)
+        return $ Just (calladdr + (if imm8 then 3 else 6), InterfaceMethod imm8 mi)
     emit' (INVOKEVIRTUAL cpidx) = do
         -- get methodInfo entry
         let mi@(MethodInfo methodname objname msig@(MethodSignature args _))  = buildMethodID cls cpidx
@@ -161,17 +161,17 @@ emitFromBB method sig cls hmap =  do
         -- we figure that out at run-time, in the methodpool,
         -- depending on the method-table-ptr
         let imm8 = is8BitOffset offset
-        return $ Just (calladdr + (if imm8 then 3 else 6), VI imm8 mi)
+        return $ Just (calladdr + (if imm8 then 3 else 6), VirtualMethod imm8 mi)
     emit' (PUTSTATIC cpidx) = do
         pop eax
         trapaddr <- getCurrentOffset
         mov (Addr 0x00000000) eax -- it's a trap
-        return $ Just (trapaddr, SFI $ buildStaticFieldID cls cpidx)
+        return $ Just (trapaddr, StaticField $ buildStaticFieldID cls cpidx)
     emit' (GETSTATIC cpidx) = do
         trapaddr <- getCurrentOffset
         mov eax (Addr 0x00000000) -- it's a trap
         push eax
-        return $ Just (trapaddr, SFI $ buildStaticFieldID cls cpidx)
+        return $ Just (trapaddr, StaticField $ buildStaticFieldID cls cpidx)
     emit' insn = emit insn >> return Nothing
 
     emit :: J.Instruction -> CodeGen e s ()

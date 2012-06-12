@@ -45,12 +45,11 @@ getMethodEntry signal_from methodtable = do
   let mi = tmap M.! w32_from
   let mi'@(MethodInfo method cm sig) =
         case mi of
-          (MI x) -> x
-          (VI  _(MethodInfo methname _ msig)) ->
-              MethodInfo methname (vmap M.! fromIntegral methodtable) msig
-          (II _ (MethodInfo methname _ msig)) ->
-              MethodInfo methname (vmap M.! fromIntegral methodtable) msig
-          _ -> error "getMethodEntry: no trapInfo. abort."
+          (StaticMethod x) -> x
+          (VirtualMethod   _ (MethodInfo methname _ msig)) -> newMi methname msig
+          (InterfaceMethod _ (MethodInfo methname _ msig)) -> newMi methname msig
+          _ -> error "getMethodEntry: no TrapCause found. abort."
+        where newMi mn = MethodInfo mn (vmap M.! fromIntegral methodtable)
   setTrapMap $ M.delete w32_from tmap
   case M.lookup mi' mmap of
     Nothing -> do

@@ -98,8 +98,8 @@ getStaticFieldAddr from = do
   let sfi = trapmap M.! w32_from
   setTrapMap $ M.delete w32_from trapmap
   case sfi of
-    (SFI (StaticFieldInfo cls field)) -> getStaticFieldOffset cls field
-    _ -> error "getFieldAddr: no trapInfo. abort"
+    (StaticField (StaticFieldInfo cls field)) -> getStaticFieldOffset cls field
+    _ -> error "getFieldAddr: no TrapCause found. abort"
 
 -- interface + method + signature plz!
 getInterfaceMethodOffset :: B.ByteString -> B.ByteString -> B.ByteString -> IO Word32

@@ -21,15 +21,15 @@ getTrapType :: CUInt -> CUInt -> IO CUInt
 getTrapType signal_from from2 = do
   tmap <- getTrapMap
   case M.lookup (fromIntegral signal_from) tmap of
-    (Just (MI _)) -> return 0
-    (Just (SFI _)) -> return 2
+    (Just (StaticMethod _)) -> return 0
+    (Just (StaticField _)) -> return 2
     (Just _) -> error "getTrapMap: doesn't happen"
     -- maybe we've a hit on the second `from' value
     Nothing -> case M.lookup (fromIntegral from2) tmap of
-      (Just (VI True _)) -> return 1
-      (Just (VI False _)) -> return 5
-      (Just (II True _)) -> return 4
-      (Just (II False _)) -> return 8
+      (Just (VirtualMethod True _)) -> return 1
+      (Just (VirtualMethod False _)) -> return 5
+      (Just (InterfaceMethod True _)) -> return 4
+      (Just (InterfaceMethod False _)) -> return 8
       (Just _) -> error "getTrapType: abort #1 :-("
       Nothing -> error $ "getTrapType: abort #2 :-(" ++ show signal_from ++ ", " ++ show from2 ++ ", " ++ show tmap
 
