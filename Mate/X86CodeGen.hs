@@ -173,6 +173,7 @@ emitFromBB method sig cls hmap =  do
     emit POP = add esp (4 :: Word32) -- drop value
     emit DUP = push (Disp 0, esp)
     emit DUP_X1 = do pop eax; pop ebx; push eax; push ebx; push eax
+    emit DUP_X2 = do pop eax; pop ebx; pop ecx; push eax; push ecx; push ebx; push eax
     emit AASTORE = emit IASTORE
     emit IASTORE = do
         pop eax -- value
