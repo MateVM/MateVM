@@ -1,7 +1,7 @@
 SHELL := bash
 
 JAVAC := javac
-JAVA_FILES := $(wildcard tests/*.java java/lang/*.java java/io/*.java)
+JAVA_FILES := $(wildcard java/lang/*.java java/io/*.java)
 CLASS_FILES := $(JAVA_FILES:.java=.class)
 TEST_JAVA_FILES := $(wildcard tests/*.java)
 TEST_CLASS_FILES := $(TEST_JAVA_FILES:.java=.test)
@@ -17,13 +17,13 @@ GHC_LD := -optl-Xlinker -optl-x
 
 .PHONY: all test clean ghci
 
-all: mate $(CLASS_FILES)
+all: mate
 
 %: %.class mate
 	./mate $(basename $<)
 
 
-tests: mate $(TEST_CLASS_FILES)
+tests: mate $(TEST_JAVA_FILES:.java=.class) $(TEST_CLASS_FILES)
 
 CALLF = $(basename $@).call
 testcase = ./tools/openjdktest.sh "$(1) $(basename $@)"
@@ -42,7 +42,7 @@ COMPILEF = $(basename $@).compile
 ffi/native.o: ffi/native.c
 	ghc -Wall -O2 -c $< -o $@
 
-mate: Mate.hs ffi/trap.c $(HS_FILES) $(HS_BOOT) ffi/native.o
+mate: Mate.hs ffi/trap.c $(HS_FILES) $(HS_BOOT) ffi/native.o $(CLASS_FILES)
 	@mkdir -p build/release
 	ghc --make $(GHC_OPT) Mate.hs ffi/trap.c -o $@ $(GHC_LD) -outputdir build/release
 

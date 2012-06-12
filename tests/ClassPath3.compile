@@ -1,1 +1,3 @@
 javac tests/this/is/a/class/path/test/ClassPath2.java
+# and make `make' happy by providing a class file at a proper place:
+cp tests/this/is/a/class/path/test/ClassPath2.class tests/ClassPath3.class
