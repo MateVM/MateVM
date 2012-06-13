@@ -74,7 +74,7 @@ emitFromBB method sig cls hmap =  do
           bb_offset <- getCodeOffset
           let bbstarts' = M.insert bid bb_offset bbstarts
           defineLabel $ getLabel bid lmap
-          cs <- mapM emit' $ code bb
+          cs <- mapM emit'' $ code bb
           let calls' = calls `M.union` M.fromList (catMaybes cs)
           case successor bb of
             Return -> return (calls', bbstarts')
@@ -122,6 +122,9 @@ emitFromBB method sig cls hmap =  do
         when (methodHaveReturnValue cls cpidx) (push eax)
         let imm8 = is8BitOffset offset
         return $ Just (calladdr + (if imm8 then 3 else 6), trapcause imm8)
+
+    emit'' :: J.Instruction -> CodeGen e s (Maybe (Word32, TrapCause))
+    emit'' insn = newNamedLabel ("jvm_insn: " ++ show insn) >>= defineLabel >> emit' insn
 
     emit' :: J.Instruction -> CodeGen e s (Maybe (Word32, TrapCause))
     emit' (INVOKESPECIAL cpidx) = emitInvoke cpidx True
