@@ -322,10 +322,17 @@ emitFromBB method sig cls hmap =  do
     emitIF cond = let
       sid = case successor bb of TwoTarget _ t -> t; _ -> error "bad"
       l = getLabel sid lmap
-      in case cond of
-        C_EQ -> je  l; C_NE -> jne l
-        C_LT -> jl  l; C_GT -> jg  l
-        C_GE -> jge l; C_LE -> jle l
+      sid2 = case successor bb of TwoTarget t _ -> t; _ -> error "bad"
+      l2 = getLabel sid2 lmap
+      in do
+        case cond of
+          C_EQ -> je  l; C_NE -> jne l
+          C_LT -> jl  l; C_GT -> jg  l
+          C_GE -> jge l; C_LE -> jle l
+        -- TODO(bernhard): ugly workaround, to get broken emitBB working
+        --  (it didn't work for gnu/classpath/SystemProperties.java)
+        jmp l2
+
 
     callMalloc :: CodeGen e s ()
     callMalloc = do
