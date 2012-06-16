@@ -285,6 +285,7 @@ emitFromBB method sig cls hmap =  do
     emit IDIV = do pop ebx; pop eax; xor edx edx; div ebx; push eax
     emit IREM = do pop ebx; pop eax; xor edx edx; div ebx; push edx
     emit IXOR = do pop ebx; pop eax; xor eax ebx; push eax
+    emit IUSHR = do pop ecx; pop eax; sar eax cl; push eax
     emit INEG = do pop eax; neg eax; push eax
     emit (IINC x imm) =
         add (Disp (cArgs x), ebp) (s8_w32 imm)
