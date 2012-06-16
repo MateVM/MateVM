@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
 
 static char ascii(char s) {
 	if(s < 0x20) return '.';
@@ -56,7 +58,7 @@ struct string {
 
 struct chararray {
 	unsigned int length;
-	char str;
+	char *str;
 };
 
 void java_io_PrintStream__printf_0___Ljava_lang_String__V
@@ -105,4 +107,22 @@ void java_io_PrintStream__printf_5___Ljava_lang_String_Ljava_lang_Object_Ljava_l
 
 void gnu_classpath_VMSystemProperties__preInit___Ljava_util_Properties__V() {
 	return;
+}
+
+void java_lang_VMSystem__arraycopy___Ljava_lang_Object_ILjava_lang_Object_II_V(
+		int len, int dest_start, struct chararray *dest,
+		int src_start, struct chararray *src)
+#if 0
+		/* original */
+		struct chararray *src, int src_start,
+		struct chararray *dest, int dest_start, int len)
+#endif
+{
+	/* TODO(bernhard): clean please... */
+	memcpy(((char *) dest) + 4, ((char *) src) + 4 + src_start, len);
+	dest->length = len;
+#if 0
+	hexdump(src, len + 4);
+	hexdump(dest, len + 4);
+#endif
 }
