@@ -78,7 +78,10 @@ emitFromBB method sig cls hmap =  do
           let calls' = calls `M.union` M.fromList (catMaybes cs)
           case successor bb of
             Return -> return (calls', bbstarts')
-            FallThrough t -> efBB (t, hmap M.! t) calls' bbstarts' lmap
+            FallThrough t -> do
+              -- TODO(bernhard): le dirty hax. see java/lang/Integer.toString(int, int)
+              jmp (getLabel t lmap)
+              efBB (t, hmap M.! t) calls' bbstarts' lmap
             OneTarget t -> efBB (t, hmap M.! t) calls' bbstarts' lmap
             TwoTarget t1 t2 -> do
               (calls'', bbstarts'') <- efBB (t1, hmap M.! t1) calls' bbstarts' lmap
