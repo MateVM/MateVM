@@ -7,6 +7,9 @@ public class InstanceLong1 {
 		new InstanceLong1().a1337();
 		new InstanceLong1().a0001();
 		new InstanceLong1().a2050();
+		new InstanceLong1().a2050();
+		new InstanceLong1().a2050();
+		new InstanceLong1().a2050();
 	}
 
 	public void a0001 () { System.out.printf("a0001\n"); }
