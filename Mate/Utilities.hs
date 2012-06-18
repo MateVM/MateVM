@@ -44,6 +44,7 @@ methodHaveReturnValue :: Class Direct -> Word16 -> Bool
 methodHaveReturnValue cls idx = case ret of
     ReturnsVoid -> False;
     (Returns BoolType) -> True
+    (Returns CharByte) -> True
     (Returns IntType) -> True;
     (Returns (Array _ _)) -> True
     (Returns (ObjectType _)) -> True;

@@ -272,6 +272,7 @@ emitFromBB method sig cls hmap =  do
     emit (LDC2 x) = do
         value <- case constsPool cls M.! x of
                       (CString s) -> liftIO $ getUniqueStringAddr s
+                      (CInteger i) -> liftIO $ return i
                       e -> error $ "LDCI... missing impl.: " ++ show e
         push value
     emit (GETFIELD x) = do
