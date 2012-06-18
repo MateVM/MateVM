@@ -58,7 +58,7 @@ struct string {
 
 struct chararray {
 	unsigned int length;
-	char *str;
+	char str;
 };
 
 void java_io_PrintStream__printf_0___Ljava_lang_String__V
@@ -118,8 +118,7 @@ void java_lang_VMSystem__arraycopy___Ljava_lang_Object_ILjava_lang_Object_II_V(
 		struct chararray *dest, int dest_start, int len)
 #endif
 {
-	/* TODO(bernhard): clean please... */
-	memcpy(((char *) dest) + 4, ((char *) src) + 4 + src_start, len);
+	memcpy(&dest->str, &src->str + src_start, len);
 	dest->length = len;
 #if 0
 	hexdump(src, len + 4);
