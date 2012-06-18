@@ -240,7 +240,8 @@ emitFromBB method sig cls hmap =  do
     emit (INSTANCEOF _) = do
       pop eax
       push (1 :: Word32)
-    emit ATHROW = nop -- TODO(bernhard): ...
+    emit ATHROW = do -- TODO(bernhard): ...
+        emit32 (0xffffffff :: Word32)
     emit I2C = do
       pop eax
       and eax (0x000000ff :: Word32)
