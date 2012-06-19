@@ -61,13 +61,13 @@ struct chararray {
 	char str;
 };
 
-void java_io_PrintStream__printf_0___Ljava_lang_String__V
+void jmate_io_PrintStream__printf_0___Ljava_lang_String__V
 	(struct string *fmt)
 {
 	printf("%s", &fmt->value->str);
 }
 
-void java_io_PrintStream__printf_1___Ljava_lang_String_Ljava_lang_Object__V
+void jmate_io_PrintStream__printf_1___Ljava_lang_String_Ljava_lang_Object__V
 	(struct integer *a1, struct string *fmt)
 {
 #if 0
@@ -80,26 +80,26 @@ void java_io_PrintStream__printf_1___Ljava_lang_String_Ljava_lang_Object__V
 	printf(&fmt->value->str, a1->value);
 }
 
-void java_io_PrintStream__printf_2___Ljava_lang_String_Ljava_lang_Object_Ljava_lang_Object__V
+void jmate_io_PrintStream__printf_2___Ljava_lang_String_Ljava_lang_Object_Ljava_lang_Object__V
 	(struct integer *a2, struct integer *a1, struct string *fmt)
 {
 	printf(&fmt->value->str, a1->value, a2->value);
 }
 
 void
-java_io_PrintStream__printf_3___Ljava_lang_String_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object__V
+jmate_io_PrintStream__printf_3___Ljava_lang_String_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object__V
 	(struct integer *a3, struct integer *a2, struct integer *a1, struct string *fmt)
 {
 	printf(&fmt->value->str, a1->value, a2->value, a3->value);
 }
 
-void java_io_PrintStream__printf_4___Ljava_lang_String_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object__V
+void jmate_io_PrintStream__printf_4___Ljava_lang_String_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object__V
 	(struct integer *a4, struct integer *a3, struct integer *a2, struct integer *a1, struct string *fmt)
 {
 	printf(&fmt->value->str, a1->value, a2->value, a3->value, a4->value);
 }
 
-void java_io_PrintStream__printf_5___Ljava_lang_String_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object__V
+void jmate_io_PrintStream__printf_5___Ljava_lang_String_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object__V
 	(struct integer *a5, struct integer *a4, struct integer *a3, struct integer *a2, struct integer *a1, struct string *fmt)
 {
 	printf(&fmt->value->str, a1->value, a2->value, a3->value, a4->value, a5->value);

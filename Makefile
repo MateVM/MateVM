@@ -1,7 +1,7 @@
 SHELL := bash
 
 JAVAC := javac
-JAVA_FILES := $(wildcard java/lang/*.java java/io/*.java)
+JAVA_FILES := $(wildcard jmate/lang/*.java jmate/io/*.java java/lang/*.java java/io/*.java)
 CLASS_FILES := $(JAVA_FILES:.java=.class)
 TEST_JAVA_FILES := $(wildcard tests/*.java)
 TEST_CLASS_FILES := $(TEST_JAVA_FILES:.java=.test)
@@ -60,7 +60,9 @@ mate.dbg: Mate.hs ffi/trap.c $(HS_FILES) $(HS_BOOT) ffi/native.o
 	ghc --make $(DEBUGFLAGS) $(GHC_OPT) Mate.hs build/debug/ffi/trap.o -o $@ $(GHC_LD) -outputdir build/debug
 
 clean:
-	rm -rf build mate mate.dbg ffi/native.o tests/*.class Mate/*_stub.*
+	rm -rf build mate mate.dbg ffi/native.o tests/*.class Mate/*_stub.* \
+		jmate/lang/*.class jmate/io/*.class java/io/*.class \
+		java/lang/{Integer,Character,String,System}.class
 
 ghci: mate
 	ghci $(PACKAGES) $(O_FILES) Mate.hs $(GHC_LD)
