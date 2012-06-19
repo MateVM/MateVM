@@ -52,14 +52,6 @@ data MethodInfo = MethodInfo {
   methSignature :: MethodSignature
   } deriving (Eq, Ord)
 
--- TODO(bernhard): not really efficient. also, outsource that to hs-java
---                 deriving should be enough?
-instance Ord MethodSignature where
-  compare (MethodSignature args_a ret_a) (MethodSignature args_b ret_b)
-    | cmp_args /= EQ = cmp_args
-    | otherwise = show ret_a `compare` show ret_b
-    where cmp_args = show args_a `compare` show args_b
-
 instance Show MethodInfo where
   show (MethodInfo method c sig) =
     toString c ++ "." ++ toString method ++ "." ++ show sig
