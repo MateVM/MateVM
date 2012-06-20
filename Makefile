@@ -7,11 +7,15 @@ TEST_JAVA_FILES := $(wildcard tests/*.java)
 TEST_CLASS_FILES := $(TEST_JAVA_FILES:.java=.test)
 HS_FILES := $(wildcard Mate/*.hs)
 HS_BOOT := $(wildcard Mate/*.hs-boot)
-O_FILES = $(shell ls Mate/*.o) $(wildcard ffi/*.o)
-PACKAGES_ := bytestring harpy hs-java
+BUILD := build
+B_RELEASE := $(BUILD)/release
+B_STATIC := $(BUILD)/static
+B_DEBUG := $(BUILD)/release
+O_STATIC_FILES = $(shell ls $(B_STATIC)/Mate/*.o) $(wildcard $(B_STATIC)/ffi/*.o)
+PACKAGES_ := bytestring harpy hs-java plugins
 PACKAGES := $(addprefix -package ,$(PACKAGES_))
 
-GHC_OPT := -I. -dynamic -Wall -O0 -fno-warn-unused-do-bind
+GHC_OPT := -I. -Wall -O0 -fno-warn-unused-do-bind
 GHC_LD := -optl-Xlinker -optl-x
 
 
@@ -42,9 +46,14 @@ COMPILEF = $(basename $@).compile
 ffi/native.o: ffi/native.c
 	ghc -Wall -O2 -c $< -o $@
 
+GHCCALL = ghc --make $(GHC_OPT) Mate.hs ffi/trap.c -o $@ $(GHC_LD) -outputdir
 mate: Mate.hs ffi/trap.c $(HS_FILES) $(HS_BOOT) ffi/native.o $(CLASS_FILES)
-	@mkdir -p build/release
-	ghc --make $(GHC_OPT) Mate.hs ffi/trap.c -o $@ $(GHC_LD) -outputdir build/release
+	@mkdir -p $(B_RELEASE)
+	$(GHCCALL) $(B_RELEASE) -dynamic
+
+mate.static: Mate.hs ffi/trap.c $(HS_FILES) $(HS_BOOT) ffi/native.o $(CLASS_FILES)
+	@mkdir -p $(B_STATIC)
+	$(GHCCALL) $(B_STATIC) -static
 
 %.dbg: %.class mate.dbg
 	./mate.dbg $(basename $<)
@@ -55,22 +64,23 @@ else
 DEBUGFLAGS = ${DBGFLAGS}
 endif
 mate.dbg: Mate.hs ffi/trap.c $(HS_FILES) $(HS_BOOT) ffi/native.o
-	@mkdir -p build/debug/{ffi,Mate,}
-	gcc -Wall $(DEBUGFLAGS) -O0 -c ffi/trap.c -o build/debug/ffi/trap.o
-	ghc --make $(DEBUGFLAGS) $(GHC_OPT) Mate.hs build/debug/ffi/trap.o -o $@ $(GHC_LD) -outputdir build/debug
+	@mkdir -p $(B_DEBUG)/{ffi,Mate,}
+	gcc -Wall $(DEBUGFLAGS) -O0 -c ffi/trap.c -o $(B_DEBUG)/ffi/trap.o
+	ghc --make $(DEBUGFLAGS) $(GHC_OPT) Mate.hs $(B_DEBUG)/ffi/trap.o -o $@ $(GHC_LD) -outputdir $(B_DEBUG)
 
 clean:
-	rm -rf build mate mate.dbg ffi/native.o tests/*.class Mate/*_stub.* \
+	rm -rf $(BUILD) mate mate.dbg tags ffi/native.o tests/*.class Mate/*_stub.* \
 		jmate/lang/*.class jmate/io/*.class java/io/*.class \
 		java/lang/{Integer,Character,String,System}.class
 
-ghci: mate
-	ghci $(PACKAGES) $(O_FILES) Mate.hs $(GHC_LD)
+ghci: mate.static
+	ghci -I. $(PACKAGES) $(O_STATIC_FILES) -outputdir $(B_STATIC) Mate.hs
 
 tags: mate
 	@# @-fforce-recomp, see
 	@# http://stackoverflow.com/questions/7137414/how-do-i-force-interpretation-in-hint
-	ghc -fforce-recomp -e :ctags $(PACKAGES) $(HS_FILES) $(O_FILES) Mate.hs
+	@# @-fobject-code: force to generate native code (necessary for ffi stuff)
+	ghc -I. -fforce-recomp -fobject-code $(PACKAGES) Mate.hs $(O_STATIC_FILES) -outputdir $(B_STATIC) -e :ctags
 
 hlint:
 	@# hlint isn't able to evaluate CPP comments correctly *sigh*
