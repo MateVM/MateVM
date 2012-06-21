@@ -1,5 +1,5 @@
 name: mate
-version: 0.0.1
+version: 0.0.2
 cabal-version: -any
 build-type: Simple
 license: GPL-3
@@ -7,12 +7,12 @@ license-file: ""
 copyright:
 maintainer: lewurm@gmail.com, haraldsteinlechner@gmail.com
 build-depends: base -any, 
-               mate-common -any, 
-               hs-java ==0.3.1,
+               hs-java ==0.3.3,
                bytestring -any,
                harpy == 0.5.0.0,
                heap -any,
                containers -any,
+               directory -any,
                binary -any,
                plugins ==1.5.*,
                MissingH ==1.1.*,
@@ -88,7 +88,7 @@ cc-options:
 ld-options:
 pkgconfig-depends:
 frameworks:
-c-sources:
+c-sources: ffi/trap.c ffi/native.c
 default-language:
 other-languages:
 default-extensions:
@@ -98,7 +98,7 @@ extra-libraries:
 extra-lib-dirs:
 includes:
 install-includes:
-include-dirs: .
+include-dirs: "."
 hs-source-dirs: 
 other-modules:
 ghc-prof-options:
@@ -107,3 +107,8 @@ ghc-options:  -dynamic -Wall -O0 -fno-warn-unused-do-bind
 hugs-options:
 nhc98-options:
 jhc-options:
+
+-- some todos
+-- o atm it's building twice.  why?
+-- o although `cabal install' copies the binary, the java boot class files arn't copied.
+-- o fill it with more information (e.g. stability)

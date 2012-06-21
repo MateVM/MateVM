@@ -69,7 +69,8 @@ mate.dbg: Mate.hs ffi/trap.c $(HS_FILES) $(HS_BOOT) ffi/native.o
 	ghc --make $(DEBUGFLAGS) $(GHC_OPT) Mate.hs $(B_DEBUG)/ffi/trap.o -o $@ $(GHC_LD) -outputdir $(B_DEBUG)
 
 clean:
-	rm -rf $(BUILD) mate mate.dbg tags ffi/native.o tests/*.class Mate/*_stub.* \
+	rm -rf $(BUILD) mate mate.static mate.dbg tags ffi/native.o \
+		tests/*.class Mate/*_stub.* \
 		jmate/lang/*.class jmate/io/*.class java/io/*.class \
 		java/lang/{Integer,Character,String,System}.class
 
