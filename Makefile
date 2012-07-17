@@ -40,7 +40,7 @@ COMPILEF = $(basename $@).compile
 %.class: %.java
 	@if [ -f $(COMPILEF) ]; \
 		then $(SHELL) $(COMPILEF); \
-		else $(JAVAC) $<; fi
+		else $(JAVAC) $(JAVA_FILES) $<; fi
 	@echo "JAVAC $<"
 
 ffi/native.o: ffi/native.c
