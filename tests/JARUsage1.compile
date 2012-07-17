@@ -1,1 +1,1 @@
-javac -classpath tests/jar1.jar tests/JARUsage1.java
+javac -classpath tests/jar1.jar tests/JARUsage1.java jmate/lang/System.java jmate/io/PrintStream.java java/lang/Character.java java/lang/Integer.java java/lang/String.java java/lang/System.java java/io/PrintStream.java

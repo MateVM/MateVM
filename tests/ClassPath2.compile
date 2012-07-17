@@ -1,2 +1,2 @@
-javac tests/this/is/a/class/path/test/ClassPath1.java
-javac -classpath tests/this/is/a/class tests/ClassPath2.java
+javac tests/this/is/a/class/path/test/ClassPath1.java jmate/lang/System.java jmate/io/PrintStream.java java/lang/Character.java java/lang/Integer.java java/lang/String.java java/lang/System.java java/io/PrintStream.java
+javac -classpath tests/this/is/a/class tests/ClassPath2.java jmate/lang/System.java jmate/io/PrintStream.java java/lang/Character.java java/lang/Integer.java java/lang/String.java java/lang/System.java java/io/PrintStream.java
