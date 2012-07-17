@@ -41,7 +41,7 @@ printMapBB :: Maybe MapBB -> IO ()
 printMapBB Nothing = putStrLn "No BasicBlock"
 printMapBB (Just hmap) = do
                      putStr "BlockIDs: "
-                     let keys = fst $ unzip $ M.toList hmap
+                     let keys = fst $ unzip $ M.toList hmap -- M.keys
                      mapM_ (putStr . (flip (++)) ", " . show) keys
                      putStrLn "\n\nBasicBlocks:"
                      printMapBB' keys hmap
