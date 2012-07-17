@@ -1,11 +1,19 @@
 for testing with a release build, use
 $ make tests/Fib
 
+
 for testing a release build against OpenJDK output, use
 $ make tests/Fib.test
+
 
 for testing with a debug build, use
 $ DBGFLAGS='-DDBG_JIT -DDBG_BB' make tests/Fib.dbg
 
 `make clean' is needed if you change $DBGFLAGS.
 for all available flags, see `debug.h'.
+
+
+for debugging with gdb, modify Mate/MethodPool.hs and make a debug build with at
+least -DDBG_JIT enabled, then use
+$ make tests/Fib.gdb
+and follow the instructions in the source file.

@@ -146,11 +146,12 @@ compileBB hmap methodinfo = do
   mapM_ (printfJit "%s\n" . showAtt) (snd right)
   printfJit "\n\n"
   -- UNCOMMENT NEXT LINES FOR GDB FUN
-  --if (toString $ methName methodinfo) == "thejavamethodIwant2debug"
-  --  then getLine
-  --  else return "foo"
-  -- (1) start it with `gdb ./mate' and then `run <classfile>'
-  -- (2) on getLine, press ctrl+c
+  -- if (toString $ methName methodinfo) == "thejavamethodIwant2debug"
+  --   then putStrLn "press CTRL+C now for setting a breakpoint. then `c' and ENTER for continue" >> getLine
+  --   else return "foo"
+  -- (1) build a debug build (see HACKING) and execute `make tests/Fib.gdb'
+  --     for example, where the suffix is important
+  -- (2) on getLine, press CTRL+C
   -- (3) `br *0x<addr>'; obtain the address from the disasm above
   -- (4) `cont' and press enter
   return $ fromIntegral $ ptrToIntPtr entry

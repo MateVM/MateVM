@@ -15,7 +15,7 @@ O_STATIC_FILES = $(shell ls $(B_STATIC)/Mate/*.o) $(wildcard $(B_STATIC)/ffi/*.o
 PACKAGES_ := bytestring harpy hs-java plugins
 PACKAGES := $(addprefix -package ,$(PACKAGES_))
 
-GHC_OPT := -I. -Wall -O0 -fno-warn-unused-do-bind
+GHC_OPT := -I. -Wall -O0 -fno-warn-unused-do-bind -rtsopts
 GHC_LD := -optl-Xlinker -optl-x
 
 
@@ -57,6 +57,9 @@ mate.static: Mate.hs ffi/trap.c $(HS_FILES) $(HS_BOOT) ffi/native.o $(CLASS_FILE
 
 %.dbg: %.class mate.dbg
 	./mate.dbg $(basename $<)
+
+%.gdb: %.class mate.dbg
+	gdb -x .gdbcmds -q --args mate.dbg $(basename $<) +RTS -V0 --install-signal-handlers=no
 
 ifeq (${DBGFLAGS},)
 DEBUGFLAGS = -DDBG_JIT -DDBG_MP
