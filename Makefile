@@ -15,7 +15,7 @@ O_STATIC_FILES = $(shell ls $(B_STATIC)/Mate/*.o) $(wildcard $(B_STATIC)/ffi/*.o
 PACKAGES_ := bytestring harpy hs-java plugins
 PACKAGES := $(addprefix -package ,$(PACKAGES_))
 
-GHC_OPT := -I. -Wall -O0 -fno-warn-unused-do-bind -rtsopts
+GHC_OPT := -I. -Wall -O0 -fno-warn-unused-do-bind -rtsopts -cpp -pgmP cpphs -optP --cpp
 GHC_LD := -optl-Xlinker -optl-x
 
 
