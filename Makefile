@@ -10,16 +10,24 @@ HS_BOOT := $(wildcard Mate/*.hs-boot)
 BUILD := build
 B_RELEASE := $(BUILD)/release
 B_STATIC := $(BUILD)/static
-B_DEBUG := $(BUILD)/release
-O_STATIC_FILES = $(shell ls $(B_STATIC)/Mate/*.o) $(wildcard $(B_STATIC)/ffi/*.o)
+B_DEBUG := $(BUILD)/debug
 PACKAGES_ := bytestring harpy hs-java plugins
 PACKAGES := $(addprefix -package ,$(PACKAGES_))
 
-GHC_OPT := -I. -Wall -O0 -fno-warn-unused-do-bind -rtsopts -cpp -pgmP cpphs -optP --cpp
+
+# use `cpphs'
+GHC_CPP := -cpp -pgmP cpphs -optP --cpp
+
+GHC_OPT  = -I. -O0 -Wall -fno-warn-unused-do-bind
+# see *.gdb target. also useful for profiling (-p at call)
+GHC_OPT += -rtsopts # -prof -auto-all
+GHC_OPT += $(GHC_CPP)
+
+# dunno anymore? some linker stuff regarding GHCi
 GHC_LD := -optl-Xlinker -optl-x
 
 
-.PHONY: all test clean ghci
+.PHONY: all tests clean ghci hlint
 
 all: mate
 
@@ -78,13 +86,13 @@ clean:
 		java/lang/{Integer,Character,String,System}.class
 
 ghci: mate.static
-	ghci -I. $(PACKAGES) $(O_STATIC_FILES) -outputdir $(B_STATIC) Mate.hs
+	ghci -I. $(PACKAGES) -outputdir $(B_STATIC) Mate.hs $(GHC_CPP)
 
-tags: mate
+tags: mate.static
 	@# @-fforce-recomp, see
 	@# http://stackoverflow.com/questions/7137414/how-do-i-force-interpretation-in-hint
 	@# @-fobject-code: force to generate native code (necessary for ffi stuff)
-	ghc -I. -fforce-recomp -fobject-code $(PACKAGES) Mate.hs $(O_STATIC_FILES) -outputdir $(B_STATIC) -e :ctags
+	ghc -I. -fforce-recomp -fobject-code $(PACKAGES) Mate.hs -outputdir $(B_STATIC) -e :ctags $(GHC_CPP)
 
 hlint:
 	@# hlint isn't able to evaluate CPP comments correctly *sigh*

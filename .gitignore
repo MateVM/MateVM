@@ -4,6 +4,7 @@
 mate
 mate.static
 mate.dbg
+mate.prof
 tags
 *.swp
 *_stub.c
