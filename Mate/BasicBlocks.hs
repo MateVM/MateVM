@@ -41,7 +41,7 @@ printMapBB :: Maybe MapBB -> IO ()
 printMapBB Nothing = putStrLn "No BasicBlock"
 printMapBB (Just hmap) = do
                      putStr "BlockIDs: "
-                     let keys = fst $ unzip $ M.toList hmap -- M.keys
+                     let keys = M.keys hmap
                      mapM_ (putStr . (flip (++)) ", " . show) keys
                      putStrLn "\n\nBasicBlocks:"
                      printMapBB' keys hmap
@@ -106,10 +106,10 @@ parseMethod cls method sig = do
 
 
 testCFG :: Maybe (Method Direct) -> Maybe MapBB
-testCFG (Just m) = case attrByName m "Code" of
-       Nothing -> Nothing
-       Just bytecode -> Just $ buildCFG $ codeInstructions $ decodeMethod bytecode
-testCFG _ = Nothing
+testCFG m = do
+  m' <- m
+  bytecode <- attrByName m' "Code"
+  return $ buildCFG $ codeInstructions $ decodeMethod bytecode
 
 
 buildCFG :: [Instruction] -> MapBB

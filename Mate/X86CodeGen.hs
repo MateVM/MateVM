@@ -48,8 +48,9 @@ type CompileInfo = (EntryPoint, BBStarts, Int, TrapMap)
 
 emitFromBB :: B.ByteString -> MethodSignature -> Class Direct -> MapBB -> CodeGen e s (CompileInfo, [Instruction])
 emitFromBB method sig cls hmap =  do
-        llmap <- sequence [newNamedLabel ("bb_" ++ show x) | (x,_) <- M.toList hmap]
-        let lmap = zip (Prelude.fst $ unzip $ M.toList hmap) llmap
+        let keys = M.keys hmap
+        llmap <- mapM (newNamedLabel . (++) "bb_" . show) keys
+        let lmap = zip keys llmap
         ep <- getEntryPoint
         push ebp
         mov ebp esp
@@ -147,7 +148,7 @@ emitFromBB method sig cls hmap =  do
         -- note, that "mi" has the wrong class reference here.
         -- we figure that out at run-time, in the methodpool,
         -- depending on the method-table-ptr
-        invokeEpilog cpidx offset (\x -> InterfaceMethod x mi)
+        invokeEpilog cpidx offset (`InterfaceMethod` mi)
     emit' (INVOKEVIRTUAL cpidx) = do
         -- get methodInfo entry
         let mi@(MethodInfo methodname objname msig@(MethodSignature args _))  = buildMethodID cls cpidx
@@ -162,7 +163,7 @@ emitFromBB method sig cls hmap =  do
         -- note, that "mi" has the wrong class reference here.
         -- we figure that out at run-time, in the methodpool,
         -- depending on the method-table-ptr
-        invokeEpilog cpidx offset (\x -> VirtualMethod x mi)
+        invokeEpilog cpidx offset (`VirtualMethod` mi)
     emit' (PUTSTATIC cpidx) = do
         pop eax
         trapaddr <- getCurrentOffset
@@ -240,7 +241,7 @@ emitFromBB method sig cls hmap =  do
     emit (INSTANCEOF _) = do
       pop eax
       push (1 :: Word32)
-    emit ATHROW = do -- TODO(bernhard): ...
+    emit ATHROW = -- TODO(bernhard): ...
         emit32 (0xffffffff :: Word32)
     emit I2C = do
       pop eax
@@ -360,7 +361,7 @@ emitFromBB method sig cls hmap =  do
   thisMethodArgCnt :: Word32
   thisMethodArgCnt = isNonStatic + fromIntegral (length args)
     where
-    (Just m) = lookupMethodSig method sig cls
+    m = fromJust $ lookupMethodSig method sig cls
     (MethodSignature args _) = sig
     isNonStatic = if S.member ACC_STATIC (methodAccessFlags m)
         then 0 else 1 -- one argument for the this pointer

@@ -54,7 +54,7 @@ getMethodEntry signal_from methodtable = do
   --                  figured out the problem yet :/ therefore, I have no
   --                  testcase for replaying the situation.
   -- setTrapMap $ M.delete w32_from tmap
-  case M.lookup mi' mmap of
+  entryaddr <- case M.lookup mi' mmap of
     Nothing -> do
       cls <- getClassFile cm
       printfMp "getMethodEntry(from 0x%08x): no method \"%s\" found. compile it\n" w32_from (show mi')
@@ -71,8 +71,7 @@ getMethodEntry signal_from methodtable = do
                     symbol = sym1 ++ "__" ++ toString method ++ "__" ++ sym2
                 printfMp "native-call: symbol: %s\n" symbol
                 nf <- loadNativeFunction symbol
-                let w32_nf = fromIntegral nf
-                setMethodMap $ M.insert mi' w32_nf mmap
+                setMethodMap $ M.insert mi' nf mmap
                 return nf
               else do
                 hmap <- parseMethod cls' method sig
@@ -83,7 +82,8 @@ getMethodEntry signal_from methodtable = do
                     return $ fromIntegral entry
                   Nothing -> error $ show method ++ " not found. abort"
         Nothing -> error $ show method ++ " not found. abort"
-    Just w32 -> return (fromIntegral w32)
+    Just w32 -> return w32
+  return $ fromIntegral entryaddr
 
 lookupMethodRecursive :: B.ByteString -> MethodSignature -> [B.ByteString] -> Class Direct
                          -> IO (Maybe (Method Direct, [B.ByteString], Class Direct))
@@ -105,7 +105,7 @@ lookupMethodRecursive name sig clsnames cls =
 foreign import ccall safe "lookupSymbol"
    c_lookupSymbol :: CString -> IO (Ptr a)
 
-loadNativeFunction :: String -> IO CUInt
+loadNativeFunction :: String -> IO Word32
 loadNativeFunction sym = do
         _ <- loadRawObject "ffi/native.o"
         -- TODO(bernhard): WTF
@@ -127,7 +127,7 @@ loadNativeFunction sym = do
 addMethodRef :: Word32 -> MethodInfo -> [B.ByteString] -> IO ()
 addMethodRef entry (MethodInfo mmname _ msig) clsnames = do
   mmap <- getMethodMap
-  let newmap = M.fromList $ map (\x -> (MethodInfo mmname x msig, entry)) clsnames
+  let newmap = foldr (\i -> M.insert (MethodInfo mmname i msig) entry) M.empty clsnames
   setMethodMap $ mmap `M.union` newmap
 
 

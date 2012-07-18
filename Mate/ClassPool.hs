@@ -19,6 +19,7 @@ import Data.Word
 import Data.Binary
 import qualified Data.Map as M
 import qualified Data.Set as S
+import Data.List
 import qualified Data.ByteString.Lazy as B
 import Data.String.Utils
 import Control.Monad
@@ -197,32 +198,25 @@ calculateFields :: Class Direct -> Maybe ClassInfo -> IO (FieldMap, FieldMap)
 calculateFields cf superclass = do
     -- TODO(bernhard): correct sizes. int only atm
 
-    -- TODO(bernhard): nicer replacement for `myspan'
-    let (sfields, ifields) = myspan (S.member ACC_STATIC . fieldAccessFlags) (classFields cf)
-        myspan :: (a -> Bool) -> [a] -> ([a], [a])
-        myspan _ [] = ([],[])
-        myspan p (x:xs)
-          | p x = (x:ns, ni)
-          | otherwise = (ns, x:ni)
-          where (ns,ni) = myspan p xs
+    let (sfields, ifields) = partition (S.member ACC_STATIC . fieldAccessFlags) (classFields cf)
 
-    staticbase <- mallocClassData $ fromIntegral (length sfields) * 4
-    let i_sb = fromIntegral $ ptrToIntPtr staticbase
-    let sm = zipbase i_sb sfields
     let sc_sm = getsupermap superclass ciStaticMap
+    staticbase <- mallocClassData $ fromIntegral (length sfields) * 4
+    let sm = zipbase (fromIntegral $ ptrToIntPtr staticbase) sfields
     -- new fields "overwrite" old ones, if they have the same name
-    let staticmap = M.fromList sm `M.union` sc_sm
+    let staticmap = sm `M.union` sc_sm
 
     let sc_im = getsupermap superclass ciFieldMap
     -- "+ 4" for the method table pointer
     let max_off = (4+) $ fromIntegral $ M.size sc_im * 4
     let im = zipbase max_off ifields
     -- new fields "overwrite" old ones, if they have the same name
-    let fieldmap = M.fromList im `M.union` sc_im
+    let fieldmap = im `M.union` sc_im
 
     return (staticmap, fieldmap)
   where
-  zipbase base = zipWith (\x y -> (fieldName y, x + base)) [0,4..]
+  zipbase :: Int32 -> [Field Direct] -> FieldMap
+  zipbase base = foldr (\(x,y) -> M.insert (fieldName y) (x + base)) M.empty . zip [0,4..]
 
 -- helper
 getsupermap :: Maybe ClassInfo -> (ClassInfo -> FieldMap) -> FieldMap

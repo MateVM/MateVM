@@ -5,6 +5,7 @@ module Mate.Utilities where
 import Data.Word
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as B
+import Data.List
 
 import JVM.ClassFile
 
@@ -57,9 +58,5 @@ methodHaveReturnValue cls idx = case ret of
   (MethodSignature _ ret) = ntSignature nt
 
 lookupMethodSig :: B.ByteString -> MethodSignature -> Class Direct -> Maybe (Method Direct)
-lookupMethodSig name sig cls = look (classMethods cls)
-  where
-  look [] = Nothing
-  look (f:fs)
-    | methodName f == name && methodSignature f == sig = Just f
-    | otherwise = look fs
+lookupMethodSig name sig cls =
+  find (\x -> methodName x == name && methodSignature x == sig) $ classMethods cls
