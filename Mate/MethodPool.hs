@@ -44,12 +44,12 @@ getMethodEntry signal_from methodtable = do
   let w32_from = fromIntegral signal_from
   let mi = tmap M.! w32_from
   let mi'@(MethodInfo method cm sig) =
-        case mi of
-          (StaticMethod x) -> x
-          (VirtualMethod   _ (MethodInfo methname _ msig)) -> newMi methname msig
-          (InterfaceMethod _ (MethodInfo methname _ msig)) -> newMi methname msig
-          _ -> error "getMethodEntry: no TrapCause found. abort."
-        where newMi mn = MethodInfo mn (vmap M.! fromIntegral methodtable)
+       case mi of
+         (StaticMethod x) -> x
+         (VirtualMethod   _ (MethodInfo methname _ msig)) -> newMi methname msig
+         (InterfaceMethod _ (MethodInfo methname _ msig)) -> newMi methname msig
+         _ -> error "getMethodEntry: no TrapCause found. abort."
+       where newMi mn = MethodInfo mn (vmap M.! fromIntegral methodtable)
   -- bernhard (TODO): doesn't work with gnu classpath at some point. didn't
   --                  figured out the problem yet :/ therefore, I have no
   --                  testcase for replaying the situation.
@@ -96,10 +96,10 @@ lookupMethodRecursive name sig clsnames cls =
         supercl <- getClassFile (superClass cls)
         lookupMethodRecursive name sig nextclsn supercl
   where
-  res = lookupMethodSig name sig cls
-  thisname = thisClass cls
-  nextclsn :: [B.ByteString]
-  nextclsn = thisname:clsnames
+    res = lookupMethodSig name sig cls
+    thisname = thisClass cls
+    nextclsn :: [B.ByteString]
+    nextclsn = thisname:clsnames
 
 -- TODO(bernhard): UBERHAX.  ghc patch?
 foreign import ccall safe "lookupSymbol"
@@ -107,13 +107,13 @@ foreign import ccall safe "lookupSymbol"
 
 loadNativeFunction :: String -> IO Word32
 loadNativeFunction sym = do
-        _ <- loadRawObject "ffi/native.o"
-        -- TODO(bernhard): WTF
-        resolveObjs (return ())
-        ptr <- withCString sym c_lookupSymbol
-        if ptr == nullPtr
-          then error $ "dyn. loading of \"" ++ sym ++ "\" failed."
-          else return $ fromIntegral $ ptrToIntPtr ptr
+  _ <- loadRawObject "ffi/native.o"
+  -- TODO(bernhard): WTF
+  resolveObjs (return ())
+  ptr <- withCString sym c_lookupSymbol
+  if ptr == nullPtr
+    then error $ "dyn. loading of \"" ++ sym ++ "\" failed."
+    else return $ fromIntegral $ ptrToIntPtr ptr
 
 -- t_01 :: IO ()
 -- t_01 = do

@@ -44,11 +44,11 @@ parseArgs ("-classpath":cps:xs) False = do
   let paths = splitOn ":" cps
   mapM_ addStuff paths
   parseArgs xs True
-  where
-  addStuff :: String -> IO ()
-  addStuff x
-    | ".jar" `isSuffixOf` x = addClassPathJAR x
-    | otherwise = addClassPath $ x ++ "/"
+    where
+      addStuff :: String -> IO ()
+      addStuff x
+        | ".jar" `isSuffixOf` x = addClassPathJAR x
+        | otherwise = addClassPath $ x ++ "/"
 parseArgs ("-classpath":xs) _ = parseArgs ("-":xs) True -- usage
 parseArgs (('-':_):_) _ = error "Usage: mate [-cp|-classpath <cp1:cp2:..>] [<class-file> | -jar <jar-file>]"
 -- first argument which isn't prefixed by '-' should be a class file

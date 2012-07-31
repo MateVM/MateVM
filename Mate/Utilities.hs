@@ -14,10 +14,11 @@ import Mate.Types
 
 buildMethodID :: Class Direct -> Word16 -> MethodInfo
 buildMethodID cls idx = MethodInfo (ntName nt) rc (ntSignature nt)
-  where (rc, nt) = case constsPool cls M.! idx of
-                    (CMethod rc' nt') -> (rc', nt')
-                    (CIfaceMethod rc' nt') -> (rc', nt')
-                    _ -> error "buildMethodID: something wrong. abort."
+  where
+    (rc, nt) = case constsPool cls M.! idx of
+      (CMethod rc' nt') -> (rc', nt')
+      (CIfaceMethod rc' nt') -> (rc', nt')
+      _ -> error "buildMethodID: something wrong. abort."
 
 buildStaticFieldID :: Class Direct -> Word16 -> StaticFieldInfo
 buildStaticFieldID cls idx = StaticFieldInfo rc (ntName fnt)
@@ -34,11 +35,11 @@ buildClassID cls idx = cl
 methodGetArgsCount :: Class Direct -> Word16 -> Word32
 methodGetArgsCount cls idx = fromIntegral $ length args
   where
-  nt = case constsPool cls M.! idx of
-    (CMethod _ nt') -> nt'
-    (CIfaceMethod _ nt') -> nt'
-    _ -> error "methodGetArgsCount: something wrong. abort."
-  (MethodSignature args _) = ntSignature nt
+    nt = case constsPool cls M.! idx of
+      (CMethod _ nt') -> nt'
+      (CIfaceMethod _ nt') -> nt'
+      _ -> error "methodGetArgsCount: something wrong. abort."
+    (MethodSignature args _) = ntSignature nt
 
 -- TODO(bernhard): Extend it to more than just int, and provide typeinformation
 methodHaveReturnValue :: Class Direct -> Word16 -> Bool
@@ -51,11 +52,11 @@ methodHaveReturnValue cls idx = case ret of
     (Returns (ObjectType _)) -> True;
     _ -> error $ "methodHaveReturnValue: todo: " ++ show ret
   where
-  nt = case constsPool cls M.! idx of
-    (CMethod _ nt') -> nt'
-    (CIfaceMethod _ nt') -> nt'
-    _ -> error "methodHaveReturnValue: something wrong. abort."
-  (MethodSignature _ ret) = ntSignature nt
+    nt = case constsPool cls M.! idx of
+      (CMethod _ nt') -> nt'
+      (CIfaceMethod _ nt') -> nt'
+      _ -> error "methodHaveReturnValue: something wrong. abort."
+    (MethodSignature _ ret) = ntSignature nt
 
 lookupMethodSig :: B.ByteString -> MethodSignature -> Class Direct -> Maybe (Method Direct)
 lookupMethodSig name sig cls =

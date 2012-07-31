@@ -189,9 +189,9 @@ loadInterface path = do
       setInterfaceMethodMap $ M.fromList sm `M.union` M.fromList mm `M.union` immap
       setInterfaceMap $ M.insert path cfile imap'
   where
-  zipbase base = zipWith (\x y -> (entry y, x + base)) [0,4..]
-  entry = getname path
-  getname p y = p `B.append` methodName y `B.append` encode (methodSignature y)
+    zipbase base = zipWith (\x y -> (entry y, x + base)) [0,4..]
+    entry = getname path
+    getname p y = p `B.append` methodName y `B.append` encode (methodSignature y)
 
 
 calculateFields :: Class Direct -> Maybe ClassInfo -> IO (FieldMap, FieldMap)
@@ -215,8 +215,8 @@ calculateFields cf superclass = do
 
     return (staticmap, fieldmap)
   where
-  zipbase :: Int32 -> [Field Direct] -> FieldMap
-  zipbase base = foldr (\(x,y) -> M.insert (fieldName y) (x + base)) M.empty . zip [0,4..]
+    zipbase :: Int32 -> [Field Direct] -> FieldMap
+    zipbase base = foldr (\(x,y) -> M.insert (fieldName y) (x + base)) M.empty . zip [0,4..]
 
 -- helper
 getsupermap :: Maybe ClassInfo -> (ClassInfo -> FieldMap) -> FieldMap
@@ -275,23 +275,23 @@ loadAndInitClass path = do
 readClassFile :: String -> IO (Class Direct)
 readClassFile path' = readIORef classPaths >>= rcf
   where
-  path = replace "." "/" path'
-  rcf :: [MClassPath] -> IO (Class Direct)
-  rcf [] = error $ "readClassFile: Class \"" ++ show path ++ "\" not found."
-  rcf (Directory pre:xs) = do
-    let cf = pre ++ path ++ ".class"
-    printfCp "rcf: searching @ %s for %s\n" (show pre) (show path)
-    b <- doesFileExist cf
-    if b
-      then parseClassFile cf
-      else rcf xs
-  rcf (JAR p:xs) = do
-    printfCp "rcf: searching %s in JAR\n" (show path)
-    entry <- getEntry p path
-    case entry of
-      Just (LoadedJAR _ cls) -> return cls
-      Nothing -> rcf xs
-      _ -> error $ "readClassFile: Class \"" ++ show path ++ "\" in JAR not found. #1"
+    path = replace "." "/" path'
+    rcf :: [MClassPath] -> IO (Class Direct)
+    rcf [] = error $ "readClassFile: Class \"" ++ show path ++ "\" not found."
+    rcf (Directory pre:xs) = do
+      let cf = pre ++ path ++ ".class"
+      printfCp "rcf: searching @ %s for %s\n" (show pre) (show path)
+      b <- doesFileExist cf
+      if b
+        then parseClassFile cf
+        else rcf xs
+    rcf (JAR p:xs) = do
+      printfCp "rcf: searching %s in JAR\n" (show path)
+      entry <- getEntry p path
+      case entry of
+        Just (LoadedJAR _ cls) -> return cls
+        Nothing -> rcf xs
+        _ -> error $ "readClassFile: Class \"" ++ show path ++ "\" in JAR not found. #1"
 
 data MClassPath =
   Directory String |

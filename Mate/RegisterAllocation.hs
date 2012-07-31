@@ -27,9 +27,10 @@ edgeEq (from,to) (from',to') = from == from' && to == to'
 -- TODO: find combinator do match try semantics here
 -- Solution: use list because list is MonadPlus instance
 -- other solution add maybe monadplus implementation
-conflicts (IGraph xs) (label,anotherLabel) = let comparison  = edgeEq (label,anotherLabel)
-                                                 comparison' = edgeEq (anotherLabel,label) 
-                                             in isJust (find comparison xs) || isJust (find comparison' xs) 
+conflicts (IGraph xs) (label,anotherLabel) =
+  let comparison  = edgeEq (label,anotherLabel)
+      comparison' = edgeEq (anotherLabel,label)
+  in isJust (find comparison xs) || isJust (find comparison' xs)
 
 
 isParticipiant label (from,to) = from == label || to == label
