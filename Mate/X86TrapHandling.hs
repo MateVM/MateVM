@@ -25,7 +25,7 @@ data TrapType =
   | VirtualMethodCall Bool
   | InterfaceMethodCall Bool
 
-getTrapType :: TrapMap -> CUInt -> CUInt -> TrapType
+getTrapType :: TrapMap -> CPtrdiff -> CPtrdiff -> TrapType
 getTrapType tmap signal_from from2 =
   case M.lookup (fromIntegral signal_from) tmap of
     (Just (StaticMethod _)) -> StaticMethodCall
@@ -38,8 +38,8 @@ getTrapType tmap signal_from from2 =
       (Just _) -> error "getTrapType: abort #1 :-("
       Nothing -> error $ "getTrapType: abort #2 :-(" ++ show signal_from ++ ", " ++ show from2 ++ ", " ++ show tmap
 
-foreign export ccall mateHandler :: CUInt -> CUInt -> CUInt -> CUInt -> IO CUInt
-mateHandler :: CUInt -> CUInt -> CUInt -> CUInt -> IO CUInt
+foreign export ccall mateHandler :: CPtrdiff -> CPtrdiff -> CPtrdiff -> CPtrdiff -> IO CPtrdiff
+mateHandler :: CPtrdiff -> CPtrdiff -> CPtrdiff -> CPtrdiff -> IO CPtrdiff
 mateHandler eip eax ebx esp = do
   callerAddr <- callerAddrFromStack esp
   tmap <- getTrapMap
@@ -49,12 +49,12 @@ mateHandler eip eax ebx esp = do
     VirtualMethodCall imm8   -> invokeHandler eax eax esp imm8
     InterfaceMethodCall imm8 -> invokeHandler eax ebx esp imm8
 
-staticCallHandler :: CUInt -> IO CUInt
+staticCallHandler :: CPtrdiff -> IO CPtrdiff
 staticCallHandler eip = do
   -- the actual insn to patch is displaced by two bytes
   let insn_ptr = intPtrToPtr (fromIntegral (eip - 2)) :: Ptr CUChar
   -- call offset is displaced by one byte
-  let imm_ptr = intPtrToPtr (fromIntegral (eip - 1)) :: Ptr CUInt
+  let imm_ptr = intPtrToPtr (fromIntegral (eip - 1)) :: Ptr CPtrdiff
   -- in codegen we set the immediate to some magic value
   -- in order to produce a SIGILL signal. we also do a safety
   -- check here, if we're really the "owner" of this signal.
@@ -71,10 +71,10 @@ staticCallHandler eip = do
       return (eip - 2)
     else error "staticCallHandler: something is wrong here. abort\n"
 
-staticFieldHandler :: CUInt -> IO CUInt
+staticFieldHandler :: CPtrdiff -> IO CPtrdiff
 staticFieldHandler eip = do
   -- patch the offset here, first two bytes are part of the insn (opcode + reg)
-  let imm_ptr = intPtrToPtr (fromIntegral (eip + 2)) :: Ptr CUInt
+  let imm_ptr = intPtrToPtr (fromIntegral (eip + 2)) :: Ptr CPtrdiff
   checkMe <- peek imm_ptr
   if checkMe == 0x00000000 then
     do
@@ -82,7 +82,7 @@ staticFieldHandler eip = do
       return eip
     else error "staticFieldHandler: something is wrong here. abort.\n"
 
-invokeHandler :: CUInt -> CUInt -> CUInt -> Bool -> IO CUInt
+invokeHandler :: CPtrdiff -> CPtrdiff -> CPtrdiff -> Bool -> IO CPtrdiff
 invokeHandler method_table table2patch esp imm8 = do
   -- table2patch: note, that can be a method-table or a interface-table
   callerAddr <- callerAddrFromStack esp
@@ -93,18 +93,18 @@ invokeHandler method_table table2patch esp imm8 = do
   return entryAddr
 
 
-callerAddrFromStack :: CUInt -> IO CUInt
+callerAddrFromStack :: CPtrdiff -> IO CPtrdiff
 callerAddrFromStack = peek . intPtrToPtr . fromIntegral
 
-offsetOfCallInsn8 :: CUInt -> IO CUInt
+offsetOfCallInsn8 :: CPtrdiff -> IO CPtrdiff
 offsetOfCallInsn8 esp = do
-  let ret_ptr = intPtrToPtr (fromIntegral esp) :: Ptr CUInt
+  let ret_ptr = intPtrToPtr (fromIntegral esp) :: Ptr CPtrdiff
   ret <- peek ret_ptr
   retval <- peek (intPtrToPtr (fromIntegral (ret - 1)) :: Ptr CUChar)
   return $ fromIntegral retval
 
-offsetOfCallInsn32 :: CUInt -> IO CUInt
+offsetOfCallInsn32 :: CPtrdiff -> IO CPtrdiff
 offsetOfCallInsn32 esp = do
-  let ret_ptr = intPtrToPtr (fromIntegral esp) :: Ptr CUInt
+  let ret_ptr = intPtrToPtr (fromIntegral esp) :: Ptr CPtrdiff
   ret <- peek ret_ptr
   peek (intPtrToPtr $ fromIntegral (ret - 4))

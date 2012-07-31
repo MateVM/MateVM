@@ -57,7 +57,7 @@ allocateJavaString str = do
   fsize <- getObjectSize "java/lang/String"
   printfStr "string: fsize: %d (should be 4 * 5)\n" fsize
   tblptr <- mallocObject $ fromIntegral fsize
-  let ptr = intPtrToPtr (fromIntegral tblptr) :: Ptr CUInt
+  let ptr = intPtrToPtr (fromIntegral tblptr) :: Ptr CPtrdiff
   mtbl <- getMethodTable "java/lang/String"
   poke ptr $ fromIntegral mtbl
 
@@ -70,16 +70,16 @@ allocateJavaString str = do
   copyBytes (plusPtr newstr 4) arr strlen
   printfStr "new str ptr: (%s)@%d\n" (toString str) strlen
 
-  let newstr_length = castPtr newstr :: Ptr CUInt
+  let newstr_length = castPtr newstr :: Ptr CPtrdiff
   poke newstr_length $ fromIntegral strlen
 
   -- set value pointer
-  poke (plusPtr ptr 4) (fromIntegral (ptrToIntPtr newstr) :: CUInt)
+  poke (plusPtr ptr 4) (fromIntegral (ptrToIntPtr newstr) :: CPtrdiff)
   -- set count field
-  poke (plusPtr ptr 8) (fromIntegral strlen :: CUInt)
+  poke (plusPtr ptr 8) (fromIntegral strlen :: CPtrdiff)
   -- set hash code (TODO)
-  poke (plusPtr ptr 12) (0 :: CUInt)
+  poke (plusPtr ptr 12) (0 :: CPtrdiff)
   -- set offset
-  poke (plusPtr ptr 16) (0 :: CUInt)
+  poke (plusPtr ptr 16) (0 :: CPtrdiff)
 
   return $ fromIntegral tblptr

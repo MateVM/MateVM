@@ -35,7 +35,7 @@ foreign import ccall "dynamic"
    code_void :: FunPtr (IO ()) -> IO ()
 
 
-getMethodEntry :: CUInt -> CUInt -> IO CUInt
+getMethodEntry :: CPtrdiff -> CPtrdiff -> IO CPtrdiff
 getMethodEntry signal_from methodtable = do
   mmap <- getMethodMap
   tmap <- getTrapMap

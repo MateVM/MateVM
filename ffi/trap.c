@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stddef.h>
 
 #include "../debug.h"
 
@@ -21,7 +22,7 @@
 
 #include <sys/ucontext.h>
 
-unsigned int mateHandler(unsigned int, unsigned int, unsigned int, unsigned int);
+ptrdiff_t mateHandler(ptrdiff_t, ptrdiff_t, ptrdiff_t, ptrdiff_t);
 
 #ifdef DBG_TRAP
 #define dprintf(args...) do { printf (args); } while (0);
@@ -33,13 +34,13 @@ void chandler(int nSignal, siginfo_t *info, void *ctx)
 {
 	mcontext_t *mctx = &((ucontext_t *) ctx)->uc_mcontext;
 
-	unsigned int eip = (unsigned int) mctx->gregs[REG_EIP];
-	unsigned int eax = (unsigned int) mctx->gregs[REG_EAX];
-	unsigned int ebx = (unsigned int) mctx->gregs[REG_EBX];
-	unsigned int esp = (unsigned int) mctx->gregs[REG_ESP];
+	ptrdiff_t eip = (ptrdiff_t) mctx->gregs[REG_EIP];
+	ptrdiff_t eax = (ptrdiff_t) mctx->gregs[REG_EAX];
+	ptrdiff_t ebx = (ptrdiff_t) mctx->gregs[REG_EBX];
+	ptrdiff_t esp = (ptrdiff_t) mctx->gregs[REG_ESP];
 	dprintf("trap: type %d, eip 0x%08x, eax 0x%08x, ebx 0x%08x, "
 			"esp 0x%08x, *esp 0x%08x\n", nSignal, eip,
-			eax, ebx, esp, *(unsigned int*) esp);
+			eax, ebx, esp, *(ptrdiff_t*) esp);
 
 	mctx->gregs[REG_EIP] = mateHandler(eip, eax, ebx, esp);
 }

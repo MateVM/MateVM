@@ -62,7 +62,7 @@ getClassFile path = do
   ci <- getClassInfo path
   return $ ciFile ci
 
-getStaticFieldOffset :: B.ByteString -> B.ByteString -> IO CUInt
+getStaticFieldOffset :: B.ByteString -> B.ByteString -> IO CPtrdiff
 getStaticFieldOffset path field = do
   ci <- getClassInfo path
   return $ fromIntegral $ ciStaticMap ci M.! field
@@ -92,7 +92,7 @@ getObjectSize path = do
   -- one slot for "method-table-ptr"
   return $ (1 + fsize) * 4
 
-getStaticFieldAddr :: CUInt -> IO CUInt
+getStaticFieldAddr :: CPtrdiff -> IO CPtrdiff
 getStaticFieldAddr from = do
   trapmap <- getTrapMap
   let w32_from = fromIntegral from

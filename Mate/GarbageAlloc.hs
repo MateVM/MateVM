@@ -24,8 +24,8 @@ mallocString size = do
   printfStr "mallocString: %d\n" size
   mallocBytes size
 
-foreign export ccall mallocObject :: Int -> IO CUInt
-mallocObject :: Int -> IO CUInt
+foreign export ccall mallocObject :: Int -> IO CPtrdiff
+mallocObject :: Int -> IO CPtrdiff
 mallocObject size = do
   ptr <- mallocBytes size
   printfStr "mallocObject: %d\n" size
