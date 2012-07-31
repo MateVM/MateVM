@@ -46,23 +46,23 @@ type BBStarts = M.Map BlockID Int
 type CompileInfo = (EntryPoint, BBStarts, Int, TrapMap)
 
 
-emitFromBB :: B.ByteString -> MethodSignature -> Class Direct -> MapBB -> CodeGen e s (CompileInfo, [Instruction])
-emitFromBB method sig cls hmap =  do
+emitFromBB :: B.ByteString -> MethodSignature -> Class Direct -> RawMethod -> CodeGen e s (CompileInfo, [Instruction])
+emitFromBB methodname sig cls method =  do
         let keys = M.keys hmap
         llmap <- mapM (newNamedLabel . (++) "bb_" . show) keys
         let lmap = zip keys llmap
         ep <- getEntryPoint
         push ebp
         mov ebp esp
-        -- TODO(bernhard): determine a reasonable value.
-        --                 e.g. (locals used) * 4
-        sub esp (0x60 :: Word32)
+        sub esp (fromIntegral ((rawLocals method) * 4) :: Word32)
 
         (calls, bbstarts) <- efBB (0, hmap M.! 0) M.empty M.empty lmap
         d <- disassemble
         end <- getCodeOffset
         return ((ep, bbstarts, end, calls), d)
   where
+  hmap = rawMapBB method
+
   getLabel :: BlockID -> [(BlockID, Label)] -> Label
   getLabel _ [] = error "label not found!"
   getLabel i ((x,l):xs) = if i==x then l else getLabel i xs
@@ -358,10 +358,11 @@ emitFromBB method sig cls hmap =  do
   cArgs_ :: IMM -> Word8
   cArgs_ x = case x of I0 -> 0; I1 -> 1; I2 -> 2; I3 -> 3
 
+  -- TODO: factor this out to `compileBB'
   thisMethodArgCnt :: Word32
   thisMethodArgCnt = isNonStatic + fromIntegral (length args)
     where
-    m = fromJust $ lookupMethodSig method sig cls
+    m = fromJust $ lookupMethodSig methodname sig cls
     (MethodSignature args _) = sig
     isNonStatic = if S.member ACC_STATIC (methodAccessFlags m)
         then 0 else 1 -- one argument for the this pointer

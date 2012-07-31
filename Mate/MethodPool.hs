@@ -131,18 +131,19 @@ addMethodRef entry (MethodInfo mmname _ msig) clsnames = do
   setMethodMap $ mmap `M.union` newmap
 
 
-compileBB :: MapBB -> MethodInfo -> IO Word32
-compileBB hmap methodinfo = do
+compileBB :: RawMethod -> MethodInfo -> IO Word32
+compileBB rawmethod methodinfo = do
   tmap <- getTrapMap
 
   cls <- getClassFile (methClassName methodinfo)
-  let ebb = emitFromBB (methName methodinfo) (methSignature methodinfo) cls hmap
+  let ebb = emitFromBB (methName methodinfo) (methSignature methodinfo) cls rawmethod
   (_, Right right) <- runCodeGen ebb () ()
 
   let ((entry, _, _, new_tmap), _) = right
   setTrapMap $ tmap `M.union` new_tmap -- prefers elements in tmap
 
   printfJit "generated code of \"%s\" from \"%s\":\n" (toString $ methName methodinfo) (toString $ methClassName methodinfo)
+  printfJit "\tstacksize: 0x%04x, locals: 0x%04x\n" (rawStackSize rawmethod) (rawLocals rawmethod)
   mapM_ (printfJit "%s\n" . showAtt) (snd right)
   printfJit "\n\n"
   -- UNCOMMENT NEXT LINES FOR GDB FUN

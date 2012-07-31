@@ -25,6 +25,10 @@ data BBEnd = Return | FallThrough BlockID | OneTarget BlockID | TwoTarget BlockI
 
 type MapBB = M.Map BlockID BasicBlock
 
+data RawMethod = RawMethod {
+  rawMapBB :: MapBB,
+  rawLocals :: Int,
+  rawStackSize :: Int }
 
 
 -- Word32 = point of method call in generated code

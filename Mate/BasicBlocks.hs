@@ -3,9 +3,10 @@
 #include "debug.h"
 module Mate.BasicBlocks(
   BlockID,
-  BasicBlock (..),
-  BBEnd (..),
+  BasicBlock,
+  BBEnd,
   MapBB,
+  Method,
 #ifdef DBG_BB
   printMapBB,
 #endif
@@ -37,9 +38,8 @@ type OffIns = (Offset, Instruction)
 
 
 #ifdef DBG_BB
-printMapBB :: Maybe MapBB -> IO ()
-printMapBB Nothing = putStrLn "No BasicBlock"
-printMapBB (Just hmap) = do
+printMapBB :: MapBB -> IO ()
+printMapBB hmap = do
                      putStr "BlockIDs: "
                      let keys = M.keys hmap
                      mapM_ (putStr . (flip (++)) ", " . show) keys
@@ -87,13 +87,15 @@ test_04 = testInstance "./tests/Fac.class" "fac"
 #endif
 
 
-parseMethod :: Class Direct -> B.ByteString -> MethodSignature -> IO (Maybe MapBB)
+parseMethod :: Class Direct -> B.ByteString -> MethodSignature -> IO (Maybe RawMethod)
 parseMethod cls method sig = do
                      let maybe_bb = testCFG $ lookupMethodSig method sig cls
                      let msig = methodSignature $ classMethods cls !! 1
                      printfBb "BB: analysing \"%s\"\n" $ toString (method `B.append` ": " `B.append` encode msig)
 #ifdef DBG_BB
-                     printMapBB maybe_bb
+                     case maybe_bb of
+                       Just m -> printMapBB $ rawMapBB m
+                       Nothing -> return ()
 #endif
                      -- small example how to get information about
                      -- exceptions of a method
@@ -101,15 +103,20 @@ parseMethod cls method sig = do
                      let (Just m) = lookupMethodSig method sig cls
                      case attrByName m "Code" of
                       Nothing -> printfBb "exception: no handler for this method\n"
-                      Just exceptionstream -> printfBb "exception: \"%s\"\n" (show $ codeExceptions $ decodeMethod exceptionstream)
+                      Just exceptionstream -> do
+                        printfBb "exception: \"%s\"\n" (show $ codeExceptions $ decodeMethod exceptionstream)
                      return maybe_bb
 
 
-testCFG :: Maybe (Method Direct) -> Maybe MapBB
+testCFG :: Maybe (Method Direct) -> Maybe RawMethod
 testCFG m = do
   m' <- m
-  bytecode <- attrByName m' "Code"
-  return $ buildCFG $ codeInstructions $ decodeMethod bytecode
+  codeseg <- attrByName m' "Code"
+  let decoded = decodeMethod codeseg
+  let mapbb = buildCFG $ codeInstructions decoded
+  let locals = fromIntegral (codeMaxLocals decoded)
+  let stacks = fromIntegral (codeStackSize decoded)
+  return $ RawMethod mapbb locals stacks
 
 
 buildCFG :: [Instruction] -> MapBB

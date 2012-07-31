@@ -9,5 +9,5 @@ import Mate.Types
 
 
 addMethodRef :: Word32 -> MethodInfo -> [B.ByteString] -> IO ()
-compileBB :: MapBB -> MethodInfo -> IO Word32
+compileBB :: RawMethod -> MethodInfo -> IO Word32
 executeFuncPtr :: Word32 -> IO ()
