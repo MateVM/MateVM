@@ -87,11 +87,25 @@ test_04 = testInstance "./tests/Fac.class" "fac"
 #endif
 
 
-parseMethod :: Class Direct -> B.ByteString -> MethodSignature -> IO (Maybe RawMethod)
-parseMethod cls method sig = do
-  let maybe_bb = testCFG $ lookupMethodSig method sig cls
+parseMethod :: Class Direct -> B.ByteString -> MethodSignature -> IO RawMethod
+parseMethod cls methodname sig = do
+  let method = case lookupMethodSig methodname sig cls of
+        Just m -> m
+        Nothing -> error $ "method " ++ (show . toString) methodname ++ " not found"
+  let codeseg = case attrByName method "Code" of
+        Just m -> m
+        Nothing -> error $ "codeseg " ++ (show . toString) methodname ++ " not found"
+  let decoded = decodeMethod codeseg
+  let mapbb = testCFG decoded
+  let locals = fromIntegral (codeMaxLocals decoded)
+  let stacks = fromIntegral (codeStackSize decoded)
+  let methoddirect = methodInfoToMethod (MethodInfo methodname "" sig) cls
+  let isStatic = methodIsStatic methoddirect
+  let nametype = methodNameType methoddirect
+  let argscount = methodGetArgsCount nametype + (if isStatic then 0 else 1)
+
   let msig = methodSignature $ classMethods cls !! 1
-  printfBb "BB: analysing \"%s\"\n" $ toString (method `B.append` ": " `B.append` encode msig)
+  printfBb "BB: analysing \"%s\"\n" $ toString (methodname `B.append` ": " `B.append` encode msig)
 #ifdef DBG_BB
   case maybe_bb of
     Just m -> printMapBB $ rawMapBB m
@@ -100,25 +114,17 @@ parseMethod cls method sig = do
   -- small example how to get information about
   -- exceptions of a method
   -- TODO: remove ;-)
-  let (Just m) = lookupMethodSig method sig cls
+  let (Just m) = lookupMethodSig methodname sig cls
   case attrByName m "Code" of
     Nothing ->
       printfBb "exception: no handler for this method\n"
     Just exceptionstream ->
       printfBb "exception: \"%s\"\n" (show $ codeExceptions $ decodeMethod exceptionstream)
-  return maybe_bb
+  return $ RawMethod mapbb locals stacks argscount
 
 
-testCFG :: Maybe (Method Direct) -> Maybe RawMethod
-testCFG m = do
-  m' <- m
-  codeseg <- attrByName m' "Code"
-  let decoded = decodeMethod codeseg
-  let mapbb = buildCFG $ codeInstructions decoded
-  let locals = fromIntegral (codeMaxLocals decoded)
-  let stacks = fromIntegral (codeStackSize decoded)
-  return $ RawMethod mapbb locals stacks
-
+testCFG :: Code -> MapBB
+testCFG = buildCFG . codeInstructions
 
 buildCFG :: [Instruction] -> MapBB
 buildCFG xs = buildCFG' M.empty xs' xs'

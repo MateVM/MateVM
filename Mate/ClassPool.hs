@@ -254,16 +254,13 @@ loadAndInitClass path = do
   -- execute class initializer
   case lookupMethod "<clinit>" (ciFile ci) of
     Just m -> do
-      method <- parseMethod (ciFile ci) "<clinit>" $ MethodSignature [] ReturnsVoid
-      case method of
-        Just rawmethod -> do
-          let mi = MethodInfo "<clinit>" path (methodSignature m)
-          entry <- compileBB rawmethod mi
-          addMethodRef entry mi [path]
-          printfCp "executing static initializer from %s now\n" (toString path)
-          executeFuncPtr entry
-          printfCp "static initializer from %s done\n" (toString path)
-        Nothing -> error "readClass: static initializer not found (WTF?). abort"
+      rawmethod <- parseMethod (ciFile ci) "<clinit>" $ MethodSignature [] ReturnsVoid
+      let mi = MethodInfo "<clinit>" path (methodSignature m)
+      entry <- compileBB rawmethod mi
+      addMethodRef entry mi [path]
+      printfCp "executing static initializer from %s now\n" (toString path)
+      executeFuncPtr entry
+      printfCp "static initializer from %s done\n" (toString path)
     Nothing -> return ()
 
   class_map' <- getClassMap

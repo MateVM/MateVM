@@ -66,14 +66,11 @@ executeMain bclspath cls = do
   case find (\x -> methodName x == "main") methods of
     Just m -> do
       let mi = MethodInfo "main" bclspath $ methodSignature m
-      hmap <- parseMethod cls "main" $ methodSignature m
-      case hmap of
-        Just hmap' -> do
-          entry <- compileBB hmap' mi
-          addMethodRef entry mi [bclspath]
+      rawmethod <- parseMethod cls "main" $ methodSignature m
+      entry <- compileBB rawmethod mi
+      addMethodRef entry mi [bclspath]
 #ifdef DEBUG
-          printf "executing `main' now:\n"
+      printf "executing `main' now:\n"
 #endif
-          executeFuncPtr entry
-        Nothing -> error "main not found"
+      executeFuncPtr entry
     Nothing -> error "main not found"

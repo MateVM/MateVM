@@ -74,13 +74,10 @@ getMethodEntry signal_from methodtable = do
                 setMethodMap $ M.insert mi' nf mmap
                 return nf
               else do
-                hmap <- parseMethod cls' method sig
-                case hmap of
-                  Just hmap' -> do
-                    entry <- compileBB hmap' (MethodInfo method (thisClass cls') sig)
-                    addMethodRef entry mi' clsnames
-                    return $ fromIntegral entry
-                  Nothing -> error $ show method ++ " not found. abort"
+                rawmethod <- parseMethod cls' method sig
+                entry <- compileBB rawmethod (MethodInfo method (thisClass cls') sig)
+                addMethodRef entry mi' clsnames
+                return $ fromIntegral entry
         Nothing -> error $ show method ++ " not found. abort"
     Just w32 -> return w32
   return $ fromIntegral entryaddr
@@ -136,7 +133,7 @@ compileBB rawmethod methodinfo = do
   tmap <- getTrapMap
 
   cls <- getClassFile (methClassName methodinfo)
-  let ebb = emitFromBB (methName methodinfo) (methSignature methodinfo) cls rawmethod
+  let ebb = emitFromBB cls rawmethod
   (_, Right right) <- runCodeGen ebb () ()
 
   let ((entry, _, _, new_tmap), _) = right

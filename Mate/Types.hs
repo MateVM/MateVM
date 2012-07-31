@@ -28,7 +28,8 @@ type MapBB = M.Map BlockID BasicBlock
 data RawMethod = RawMethod {
   rawMapBB :: MapBB,
   rawLocals :: Int,
-  rawStackSize :: Int }
+  rawStackSize :: Int,
+  rawArgCount :: Word32 }
 
 
 -- Word32 = point of method call in generated code

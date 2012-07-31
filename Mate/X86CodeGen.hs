@@ -10,7 +10,6 @@ import Data.BinaryState
 import Data.Int
 import Data.Maybe
 import qualified Data.Map as M
-import qualified Data.Set as S
 import qualified Data.ByteString.Lazy as B
 import Control.Monad
 
@@ -46,8 +45,8 @@ type BBStarts = M.Map BlockID Int
 type CompileInfo = (EntryPoint, BBStarts, Int, TrapMap)
 
 
-emitFromBB :: B.ByteString -> MethodSignature -> Class Direct -> RawMethod -> CodeGen e s (CompileInfo, [Instruction])
-emitFromBB methodname sig cls method = do
+emitFromBB :: Class Direct -> RawMethod -> CodeGen e s (CompileInfo, [Instruction])
+emitFromBB cls method = do
     let keys = M.keys hmap
     llmap <- mapM (newNamedLabel . (++) "bb_" . show) keys
     let lmap = zip keys llmap
@@ -107,7 +106,7 @@ emitFromBB methodname sig cls method = do
       -- place a nop at the end, therefore the disasm doesn't screw up
       emit32 (0xffff9090 :: Word32) >> emit8 (0x90 :: Word8)
       -- discard arguments on stack
-      let argcnt = ((if hasThis then 1 else 0) + methodGetArgsCount cls cpidx) * 4
+      let argcnt = ((if hasThis then 1 else 0) + (methodGetArgsCount $ methodNameTypeByIdx cls cpidx)) * 4
       when (argcnt > 0) (add esp argcnt)
       -- push result on stack if method has a return value
       when (methodHaveReturnValue cls cpidx) (push eax)
@@ -120,7 +119,7 @@ emitFromBB methodname sig cls method = do
       calladdr <- getCurrentOffset
       call (Disp offset, eax)
       -- discard arguments on stack (+4 for "this")
-      let argcnt = 4 + 4 * methodGetArgsCount cls cpidx
+      let argcnt = 4 + 4 * (methodGetArgsCount $ methodNameTypeByIdx cls cpidx)
       when (argcnt > 0) (add esp argcnt)
       -- push result on stack if method has a return value
       when (methodHaveReturnValue cls cpidx) (push eax)
@@ -350,23 +349,16 @@ emitFromBB methodname sig cls method = do
   -- for locals we use a different storage
   cArgs :: Word8 -> Word32
   cArgs x =
-    if x' >= thisMethodArgCnt
+    if x' >= argcount
     -- TODO(bernhard): maybe s/(-4)/(-8)/
-    then fromIntegral $ (-4) * (x' - thisMethodArgCnt + 1)
-    else 4 + (thisMethodArgCnt * 4) - (4 * x')
-      where x' = fromIntegral x
+    then (-4) * (x' - argcount + 1)
+    else 4 + (argcount * 4) - (4 * x')
+      where
+        x' = fromIntegral x
+        argcount = rawArgCount method
 
   cArgs_ :: IMM -> Word8
   cArgs_ x = case x of I0 -> 0; I1 -> 1; I2 -> 2; I3 -> 3
-
-  -- TODO: factor this out to `compileBB'
-  thisMethodArgCnt :: Word32
-  thisMethodArgCnt = isNonStatic + fromIntegral (length args)
-    where
-      m = fromJust $ lookupMethodSig methodname sig cls
-      (MethodSignature args _) = sig
-      isNonStatic = if S.member ACC_STATIC (methodAccessFlags m)
-          then 0 else 1 -- one argument for the this pointer
 
 
   -- sign extension from w8 to w32 (over s8)
