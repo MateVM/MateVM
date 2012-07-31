@@ -7,6 +7,13 @@
 	-> for gnu classpath absolutely necessary
 	-> estimated effort: unknown
 
+(l) replace signals with "nice traps"?
+	pro -> don't rely on operating system anymore
+	pro -> maybe better ghci behaviour?
+	cons -> at some point, signals are useful for debugging?
+	cons -> better "template" tricks are needed, as we cannot insert more
+	instructions or want to place nop's at production code path
+
 (l) gnu classpath integration
 	-> would be awwwesome
 	-> depends on: exceptions, jni (?)
