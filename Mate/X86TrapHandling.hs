@@ -13,7 +13,7 @@ import Foreign
 import Foreign.C.Types
 
 import Mate.Types
-import Mate.MethodPool
+import {-# SOURCE #-} Mate.MethodPool
 import Mate.ClassPool
 
 foreign import ccall "register_signal"

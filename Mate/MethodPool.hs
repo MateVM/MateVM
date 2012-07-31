@@ -26,7 +26,7 @@ import Text.Printf
 
 import Mate.BasicBlocks
 import Mate.Types
-import Mate.X86CodeGen
+import Mate.NativeMaschine
 import Mate.ClassPool
 import Mate.Debug
 import Mate.Utilities
