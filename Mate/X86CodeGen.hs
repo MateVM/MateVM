@@ -257,14 +257,14 @@ emitFromBB method sig cls hmap =  do
     emit (ICONST_3) = push (3 :: Word32)
     emit (ICONST_4) = push (4 :: Word32)
     emit (ICONST_5) = push (5 :: Word32)
+
     emit (ALOAD_ x) = emit (ILOAD_ x)
-    emit (ILOAD_ x) = push (Disp (cArgs_ x), ebp)
+    emit (ILOAD_ x) = emit (ILOAD $ cArgs_ x)
     emit (ALOAD x) = emit (ILOAD x)
     emit (ILOAD x) = push (Disp (cArgs x), ebp)
+
     emit (ASTORE_ x) = emit (ISTORE_ x)
-    emit (ISTORE_ x) = do
-        pop eax
-        mov (Disp (cArgs_ x), ebp) eax
+    emit (ISTORE_ x) = emit (ISTORE $ cArgs_ x)
     emit (ASTORE x) = emit (ISTORE x)
     emit (ISTORE x) = do
         pop eax
@@ -355,8 +355,8 @@ emitFromBB method sig cls hmap =  do
       else 4 + (thisMethodArgCnt * 4) - (4 * x')
     where x' = fromIntegral x
 
-  cArgs_ :: IMM -> Word32
-  cArgs_ x = cArgs $ case x of I0 -> 0; I1 -> 1; I2 -> 2; I3 -> 3
+  cArgs_ :: IMM -> Word8
+  cArgs_ x = case x of I0 -> 0; I1 -> 1; I2 -> 2; I3 -> 3
 
   thisMethodArgCnt :: Word32
   thisMethodArgCnt = isNonStatic + fromIntegral (length args)
