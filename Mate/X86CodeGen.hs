@@ -107,7 +107,7 @@ emitFromBB cls method = do
       -- place a nop at the end, therefore the disasm doesn't screw up
       emit32 (0xffff9090 :: Word32) >> emit8 (0x90 :: Word8)
       -- discard arguments on stack
-      let argcnt = ((if hasThis then 1 else 0) + (methodGetArgsCount $ methodNameTypeByIdx cls cpidx)) * ptrSize
+      let argcnt = ((if hasThis then 1 else 0) + methodGetArgsCount (methodNameTypeByIdx cls cpidx)) * ptrSize
       when (argcnt > 0) (add esp argcnt)
       -- push result on stack if method has a return value
       when (methodHaveReturnValue cls cpidx) (push eax)
@@ -120,7 +120,7 @@ emitFromBB cls method = do
       calladdr <- getCurrentOffset
       call (Disp offset, eax)
       -- discard arguments on stack (`+1' for "this")
-      let argcnt = ptrSize * (1 + (methodGetArgsCount $ methodNameTypeByIdx cls cpidx))
+      let argcnt = ptrSize * (1 + methodGetArgsCount (methodNameTypeByIdx cls cpidx))
       when (argcnt > 0) (add esp argcnt)
       -- push result on stack if method has a return value
       when (methodHaveReturnValue cls cpidx) (push eax)

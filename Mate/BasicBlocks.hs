@@ -19,6 +19,7 @@ import Data.Int
 import Data.List
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as B
+import Data.Maybe
 
 import JVM.ClassFile
 import JVM.Converter
@@ -89,12 +90,12 @@ test_04 = testInstance "./tests/Fac.class" "fac"
 
 parseMethod :: Class Direct -> B.ByteString -> MethodSignature -> IO RawMethod
 parseMethod cls methodname sig = do
-  let method = case lookupMethodSig methodname sig cls of
-        Just m -> m
-        Nothing -> error $ "method " ++ (show . toString) methodname ++ " not found"
-  let codeseg = case attrByName method "Code" of
-        Just m -> m
-        Nothing -> error $ "codeseg " ++ (show . toString) methodname ++ " not found"
+  let method = fromMaybe
+               (error $ "method " ++ (show . toString) methodname ++ " not found")
+               (lookupMethodSig methodname sig cls)
+  let codeseg = fromMaybe
+                (error $ "codeseg " ++ (show . toString) methodname ++ " not found")
+                (attrByName method "Code")
   let decoded = decodeMethod codeseg
   let mapbb = testCFG decoded
   let locals = fromIntegral (codeMaxLocals decoded)
