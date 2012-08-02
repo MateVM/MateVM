@@ -108,9 +108,7 @@ parseMethod cls methodname sig = do
   let msig = methodSignature $ classMethods cls !! 1
   printfBb "BB: analysing \"%s\"\n" $ toString (methodname `B.append` ": " `B.append` encode msig)
 #ifdef DBG_BB
-  case maybe_bb of
-    Just m -> printMapBB $ rawMapBB m
-    Nothing -> return ()
+  printMapBB mapbb
 #endif
   -- small example how to get information about
   -- exceptions of a method
