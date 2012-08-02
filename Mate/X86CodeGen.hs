@@ -104,15 +104,14 @@ emitFromBB cls method = do
       calladdr <- getCurrentOffset
       newNamedLabel (show l) >>= defineLabel
       -- causes SIGILL. in the signal handler we patch it to the acutal call.
-      -- place a nop at the end, therefore the disasm doesn't screw up
-      emit32 (0xffff9090 :: Word32) >> emit8 (0x90 :: Word8)
+      -- place two nop's at the end, therefore the disasm doesn't screw up
+      emit32 (0x9090ffff :: Word32) >> emit8 (0x90 :: Word8)
       -- discard arguments on stack
       let argcnt = ((if hasThis then 1 else 0) + methodGetArgsCount (methodNameTypeByIdx cls cpidx)) * ptrSize
       when (argcnt > 0) (add esp argcnt)
       -- push result on stack if method has a return value
       when (methodHaveReturnValue cls cpidx) (push eax)
-      -- +2 is for correcting eip in trap context
-      return $ Just (calladdr + 2, StaticMethod l)
+      return $ Just (calladdr, StaticMethod l)
 
     invokeEpilog :: Word16 -> Word32 -> (Bool -> TrapCause) -> CodeGen e s (Maybe (Word32, TrapCause))
     invokeEpilog cpidx offset trapcause = do

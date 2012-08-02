@@ -51,24 +51,23 @@ mateHandler eip eax ebx esp = do
 
 staticCallHandler :: CPtrdiff -> IO CPtrdiff
 staticCallHandler eip = do
-  -- the actual insn to patch is displaced by two bytes
-  let insn_ptr = intPtrToPtr (fromIntegral (eip - 2)) :: Ptr CUChar
-  -- call offset is displaced by one byte
-  let imm_ptr = intPtrToPtr (fromIntegral (eip - 1)) :: Ptr CPtrdiff
+  -- the actual insn to patch as pointer
+  let insn_ptr = intPtrToPtr (fromIntegral eip) :: Ptr CUChar
+  -- call offset is displaced by one byte (as the first byte is the opcode)
+  let imm_ptr = intPtrToPtr (fromIntegral (eip + 1)) :: Ptr CPtrdiff
   -- in codegen we set the immediate to some magic value
   -- in order to produce a SIGILL signal. we also do a safety
   -- check here, if we're really the "owner" of this signal.
   checkMe <- peek imm_ptr
-  if checkMe == 0x90ffff90 then
+  if checkMe == 0x909090ff then
     do
       entryAddr <- getMethodEntry eip 0
-      poke insn_ptr 0xe8 -- call opcode
-      -- it's a relative call, so we have to calculate the offset. why "+ 3"?
+      poke insn_ptr 0xe8 -- `call' opcode
+      -- it's a relative call, so we have to calculate the offset. why "+ 5"?
       -- (1) the whole insn is 5 bytes long
-      -- (2) begin of insn is displaced by 2 bytes
-      -- (3) offset is calculated wrt to the beginning of the next insn
-      poke imm_ptr (entryAddr - (eip + 3))
-      return (eip - 2)
+      -- (2) offset is calculated wrt to the beginning of the next insn
+      poke imm_ptr (entryAddr - (eip + 5))
+      return eip
     else error "staticCallHandler: something is wrong here. abort\n"
 
 staticFieldHandler :: CPtrdiff -> IO CPtrdiff
