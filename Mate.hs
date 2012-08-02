@@ -20,7 +20,7 @@ import Mate.BasicBlocks
 import Mate.MethodPool
 import Mate.Types
 import Mate.ClassPool
-import Mate.NativeMaschine
+import Mate.NativeMachine
 
 main ::  IO ()
 main = do

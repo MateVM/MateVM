@@ -49,6 +49,7 @@ import {-# SOURCE #-} Mate.MethodPool
 import Mate.Types
 import Mate.Debug
 import Mate.GarbageAlloc
+import Mate.NativeSizes
 
 getClassInfo :: B.ByteString -> IO ClassInfo
 getClassInfo path = do
@@ -76,8 +77,8 @@ getFieldOffset path field = do
 getMethodOffset :: B.ByteString -> B.ByteString -> IO Word32
 getMethodOffset path method = do
   ci <- getClassInfo path
-  -- (4+) one slot for "interface-table-ptr"
-  return $ (+4) $ fromIntegral $ ciMethodMap ci M.! method
+  -- (+ ptrSize) one slot for "interface-table-ptr"
+  return $ (+ ptrSize) $ fromIntegral $ ciMethodMap ci M.! method
 
 getMethodTable :: B.ByteString -> IO Word32
 getMethodTable path = do
@@ -90,7 +91,7 @@ getObjectSize path = do
   -- TODO(bernhard): correct sizes for different types...
   let fsize = fromIntegral $ M.size $ ciFieldMap ci
   -- one slot for "method-table-ptr"
-  return $ (1 + fsize) * 4
+  return $ (1 + fsize) * ptrSize
 
 getStaticFieldAddr :: CPtrdiff -> IO CPtrdiff
 getStaticFieldAddr from = do

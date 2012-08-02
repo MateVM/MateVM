@@ -24,6 +24,7 @@ import Harpy
 import Harpy.X86Disassembler
 
 import Mate.BasicBlocks
+import Mate.NativeSizes
 import Mate.Types
 import Mate.Utilities
 import Mate.ClassPool
@@ -53,7 +54,7 @@ emitFromBB cls method = do
     ep <- getEntryPoint
     push ebp
     mov ebp esp
-    sub esp (fromIntegral ((rawLocals method) * 4) :: Word32)
+    sub esp (fromIntegral (rawLocals method) * ptrSize :: Word32)
 
     (calls, bbstarts) <- efBB (0, hmap M.! 0) M.empty M.empty lmap
     d <- disassemble
@@ -106,7 +107,7 @@ emitFromBB cls method = do
       -- place a nop at the end, therefore the disasm doesn't screw up
       emit32 (0xffff9090 :: Word32) >> emit8 (0x90 :: Word8)
       -- discard arguments on stack
-      let argcnt = ((if hasThis then 1 else 0) + (methodGetArgsCount $ methodNameTypeByIdx cls cpidx)) * 4
+      let argcnt = ((if hasThis then 1 else 0) + (methodGetArgsCount $ methodNameTypeByIdx cls cpidx)) * ptrSize
       when (argcnt > 0) (add esp argcnt)
       -- push result on stack if method has a return value
       when (methodHaveReturnValue cls cpidx) (push eax)
@@ -118,8 +119,8 @@ emitFromBB cls method = do
       -- make actual (indirect) call
       calladdr <- getCurrentOffset
       call (Disp offset, eax)
-      -- discard arguments on stack (+4 for "this")
-      let argcnt = 4 + 4 * (methodGetArgsCount $ methodNameTypeByIdx cls cpidx)
+      -- discard arguments on stack (`+1' for "this")
+      let argcnt = ptrSize * (1 + (methodGetArgsCount $ methodNameTypeByIdx cls cpidx))
       when (argcnt > 0) (add esp argcnt)
       -- push result on stack if method has a return value
       when (methodHaveReturnValue cls cpidx) (push eax)
@@ -137,7 +138,7 @@ emitFromBB cls method = do
       let mi@(MethodInfo methodname ifacename msig@(MethodSignature args _)) = buildMethodID cls cpidx
       newNamedLabel (show mi) >>= defineLabel
       -- objref lives somewhere on the argument stack
-      mov eax (Disp ((*4) $ fromIntegral $ length args), esp)
+      mov eax (Disp ((* ptrSize) $ fromIntegral $ length args), esp)
       -- get method-table-ptr, keep it in eax (for trap handling)
       mov eax (Disp 0, eax)
       -- get interface-table-ptr
@@ -153,7 +154,7 @@ emitFromBB cls method = do
       let mi@(MethodInfo methodname objname msig@(MethodSignature args _))  = buildMethodID cls cpidx
       newNamedLabel (show mi) >>= defineLabel
       -- objref lives somewhere on the argument stack
-      mov eax (Disp ((*4) $ fromIntegral $ length args), esp)
+      mov eax (Disp ((* ptrSize) $ fromIntegral $ length args), esp)
       -- get method-table-ptr
       mov eax (Disp 0, eax)
       -- get method offset
@@ -176,7 +177,7 @@ emitFromBB cls method = do
     emit' insn = emit insn >> return Nothing
 
     emit :: J.Instruction -> CodeGen e s ()
-    emit POP = add esp (4 :: Word32) -- drop value
+    emit POP = add esp (ptrSize :: Word32) -- drop value
     emit DUP = push (Disp 0, esp)
     emit DUP_X1 = do pop eax; pop ebx; push eax; push ebx; push eax
     emit DUP_X2 = do pop eax; pop ebx; pop ecx; push eax; push ecx; push ebx; push eax
@@ -218,7 +219,7 @@ emitFromBB cls method = do
       mov ebx (tsize :: Word32)
       -- multiple amount with native size of one element
       mul ebx -- result is in eax
-      add eax (4 :: Word32) -- for "length" entry
+      add eax (ptrSize :: Word32) -- for "length" entry
       -- push amount of bytes to allocate
       push eax
       callMalloc
@@ -343,19 +344,16 @@ emitFromBB cls method = do
     callMalloc :: CodeGen e s ()
     callMalloc = do
       call mallocObjectAddr
-      add esp (4 :: Word32)
+      add esp (ptrSize :: Word32)
       push eax
 
   -- for locals we use a different storage
   cArgs :: Word8 -> Word32
-  cArgs x =
-    if x' >= argcount
-    -- TODO(bernhard): maybe s/(-4)/(-8)/
-    then (-4) * (x' - argcount + 1)
-    else 4 + (argcount * 4) - (4 * x')
-      where
-        x' = fromIntegral x
-        argcount = rawArgCount method
+  cArgs x = ptrSize * (argcount - x' + isLocal)
+    where
+      x' = fromIntegral x
+      argcount = rawArgCount method
+      isLocal = if x' >= argcount then (-1) else 1
 
   cArgs_ :: IMM -> Word8
   cArgs_ x = case x of I0 -> 0; I1 -> 1; I2 -> 2; I3 -> 3
