@@ -74,7 +74,7 @@ DEBUGFLAGS = -DDBG_JIT -DDBG_MP
 else
 DEBUGFLAGS = ${DBGFLAGS}
 endif
-mate.dbg: Mate.hs ffi/trap.c $(HS_FILES) $(HS_BOOT) ffi/native.o
+mate.dbg: Mate.hs ffi/trap.c $(HS_FILES) $(HS_BOOT) ffi/native.o $(CLASS_FILES)
 	@mkdir -p $(B_DEBUG)/{ffi,Mate,}
 	gcc -Wall $(DEBUGFLAGS) -O0 -c ffi/trap.c -o $(B_DEBUG)/ffi/trap.o
 	ghc --make $(DEBUGFLAGS) $(GHC_OPT) Mate.hs $(B_DEBUG)/ffi/trap.o -o $@ $(GHC_LD) -outputdir $(B_DEBUG)
