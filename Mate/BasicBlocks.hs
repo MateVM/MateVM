@@ -105,7 +105,7 @@ parseMethod cls methodname sig = do
   let nametype = methodNameType methoddirect
   let argscount = methodGetArgsCount nametype + (if isStatic then 0 else 1)
 
-  let msig = methodSignature $ classMethods cls !! 1
+  let msig = methodSignature method
   printfBb "BB: analysing \"%s\"\n" $ toString (methodname `B.append` ": " `B.append` encode msig)
 #ifdef DBG_BB
   printMapBB mapbb
