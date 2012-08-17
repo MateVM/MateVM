@@ -41,6 +41,7 @@ data TrapCause =
   VirtualMethod Bool MethodInfo | -- for virtual calls
   InterfaceMethod Bool MethodInfo | -- for interface calls
   InstanceOf B.ByteString | -- class name
+  NewObject B.ByteString | -- class name
   StaticField StaticFieldInfo deriving Show
 
 data StaticFieldInfo = StaticFieldInfo {

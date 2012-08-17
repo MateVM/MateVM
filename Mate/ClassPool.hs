@@ -3,6 +3,7 @@
 #include "debug.h"
 module Mate.ClassPool (
   getClassInfo,
+  classLoaded,
   getClassFile,
   getMethodTable,
   getObjectSize,
@@ -57,6 +58,11 @@ getClassInfo path = do
   case M.lookup path class_map of
     Nothing -> loadAndInitClass path
     Just ci -> return ci
+
+classLoaded :: B.ByteString -> IO Bool
+classLoaded path = do
+  class_map <- getClassMap
+  return $ M.member path class_map
 
 getClassFile :: B.ByteString -> IO (Class Direct)
 getClassFile path = do

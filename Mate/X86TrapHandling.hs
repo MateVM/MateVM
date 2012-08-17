@@ -26,6 +26,7 @@ data TrapType =
   | VirtualMethodCall Bool
   | InterfaceMethodCall Bool
   | InstanceOfMiss B.ByteString
+  | NewObjectTrap B.ByteString
   | NoKnownTrap String
 
 getTrapType :: TrapMap -> CPtrdiff -> CPtrdiff -> TrapType
@@ -34,6 +35,7 @@ getTrapType tmap signal_from from2 =
     (Just (StaticMethod _)) -> StaticMethodCall
     (Just (StaticField _)) -> StaticFieldAccess
     (Just (InstanceOf cn)) -> InstanceOfMiss cn
+    (Just (NewObject cn)) -> NewObjectTrap cn
     (Just _) -> NoKnownTrap "getTrapMap: doesn't happen"
     -- maybe we've a hit on the second `from' value
     Nothing -> case M.lookup (fromIntegral from2) tmap of
@@ -51,6 +53,7 @@ mateHandler eip eax ebx esp esi = do
     StaticMethodCall  -> staticCallHandler eip
     StaticFieldAccess -> staticFieldHandler eip
     (InstanceOfMiss cn) -> instanceOfMissHandler eip cn
+    (NewObjectTrap cn) -> newObjectHandler eip cn
     VirtualMethodCall imm8   -> invokeHandler eax eax esp imm8
     InterfaceMethodCall imm8 -> invokeHandler eax ebx esp imm8
     NoKnownTrap err ->
@@ -104,6 +107,22 @@ instanceOfMissHandler eip classname = do
       poke insn_ptr 0xba -- `mov edx' opcode
       return eip
     else error "instanceOfMissHandler: something is wrong here. abort.\n"
+
+newObjectHandler :: CPtrdiff -> B.ByteString -> IO CPtrdiff
+newObjectHandler eip classname = do
+  let push_insn_ptr = intPtrToPtr (fromIntegral eip) :: Ptr CUChar
+  let push_imm_ptr = intPtrToPtr (fromIntegral (eip + 1)) :: Ptr CPtrdiff
+  let mov_imm_ptr = intPtrToPtr (fromIntegral (eip + 16)) :: Ptr CPtrdiff
+  checkMe <- peek mov_imm_ptr
+  if checkMe == 0x13371337
+    then do
+      objsize <- getObjectSize classname
+      mtable <- getMethodTable classname
+      poke push_insn_ptr 0x68 -- push_imm insn
+      poke push_imm_ptr (fromIntegral objsize)
+      poke mov_imm_ptr (fromIntegral mtable)
+      return eip
+    else error "newObjectHandler: something is wrong here. abort.\n"
 
 invokeHandler :: CPtrdiff -> CPtrdiff -> CPtrdiff -> Bool -> IO CPtrdiff
 invokeHandler method_table table2patch esp imm8 = do

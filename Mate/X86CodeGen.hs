@@ -192,6 +192,16 @@ emitFromBB cls method = do
       push eax
       forceRegDump
       return $ Just (trapaddr, InstanceOf $ buildClassID cls cpidx)
+    emit' (NEW objidx) = do
+      let objname = buildClassID cls objidx
+      trapaddr <- getCurrentOffset
+      -- place something like `push $objsize' instead
+      emit32 (0x9090ffff :: Word32) >> emit8 (0x90 :: Word8)
+      callMalloc
+      -- 0x13371337 is just a placeholder; will be replaced with mtable ptr
+      mov (Disp 0, eax) (0x13371337 :: Word32)
+      return $ Just (trapaddr, NewObject objname)
+
     emit' insn = emit insn >> return Nothing
 
     emit :: J.Instruction -> CodeGen e s ()
@@ -245,15 +255,7 @@ emitFromBB cls method = do
       pop ebx -- length
       mov (Disp 0, eax) ebx -- store length at offset 0
       push eax -- push ref again
-    emit (NEW objidx) = do
-      let objname = buildClassID cls objidx
-      amount <- liftIO $ getObjectSize objname
-      push (amount :: Word32)
-      callMalloc
-      -- TODO(bernhard): save reference somewhere for GC
-      -- set method table pointer
-      mtable <- liftIO $ getMethodTable objname
-      mov (Disp 0, eax) mtable
+
     emit (CHECKCAST _) = nop -- TODO(bernhard): ...
     emit ATHROW = -- TODO(bernhard): ...
         emit32 (0xffffffff :: Word32)
