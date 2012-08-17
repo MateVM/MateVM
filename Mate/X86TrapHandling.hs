@@ -8,6 +8,7 @@ module Mate.X86TrapHandling (
   ) where
 
 import qualified Data.Map as M
+import qualified Data.ByteString.Lazy as B
 
 import Foreign
 import Foreign.C.Types
@@ -24,12 +25,14 @@ data TrapType =
   | StaticFieldAccess
   | VirtualMethodCall Bool
   | InterfaceMethodCall Bool
+  | InstanceOfMiss B.ByteString
 
 getTrapType :: TrapMap -> CPtrdiff -> CPtrdiff -> TrapType
 getTrapType tmap signal_from from2 =
   case M.lookup (fromIntegral signal_from) tmap of
     (Just (StaticMethod _)) -> StaticMethodCall
     (Just (StaticField _)) -> StaticFieldAccess
+    (Just (InstanceOf cn)) -> InstanceOfMiss cn
     (Just _) -> error "getTrapMap: doesn't happen"
     -- maybe we've a hit on the second `from' value
     Nothing -> case M.lookup (fromIntegral from2) tmap of
@@ -46,6 +49,7 @@ mateHandler eip eax ebx esp = do
   case getTrapType tmap eip callerAddr of
     StaticMethodCall  -> staticCallHandler eip
     StaticFieldAccess -> staticFieldHandler eip
+    (InstanceOfMiss cn) -> instanceOfMissHandler eip cn
     VirtualMethodCall imm8   -> invokeHandler eax eax esp imm8
     InterfaceMethodCall imm8 -> invokeHandler eax ebx esp imm8
 
@@ -80,6 +84,21 @@ staticFieldHandler eip = do
       getStaticFieldAddr eip >>= poke imm_ptr
       return eip
     else error "staticFieldHandler: something is wrong here. abort.\n"
+
+instanceOfMissHandler :: CPtrdiff -> B.ByteString -> IO CPtrdiff
+instanceOfMissHandler eip classname = do
+  -- first byte is going to be the opcode
+  let insn_ptr = intPtrToPtr (fromIntegral eip) :: Ptr CUChar
+  -- the next four bytes are the immediate
+  let imm_ptr = intPtrToPtr (fromIntegral (eip + 1)) :: Ptr CPtrdiff
+  checkMe <- peek imm_ptr
+  if checkMe == 0x909090ff then -- safety check...
+    do
+      mtable <- getMethodTable classname
+      poke imm_ptr (fromIntegral mtable)
+      poke insn_ptr 0xba -- `mov edx' opcode
+      return eip
+    else error "instanceOfMissHandler: something is wrong here. abort.\n"
 
 invokeHandler :: CPtrdiff -> CPtrdiff -> CPtrdiff -> Bool -> IO CPtrdiff
 invokeHandler method_table table2patch esp imm8 = do

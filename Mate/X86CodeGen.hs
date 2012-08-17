@@ -173,6 +173,17 @@ emitFromBB cls method = do
       mov eax (Addr 0x00000000) -- it's a trap
       push eax
       return $ Just (trapaddr, StaticField $ buildStaticFieldID cls cpidx)
+    emit' (INSTANCEOF cpidx) = do
+      pop eax
+      mov eax (Disp 0, eax) -- mtable of objectref
+      trapaddr <- getCurrentOffset
+      -- place something like `mov edx $mtable_of_objref' instead
+      emit32 (0x9090ffff :: Word32) >> emit8 (0x90 :: Word8)
+      cmp eax edx
+      sete al
+      movzxb eax al
+      push eax
+      return $ Just (trapaddr, InstanceOf $ buildClassID cls cpidx)
     emit' insn = emit insn >> return Nothing
 
     emit :: J.Instruction -> CodeGen e s ()
@@ -236,10 +247,6 @@ emitFromBB cls method = do
       mtable <- liftIO $ getMethodTable objname
       mov (Disp 0, eax) mtable
     emit (CHECKCAST _) = nop -- TODO(bernhard): ...
-    -- TODO(bernhard): ...
-    emit (INSTANCEOF _) = do
-      pop eax
-      push (1 :: Word32)
     emit ATHROW = -- TODO(bernhard): ...
         emit32 (0xffffffff :: Word32)
     emit I2C = do
