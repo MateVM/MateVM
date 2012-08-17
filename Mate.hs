@@ -36,13 +36,13 @@ parseArgs ("-jar":jarpath:_) stdcp = do
   case res of
     Nothing -> error "JAR: no MainClass entry found. Try to pass the jar file via -cp instead."
     Just mc -> do
-      let bclspath = B.pack $ map (fromIntegral . ord) mc
+      let bclspath = B.pack . map (fromIntegral . ord) $ mc
       cls <- getClassFile bclspath
       executeMain bclspath cls
+
 parseArgs ("-cp":cps) cpset = parseArgs ("-classpath":cps) cpset
 parseArgs ("-classpath":cps:xs) False = do
-  let paths = splitOn ":" cps
-  mapM_ addStuff paths
+  mapM_ addStuff $ splitOn ":" cps
   parseArgs xs True
     where
       addStuff :: String -> IO ()
@@ -54,7 +54,7 @@ parseArgs (('-':_):_) _ = error "Usage: mate [-cp|-classpath <cp1:cp2:..>] [<cla
 -- first argument which isn't prefixed by '-' should be a class file
 parseArgs (clspath:_) stdcp = do
   unless stdcp $ addClassPath "./"
-  let bclspath = B.pack $ map (fromIntegral . ord) clspath
+  let bclspath = B.pack . map (fromIntegral . ord) $ clspath
   cls <- getClassFile bclspath
   executeMain bclspath cls
 parseArgs _ _ = parseArgs ["-"] False

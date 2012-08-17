@@ -18,7 +18,7 @@ PACKAGES := $(addprefix -package ,$(PACKAGES_))
 # use `cpphs'
 GHC_CPP := -cpp -pgmP cpphs -optP --cpp
 
-GHC_OPT  = -I. -O0 -Wall -fno-warn-unused-do-bind
+GHC_OPT  = -I. -O0 -Wall -fno-warn-unused-do-bind -fwarn-tabs
 # see *.gdb target. also useful for profiling (-p at call)
 GHC_OPT += -rtsopts # -prof -auto-all
 GHC_OPT += $(GHC_CPP)
