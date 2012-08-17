@@ -2,7 +2,6 @@
 {-# LANGUAGE CPP #-}
 module Mate.Types where
 
-import Data.Word
 import Data.Int
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as B
@@ -12,6 +11,8 @@ import System.IO.Unsafe
 
 import JVM.ClassFile
 import JVM.Assembler
+
+import Mate.NativeSizes
 
 
 type BlockID = Int
@@ -29,12 +30,12 @@ data RawMethod = RawMethod {
   rawMapBB :: MapBB,
   rawLocals :: Int,
   rawStackSize :: Int,
-  rawArgCount :: Word32 }
+  rawArgCount :: NativeWord }
 
 
--- Word32 = point of method call in generated code
+-- NativeWord = point of method call in generated code
 -- MethodInfo = relevant information about callee
-type TrapMap = M.Map Word32 TrapCause
+type TrapMap = M.Map NativeWord TrapCause
 
 data TrapCause =
   StaticMethod MethodInfo | -- for static calls
@@ -51,8 +52,8 @@ data StaticFieldInfo = StaticFieldInfo {
 
 
 -- B.ByteString = name of method
--- Word32 = entrypoint of method
-type MethodMap = M.Map MethodInfo Word32
+-- NativeWord = entrypoint of method
+type MethodMap = M.Map MethodInfo NativeWord
 
 data MethodInfo = MethodInfo {
   methName :: B.ByteString,
@@ -75,7 +76,7 @@ data ClassInfo = ClassInfo {
   ciStaticMap  :: FieldMap,
   ciFieldMap :: FieldMap,
   ciMethodMap :: FieldMap,
-  ciMethodBase :: Word32,
+  ciMethodBase :: NativeWord,
   ciInitDone :: Bool }
 
 
@@ -85,20 +86,20 @@ type FieldMap = M.Map B.ByteString Int32
 
 -- java strings are allocated only once, therefore we
 -- use a hashmap to store the address for a String
-type StringMap = M.Map B.ByteString Word32
+type StringMap = M.Map B.ByteString NativeWord
 
 
 -- map "methodtable addr" to "classname"
 -- we need that to identify the actual type
 -- on the invokevirtual insn
-type VirtualMap = M.Map Word32 B.ByteString
+type VirtualMap = M.Map NativeWord B.ByteString
 
 
 -- store each parsed Interface upon first loading
 type InterfaceMap = M.Map B.ByteString (Class Direct)
 
 -- store offset for each <Interface><Method><Signature> pair
-type InterfaceMethodMap = M.Map B.ByteString Word32
+type InterfaceMethodMap = M.Map B.ByteString NativeWord
 
 
 {-

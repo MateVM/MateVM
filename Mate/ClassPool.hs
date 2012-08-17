@@ -16,7 +16,6 @@ module Mate.ClassPool (
   ) where
 
 import Data.Int
-import Data.Word
 import Data.Binary
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -80,18 +79,18 @@ getFieldOffset path field = do
   return $ ciFieldMap ci M.! field
 
 -- method + signature plz!
-getMethodOffset :: B.ByteString -> B.ByteString -> IO Word32
+getMethodOffset :: B.ByteString -> B.ByteString -> IO NativeWord
 getMethodOffset path method = do
   ci <- getClassInfo path
   -- (+ ptrSize) one slot for "interface-table-ptr"
   return $ (+ ptrSize) $ fromIntegral $ ciMethodMap ci M.! method
 
-getMethodTable :: B.ByteString -> IO Word32
+getMethodTable :: B.ByteString -> IO NativeWord
 getMethodTable path = do
   ci <- getClassInfo path
   return $ ciMethodBase ci
 
-getObjectSize :: B.ByteString -> IO Word32
+getObjectSize :: B.ByteString -> IO NativeWord
 getObjectSize path = do
   ci <- getClassInfo path
   -- TODO(bernhard): correct sizes for different types...
@@ -110,7 +109,7 @@ getStaticFieldAddr from = do
     _ -> error "getFieldAddr: no TrapCause found. abort"
 
 -- interface + method + signature plz!
-getInterfaceMethodOffset :: B.ByteString -> B.ByteString -> B.ByteString -> IO Word32
+getInterfaceMethodOffset :: B.ByteString -> B.ByteString -> B.ByteString -> IO NativeWord
 getInterfaceMethodOffset ifname meth sig = do
   loadInterface ifname
   ifmmap <- getInterfaceMethodMap
@@ -147,15 +146,15 @@ readClass path = do
       --                 entries have the same offset), so we could
       --                 save some memory here.
       iftable <- mallocClassData ((4*) $ M.size immap)
-      let w32_iftable = fromIntegral $ ptrToIntPtr iftable :: Word32
+      let wn_iftable = fromIntegral $ ptrToIntPtr iftable :: NativeWord
       -- store interface-table at offset 0 in method-table
-      pokeElemOff (intPtrToPtr $ fromIntegral mbase) 0 w32_iftable
+      pokeElemOff (intPtrToPtr $ fromIntegral mbase) 0 wn_iftable
       printfCp "staticmap: %s @ %s\n" (show staticmap) (toString path)
       printfCp "fieldmap:  %s @ %s\n" (show fieldmap) (toString path)
       printfCp "methodmap: %s @ %s\n" (show methodmap) (toString path)
       printfCp "mbase: 0x%08x\n" mbase
       printfCp "interfacemethod: %s @ %s\n" (show immap) (toString path)
-      printfCp "iftable: 0x%08x\n" w32_iftable
+      printfCp "iftable: 0x%08x\n" wn_iftable
       virtual_map <- getVirtualMap
       setVirtualMap $ M.insert mbase path virtual_map
 
@@ -230,7 +229,7 @@ getsupermap :: Maybe ClassInfo -> (ClassInfo -> FieldMap) -> FieldMap
 getsupermap superclass getter = case superclass of Just x -> getter x; Nothing -> M.empty
 
 
-calculateMethodMap :: Class Direct -> Maybe ClassInfo -> IO (FieldMap, Word32)
+calculateMethodMap :: Class Direct -> Maybe ClassInfo -> IO (FieldMap, NativeWord)
 calculateMethodMap cf superclass = do
     let methods = filter
                   (\x -> (not . S.member ACC_STATIC . methodAccessFlags) x &&

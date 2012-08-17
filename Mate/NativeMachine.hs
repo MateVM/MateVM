@@ -3,7 +3,8 @@ module Mate.NativeMachine(
   emitFromBB,
   mateHandler,
   register_signal,
-  ptrSize, longSize
+  ptrSize, longSize,
+  NativeWord
   )where
 
 #ifdef i386_HOST_ARCH

@@ -12,6 +12,7 @@ import Data.Maybe
 import JVM.ClassFile
 
 import Mate.Types
+import Mate.NativeSizes
 
 
 buildMethodID :: Class Direct -> Word16 -> MethodInfo
@@ -41,7 +42,7 @@ methodNameTypeByIdx cls idx = case constsPool cls M.! idx of
   (CIfaceMethod _ nt') -> nt'
   _ -> error "methodGetArgsCount: something wrong. abort."
 
-methodGetArgsCount :: NameType (Method Direct) -> Word32
+methodGetArgsCount :: NameType (Method Direct) -> NativeWord
 methodGetArgsCount nt = genericLength args
   where (MethodSignature args _) = ntSignature nt
 

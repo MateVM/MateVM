@@ -102,7 +102,7 @@ lookupMethodRecursive name sig clsnames cls =
 foreign import ccall safe "lookupSymbol"
    c_lookupSymbol :: CString -> IO (Ptr a)
 
-loadNativeFunction :: String -> IO Word32
+loadNativeFunction :: String -> IO NativeWord
 loadNativeFunction sym = do
   _ <- loadRawObject "ffi/native.o"
   -- TODO(bernhard): WTF
@@ -115,20 +115,20 @@ loadNativeFunction sym = do
 -- t_01 :: IO ()
 -- t_01 = do
 --   (entry, _) <- testCase "./tests/Fib.class" "fib"
---   let int_entry = ((fromIntegral $ ptrToIntPtr entry) :: Word32)
+--   let int_entry = ((fromIntegral $ ptrToIntPtr entry) :: NativeWord)
 --   let mmap = M.insert ("fib" :: String) int_entry M.empty
 --   mapM_ (\(x,y) -> printf "%s at 0x%08x\n" x y) $ M.toList mmap
 --   mmap2ptr mmap >>= set_mmap
 --   demo_mmap -- access Data.Map from C
 
-addMethodRef :: Word32 -> MethodInfo -> [B.ByteString] -> IO ()
+addMethodRef :: NativeWord -> MethodInfo -> [B.ByteString] -> IO ()
 addMethodRef entry (MethodInfo mmname _ msig) clsnames = do
   mmap <- getMethodMap
   let newmap = foldr (\i -> M.insert (MethodInfo mmname i msig) entry) M.empty clsnames
   setMethodMap $ mmap `M.union` newmap
 
 
-compileBB :: RawMethod -> MethodInfo -> IO Word32
+compileBB :: RawMethod -> MethodInfo -> IO NativeWord
 compileBB rawmethod methodinfo = do
   tmap <- getTrapMap
 
@@ -155,6 +155,6 @@ compileBB rawmethod methodinfo = do
   return $ fromIntegral $ ptrToIntPtr entry
 
 
-executeFuncPtr :: Word32 -> IO ()
+executeFuncPtr :: NativeWord -> IO ()
 executeFuncPtr entry =
   code_void ((castPtrToFunPtr $ intPtrToPtr $ fromIntegral entry) :: FunPtr (IO ()))

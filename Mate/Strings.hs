@@ -19,12 +19,13 @@ import Foreign
 import Foreign.C.Types
 
 import Mate.Types
+import Mate.NativeSizes
 import Mate.ClassPool
 import Mate.Debug
 import Mate.GarbageAlloc
 
 
-getUniqueStringAddr :: B.ByteString -> IO Word32
+getUniqueStringAddr :: B.ByteString -> IO NativeWord
 getUniqueStringAddr str = do
   smap <- getStringMap
   case M.lookup str smap of
@@ -34,7 +35,7 @@ getUniqueStringAddr str = do
       return addr
     Just addr -> return addr
 
-allocateJavaString :: B.ByteString -> IO Word32
+allocateJavaString :: B.ByteString -> IO NativeWord
 allocateJavaString str = do
   {- we have to build a java object layout here, where String object looks like
    -
