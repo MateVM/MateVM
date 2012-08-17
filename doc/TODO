@@ -19,6 +19,12 @@
 	-> depends on: exceptions, jni (?)
 	-> estimated effort: unknown
 
+(m) hoopl
+	-> for "frontEnd analysis"
+	-> transition to MIR (Mate IR)?
+
+(h) switch statement (basically lookupswitch insn)
+
 (m) testing: hunit? quickcheck? other?
 	-> we have `make tests' now, but it should be only considered as
 	   high-level test. we need something
@@ -69,6 +75,11 @@
 
 (l) get rid of missingh
 	-> huge dependency and we just need one function of it
+
+(l) get more details what takes time
+	-> use Data.Time.Clock
+	-> seperate analysis, jit, execution, ...
+	-> maybe use ghc profiling? (it doesn't measure native execution, but well)
 
 
 (l) ... low priority

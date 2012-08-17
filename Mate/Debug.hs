@@ -16,6 +16,7 @@ instance VarArgsFake (IO a) where
 instance (Show a, VarArgsFake r) => VarArgsFake (a -> r) where
   varFake _ _ = varFake []
 
+-- note: with -O2 GHC is able to completely optimize away such a `printfFake' call
 printfFake :: String -> (VarArgsFake t) => t
 printfFake _ = varFake []
 
