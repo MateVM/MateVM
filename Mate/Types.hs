@@ -30,7 +30,8 @@ data RawMethod = RawMethod {
   rawMapBB :: MapBB,
   rawLocals :: Int,
   rawStackSize :: Int,
-  rawArgCount :: NativeWord }
+  rawArgCount :: NativeWord,
+  rawCodeLength :: NativeWord }
 
 
 -- NativeWord = point of method call in generated code

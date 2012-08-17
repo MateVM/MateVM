@@ -136,7 +136,8 @@ compileBB rawmethod methodinfo = do
 
   cls <- getClassFile (methClassName methodinfo)
   let ebb = emitFromBB cls rawmethod
-  (_, Right right) <- runCodeGen ebb () ()
+  let cgconfig = defaultCodeGenConfig { codeBufferSize = fromIntegral $ (rawCodeLength rawmethod) * 32 }
+  (_, Right right) <- runCodeGenWithConfig ebb () () cgconfig
 
   let ((entry, _, _, new_tmap), _) = right
   setTrapMap $ tmap `M.union` new_tmap -- prefers elements in tmap

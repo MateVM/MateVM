@@ -100,6 +100,7 @@ parseMethod cls methodname sig = do
   let mapbb = testCFG decoded
   let locals = fromIntegral (codeMaxLocals decoded)
   let stacks = fromIntegral (codeStackSize decoded)
+  let codelen = fromIntegral (codeLength decoded)
   let methoddirect = methodInfoToMethod (MethodInfo methodname "" sig) cls
   let isStatic = methodIsStatic methoddirect
   let nametype = methodNameType methoddirect
@@ -119,7 +120,7 @@ parseMethod cls methodname sig = do
       printfBb "exception: no handler for this method\n"
     Just exceptionstream ->
       printfBb "exception: \"%s\"\n" (show $ codeExceptions $ decodeMethod exceptionstream)
-  return $ RawMethod mapbb locals stacks argscount
+  return $ RawMethod mapbb locals stacks argscount codelen
 
 
 testCFG :: Code -> MapBB
