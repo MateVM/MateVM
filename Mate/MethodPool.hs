@@ -18,7 +18,9 @@ import Foreign.C.String
 import JVM.ClassFile
 
 import Harpy
+#ifdef DBG_JIT
 import Harpy.X86Disassembler
+#endif
 
 #ifdef DEBUG
 import Text.Printf
@@ -141,7 +143,9 @@ compileBB rawmethod methodinfo = do
 
   printfJit "generated code of \"%s\" from \"%s\":\n" (toString $ methName methodinfo) (toString $ methClassName methodinfo)
   printfJit "\tstacksize: 0x%04x, locals: 0x%04x\n" (rawStackSize rawmethod) (rawLocals rawmethod)
+#ifdef DBG_JIT
   mapM_ (printfJit "%s\n" . showAtt) (snd right)
+#endif
   printfJit "\n\n"
   -- UNCOMMENT NEXT LINES FOR GDB FUN
   -- if (toString $ methName methodinfo) == "thejavamethodIwant2debug"
