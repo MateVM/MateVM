@@ -9,6 +9,7 @@ import Data.Binary
 import Data.BinaryState
 import Data.Int
 import Data.Maybe
+import Data.List (genericLength)
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as B
 import Control.Monad
@@ -112,7 +113,7 @@ emitFromBB cls method = do
       newNamedLabel (show l) >>= defineLabel
       -- causes SIGILL. in the signal handler we patch it to the acutal call.
       -- place two nop's at the end, therefore the disasm doesn't screw up
-      emit32 (0x9090ffff :: Word32) >> emit8 (0x90 :: Word8)
+      emit32 (0x9090ffff :: Word32); nop
       -- discard arguments on stack
       let argcnt = ((if hasThis then 1 else 0) + methodGetArgsCount (methodNameTypeByIdx cls cpidx)) * ptrSize
       when (argcnt > 0) (add esp argcnt)
@@ -120,18 +121,35 @@ emitFromBB cls method = do
       when (methodHaveReturnValue cls cpidx) (push eax)
       return $ Just (calladdr, StaticMethod l)
 
-    invokeEpilog :: Word16 -> Word32 -> (Bool -> TrapCause) -> CodeGen e s (Maybe (Word32, TrapCause))
-    invokeEpilog cpidx offset trapcause = do
+    virtualCall :: Word16 -> Bool -> CodeGen e s (Maybe (Word32, TrapCause))
+    virtualCall cpidx isInterface = do
+      let mi@(MethodInfo methodname objname msig@(MethodSignature args _))  = buildMethodID cls cpidx
+      newNamedLabel (show mi) >>= defineLabel
+      -- get method offset for call @ runtime
+      let offset = if isInterface
+          then getInterfaceMethodOffset objname methodname (encode msig)
+          else getMethodOffset objname (methodname `B.append` encode msig)
+      let argsLen = genericLength args
+      -- objref lives somewhere on the argument stack
+      mov ebx (Disp (argsLen * ptrSize), esp)
+      if isInterface
+        then mov ebx (Disp 0, ebx) -- get method-table-ptr, keep it in ebx
+        else return () -- invokevirtual
+      -- get method-table-ptr (or interface-table-ptr)
+      mov eax (Disp 0, ebx)
       -- make actual (indirect) call
       calladdr <- getCurrentOffset
-      call (Disp offset, eax)
+      -- will be patched to this: call (Disp 0xXXXXXXXX, eax)
+      emit32 (0x9090ffff :: Word32); nop; nop
       -- discard arguments on stack (`+1' for "this")
       let argcnt = ptrSize * (1 + methodGetArgsCount (methodNameTypeByIdx cls cpidx))
       when (argcnt > 0) (add esp argcnt)
       -- push result on stack if method has a return value
       when (methodHaveReturnValue cls cpidx) (push eax)
-      let imm8 = is8BitOffset offset
-      return $ Just (calladdr + (if imm8 then 3 else 6), trapcause imm8)
+      -- note, that "mi" has the wrong class reference here.
+      -- we figure that out at run-time, in the methodpool,
+      -- depending on the method-table-ptr
+      return $ Just (calladdr, VirtualCall isInterface mi offset)
 
     emit'' :: J.Instruction -> CodeGen e s (Maybe (Word32, TrapCause))
     emit'' insn = newNamedLabel ("jvm_insn: " ++ show insn) >>= defineLabel >> emit' insn
@@ -139,37 +157,8 @@ emitFromBB cls method = do
     emit' :: J.Instruction -> CodeGen e s (Maybe (Word32, TrapCause))
     emit' (INVOKESPECIAL cpidx) = emitInvoke cpidx True
     emit' (INVOKESTATIC cpidx) = emitInvoke cpidx False
-    emit' (INVOKEINTERFACE cpidx _) = do
-      -- get methodInfo entry
-      let mi@(MethodInfo methodname ifacename msig@(MethodSignature args _)) = buildMethodID cls cpidx
-      newNamedLabel (show mi) >>= defineLabel
-      -- objref lives somewhere on the argument stack
-      mov eax (Disp ((* ptrSize) $ fromIntegral $ length args), esp)
-      -- get method-table-ptr, keep it in eax (for trap handling)
-      mov eax (Disp 0, eax)
-      -- get interface-table-ptr
-      mov ebx (Disp 0, eax)
-      -- get method offset
-      offset <- liftIO $ getInterfaceMethodOffset ifacename methodname (encode msig)
-      -- note, that "mi" has the wrong class reference here.
-      -- we figure that out at run-time, in the methodpool,
-      -- depending on the method-table-ptr
-      invokeEpilog cpidx offset (`InterfaceMethod` mi)
-    emit' (INVOKEVIRTUAL cpidx) = do
-      -- get methodInfo entry
-      let mi@(MethodInfo methodname objname msig@(MethodSignature args _))  = buildMethodID cls cpidx
-      newNamedLabel (show mi) >>= defineLabel
-      -- objref lives somewhere on the argument stack
-      mov eax (Disp ((* ptrSize) $ fromIntegral $ length args), esp)
-      -- get method-table-ptr
-      mov eax (Disp 0, eax)
-      -- get method offset
-      let nameAndSig = methodname `B.append` encode msig
-      offset <- liftIO $ getMethodOffset objname nameAndSig
-      -- note, that "mi" has the wrong class reference here.
-      -- we figure that out at run-time, in the methodpool,
-      -- depending on the method-table-ptr
-      invokeEpilog cpidx offset (`VirtualMethod` mi)
+    emit' (INVOKEINTERFACE cpidx _) = virtualCall cpidx True
+    emit' (INVOKEVIRTUAL cpidx) = virtualCall cpidx False
     emit' (PUTSTATIC cpidx) = do
       pop eax
       trapaddr <- getCurrentOffset
@@ -185,7 +174,7 @@ emitFromBB cls method = do
       mov eax (Disp 0, eax) -- mtable of objectref
       trapaddr <- getCurrentOffset
       -- place something like `mov edx $mtable_of_objref' instead
-      emit32 (0x9090ffff :: Word32) >> emit8 (0x90 :: Word8)
+      emit32 (0x9090ffff :: Word32); nop
       cmp eax edx
       sete al
       movzxb eax al
@@ -196,7 +185,7 @@ emitFromBB cls method = do
       let objname = buildClassID cls objidx
       trapaddr <- getCurrentOffset
       -- place something like `push $objsize' instead
-      emit32 (0x9090ffff :: Word32) >> emit8 (0x90 :: Word8)
+      emit32 (0x9090ffff :: Word32); nop
       callMalloc
       -- 0x13371337 is just a placeholder; will be replaced with mtable ptr
       mov (Disp 0, eax) (0x13371337 :: Word32)
@@ -381,7 +370,3 @@ emitFromBB cls method = do
   s8_w32 :: Word8 -> Word32
   s8_w32 w8 = fromIntegral s8
     where s8 = fromIntegral w8 :: Int8
-
-  is8BitOffset :: Word32 -> Bool
-  is8BitOffset w32 = s32 < 128 && s32 > (-127)
-    where s32 = fromIntegral w32 :: Int32

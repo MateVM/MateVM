@@ -40,11 +40,10 @@ type TrapMap = M.Map NativeWord TrapCause
 
 data TrapCause =
   StaticMethod MethodInfo | -- for static calls
-  VirtualMethod Bool MethodInfo | -- for virtual calls
-  InterfaceMethod Bool MethodInfo | -- for interface calls
+  VirtualCall Bool MethodInfo (IO NativeWord) | -- for invoke{interface,virtual}
   InstanceOf B.ByteString | -- class name
   NewObject B.ByteString | -- class name
-  StaticField StaticFieldInfo deriving Show
+  StaticField StaticFieldInfo
 
 data StaticFieldInfo = StaticFieldInfo {
   sfiClassName :: B.ByteString,

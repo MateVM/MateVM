@@ -7,6 +7,7 @@ module Mate.X86TrapHandling (
   register_signal
   ) where
 
+import Numeric
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as B
 
@@ -14,52 +15,27 @@ import Foreign
 import Foreign.C.Types
 
 import Mate.Types
+import Mate.NativeSizes
 import {-# SOURCE #-} Mate.MethodPool
 import Mate.ClassPool
 
 foreign import ccall "register_signal"
   register_signal :: IO ()
 
-data TrapType =
-    StaticMethodCall
-  | StaticFieldAccess
-  | VirtualMethodCall Bool
-  | InterfaceMethodCall Bool
-  | InstanceOfMiss B.ByteString
-  | NewObjectTrap B.ByteString
-  | NoKnownTrap String
-
-getTrapType :: TrapMap -> CPtrdiff -> CPtrdiff -> TrapType
-getTrapType tmap signal_from from2 =
-  case M.lookup (fromIntegral signal_from) tmap of
-    (Just (StaticMethod _)) -> StaticMethodCall
-    (Just (StaticField _)) -> StaticFieldAccess
-    (Just (InstanceOf cn)) -> InstanceOfMiss cn
-    (Just (NewObject cn)) -> NewObjectTrap cn
-    (Just _) -> NoKnownTrap "getTrapMap: doesn't happen"
-    -- maybe we've a hit on the second `from' value
-    Nothing -> case M.lookup (fromIntegral from2) tmap of
-      (Just (VirtualMethod imm8 _)) -> VirtualMethodCall imm8
-      (Just (InterfaceMethod imm8 _)) -> InterfaceMethodCall imm8
-      (Just _) -> NoKnownTrap "getTrapType: abort #1 :-("
-      Nothing -> NoKnownTrap $ "getTrapType: abort #2 :-(" ++ show signal_from ++ ", " ++ show from2 ++ ", " ++ show tmap
-
-foreign export ccall mateHandler :: CPtrdiff -> CPtrdiff -> CPtrdiff -> CPtrdiff -> CPtrdiff -> IO CPtrdiff
-mateHandler :: CPtrdiff -> CPtrdiff -> CPtrdiff -> CPtrdiff -> CPtrdiff -> IO CPtrdiff
-mateHandler eip eax ebx esp esi = do
-  callerAddr <- callerAddrFromStack esp
+foreign export ccall mateHandler :: CPtrdiff -> CPtrdiff -> CPtrdiff -> CPtrdiff -> IO CPtrdiff
+mateHandler :: CPtrdiff -> CPtrdiff -> CPtrdiff -> CPtrdiff -> IO CPtrdiff
+mateHandler eip eax ebx esi = do
   tmap <- getTrapMap
-  case getTrapType tmap eip callerAddr of
-    StaticMethodCall  -> staticCallHandler eip
-    StaticFieldAccess -> staticFieldHandler eip
-    (InstanceOfMiss cn) -> instanceOfMissHandler eip cn
-    (NewObjectTrap cn) -> newObjectHandler eip cn
-    VirtualMethodCall imm8   -> invokeHandler eax eax esp imm8
-    InterfaceMethodCall imm8 -> invokeHandler eax ebx esp imm8
-    NoKnownTrap err ->
-      case esi of
+  case M.lookup (fromIntegral eip) tmap of
+    (Just (StaticMethod _)) -> staticCallHandler eip
+    (Just (StaticField _))  -> staticFieldHandler eip
+    (Just (InstanceOf cn))  -> instanceOfMissHandler eip cn
+    (Just (NewObject cn))   -> newObjectHandler eip cn
+    (Just (VirtualCall False _ io_offset)) -> invokeHandler eax eax eip io_offset
+    (Just (VirtualCall True  _ io_offset)) -> invokeHandler ebx eax eip io_offset
+    Nothing -> case esi of
         0x13371234 -> return (-1)
-        _ -> error err
+        _ -> error $ "getTrapType: abort :-(" ++ (showHex eip "") ++ ", " ++ show (M.keys tmap)
 
 staticCallHandler :: CPtrdiff -> IO CPtrdiff
 staticCallHandler eip = do
@@ -124,29 +100,25 @@ newObjectHandler eip classname = do
       return eip
     else error "newObjectHandler: something is wrong here. abort.\n"
 
-invokeHandler :: CPtrdiff -> CPtrdiff -> CPtrdiff -> Bool -> IO CPtrdiff
-invokeHandler method_table table2patch esp imm8 = do
-  -- table2patch: note, that can be a method-table or a interface-table
-  callerAddr <- callerAddrFromStack esp
-  offset <- if imm8 then offsetOfCallInsn8 esp else offsetOfCallInsn32 esp
-  entryAddr <- getMethodEntry callerAddr method_table
-  let call_insn = intPtrToPtr (fromIntegral $ table2patch + fromIntegral offset)
+invokeHandler :: CPtrdiff -> CPtrdiff -> CPtrdiff -> IO NativeWord -> IO CPtrdiff
+invokeHandler method_table table2patch eip io_offset = do
+  let call0_insn_ptr = intPtrToPtr (fromIntegral eip) :: Ptr CUChar
+  let call1_insn_ptr = intPtrToPtr (fromIntegral (eip + 1)) :: Ptr CUChar
+  let call_imm_ptr = intPtrToPtr (fromIntegral (eip + 2)) :: Ptr CPtrdiff
+  offset <- io_offset
+  -- @table2patch: note, that can be a method-table or a interface-table
+  entryAddr <- getMethodEntry eip method_table
+
+  -- patch table
+  let call_insn = intPtrToPtr . fromIntegral $ table2patch + fromIntegral offset
   poke call_insn entryAddr
-  return entryAddr
 
-
-callerAddrFromStack :: CPtrdiff -> IO CPtrdiff
-callerAddrFromStack = peek . intPtrToPtr . fromIntegral
-
-offsetOfCallInsn8 :: CPtrdiff -> IO CPtrdiff
-offsetOfCallInsn8 esp = do
-  let ret_ptr = intPtrToPtr (fromIntegral esp) :: Ptr CPtrdiff
-  ret <- peek ret_ptr
-  retval <- peek (intPtrToPtr (fromIntegral (ret - 1)) :: Ptr CUChar)
-  return $ fromIntegral retval
-
-offsetOfCallInsn32 :: CPtrdiff -> IO CPtrdiff
-offsetOfCallInsn32 esp = do
-  let ret_ptr = intPtrToPtr (fromIntegral esp) :: Ptr CPtrdiff
-  ret <- peek ret_ptr
-  peek (intPtrToPtr $ fromIntegral (ret - 4))
+  -- patch insn
+  checkMe <- peek call_imm_ptr
+  if checkMe == 0x90909090
+    then do
+      poke call0_insn_ptr 0xff -- indirect call op[0]
+      poke call1_insn_ptr 0x90 -- indirect call op[1]
+      poke call_imm_ptr (fromIntegral offset)
+      return eip
+    else error "invokeHandler: something is wrong here. abort\n"

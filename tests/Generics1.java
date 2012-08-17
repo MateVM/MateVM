@@ -11,8 +11,10 @@ public class Generics1 implements Cmp<Integer> {
 
 	public static void main(String []args) {
 		Generics1 foo = new Generics1();
-		System.out.printf("0x%08x\n", foo.cmpto(0x666));
-		System.out.printf("0x%08x\n", sb.cmpto(0x666));
+		for (int i = 0; i < 0x10; i++) {
+			System.out.printf("0x%08x\n", foo.cmpto(0x666));
+			System.out.printf("0x%08x\n", sb.cmpto(0x666));
+		}
 	}
 }
 

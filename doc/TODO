@@ -81,6 +81,9 @@
 	-> seperate analysis, jit, execution, ...
 	-> maybe use ghc profiling? (it doesn't measure native execution, but well)
 
+(h) patching also possible with harpy?
+	-> we can use a own buffer @ codegeneration...
+
 
 (l) ... low priority
 (m) ... medium priority

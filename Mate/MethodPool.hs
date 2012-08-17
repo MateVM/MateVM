@@ -48,8 +48,7 @@ getMethodEntry signal_from methodtable = do
   let mi'@(MethodInfo method cm sig) =
        case mi of
          (StaticMethod x) -> x
-         (VirtualMethod   _ (MethodInfo methname _ msig)) -> newMi methname msig
-         (InterfaceMethod _ (MethodInfo methname _ msig)) -> newMi methname msig
+         (VirtualCall _ (MethodInfo methname _ msig) _) -> newMi methname msig
          _ -> error "getMethodEntry: no TrapCause found. abort."
        where newMi mn = MethodInfo mn (vmap M.! fromIntegral methodtable)
   -- bernhard (TODO): doesn't work with gnu classpath at some point. didn't
