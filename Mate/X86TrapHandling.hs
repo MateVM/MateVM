@@ -26,6 +26,7 @@ data TrapType =
   | VirtualMethodCall Bool
   | InterfaceMethodCall Bool
   | InstanceOfMiss B.ByteString
+  | NoKnownTrap String
 
 getTrapType :: TrapMap -> CPtrdiff -> CPtrdiff -> TrapType
 getTrapType tmap signal_from from2 =
@@ -33,17 +34,17 @@ getTrapType tmap signal_from from2 =
     (Just (StaticMethod _)) -> StaticMethodCall
     (Just (StaticField _)) -> StaticFieldAccess
     (Just (InstanceOf cn)) -> InstanceOfMiss cn
-    (Just _) -> error "getTrapMap: doesn't happen"
+    (Just _) -> NoKnownTrap "getTrapMap: doesn't happen"
     -- maybe we've a hit on the second `from' value
     Nothing -> case M.lookup (fromIntegral from2) tmap of
       (Just (VirtualMethod imm8 _)) -> VirtualMethodCall imm8
       (Just (InterfaceMethod imm8 _)) -> InterfaceMethodCall imm8
-      (Just _) -> error "getTrapType: abort #1 :-("
-      Nothing -> error $ "getTrapType: abort #2 :-(" ++ show signal_from ++ ", " ++ show from2 ++ ", " ++ show tmap
+      (Just _) -> NoKnownTrap "getTrapType: abort #1 :-("
+      Nothing -> NoKnownTrap $ "getTrapType: abort #2 :-(" ++ show signal_from ++ ", " ++ show from2 ++ ", " ++ show tmap
 
-foreign export ccall mateHandler :: CPtrdiff -> CPtrdiff -> CPtrdiff -> CPtrdiff -> IO CPtrdiff
-mateHandler :: CPtrdiff -> CPtrdiff -> CPtrdiff -> CPtrdiff -> IO CPtrdiff
-mateHandler eip eax ebx esp = do
+foreign export ccall mateHandler :: CPtrdiff -> CPtrdiff -> CPtrdiff -> CPtrdiff -> CPtrdiff -> IO CPtrdiff
+mateHandler :: CPtrdiff -> CPtrdiff -> CPtrdiff -> CPtrdiff -> CPtrdiff -> IO CPtrdiff
+mateHandler eip eax ebx esp esi = do
   callerAddr <- callerAddrFromStack esp
   tmap <- getTrapMap
   case getTrapType tmap eip callerAddr of
@@ -52,6 +53,10 @@ mateHandler eip eax ebx esp = do
     (InstanceOfMiss cn) -> instanceOfMissHandler eip cn
     VirtualMethodCall imm8   -> invokeHandler eax eax esp imm8
     InterfaceMethodCall imm8 -> invokeHandler eax ebx esp imm8
+    NoKnownTrap err ->
+      case esi of
+        0x13371234 -> return (-1)
+        _ -> error err
 
 staticCallHandler :: CPtrdiff -> IO CPtrdiff
 staticCallHandler eip = do

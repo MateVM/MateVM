@@ -91,6 +91,13 @@ emitFromBB cls method = do
     -- TODO(bernhard): implement `emit' as function which accepts a list of
     --                 instructions, so we can use patterns for optimizations
     where
+    forceRegDump :: CodeGen e s ()
+    forceRegDump = do
+      push esi
+      mov esi (0x13371234 :: Word32)
+      mov esi (Addr 0)
+      pop esi
+
     getCurrentOffset :: CodeGen e s Word32
     getCurrentOffset = do
       ep <- getEntryPoint
@@ -183,6 +190,7 @@ emitFromBB cls method = do
       sete al
       movzxb eax al
       push eax
+      forceRegDump
       return $ Just (trapaddr, InstanceOf $ buildClassID cls cpidx)
     emit' insn = emit insn >> return Nothing
 
