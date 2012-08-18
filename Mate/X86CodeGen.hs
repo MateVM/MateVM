@@ -346,12 +346,6 @@ emitFromBB cls method = do
         jmp l2
 
 
-    callMalloc :: CodeGen e s ()
-    callMalloc = do
-      call mallocObjectAddr
-      add esp (ptrSize :: Word32)
-      push eax
-
   -- for locals we use a different storage
   cArgs :: Word8 -> Word32
   cArgs x = ptrSize * (argcount - x' + isLocal)
@@ -370,3 +364,18 @@ emitFromBB cls method = do
   s8_w32 :: Word8 -> Word32
   s8_w32 w8 = fromIntegral s8
     where s8 = fromIntegral w8 :: Int8
+
+callMalloc :: CodeGen e s ()
+callMalloc = do
+  call mallocObjectAddr
+  add esp (ptrSize :: Word32)
+  push eax
+
+-- the regular push implementation, considers the provided immediate and selects
+-- a different instruction if it fits in 8bit. but this is not useful for
+-- patching.
+push32 :: Word32 -> CodeGen e s ()
+push32 imm32 = emit8 0x68 >> emit32 imm32
+
+call32_eax :: Disp -> CodeGen e s ()
+call32_eax (Disp disp32) = emit8 0xff >> emit8 0x90 >> emit32 disp32
