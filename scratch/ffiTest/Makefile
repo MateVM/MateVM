@@ -6,4 +6,4 @@ ghci: all
 	ghci -package containers -package random trapTest.o mate_support.o trapTest_stub.o trapTest.hs
 
 clean:
-	rm *.o *.hi trapTest trapTest_stub.c trapTest_stub.h
+	rm -f *.o *.hi trapTest trapTest_stub.c trapTest_stub.h

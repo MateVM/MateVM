@@ -22,7 +22,12 @@ data BasicBlock = BasicBlock {
   successor :: BBEnd }
 
 -- describes (leaving) edges of a CFG node
-data BBEnd = Return | FallThrough BlockID | OneTarget BlockID | TwoTarget BlockID BlockID deriving Show
+data BBEnd
+  = Return
+  | FallThrough BlockID
+  | OneTarget BlockID
+  | TwoTarget BlockID BlockID
+  deriving Show
 
 type MapBB = M.Map BlockID BasicBlock
 
@@ -38,12 +43,12 @@ data RawMethod = RawMethod {
 -- MethodInfo = relevant information about callee
 type TrapMap = M.Map NativeWord TrapCause
 
-data TrapCause =
-  StaticMethod MethodInfo | -- for static calls
-  VirtualCall Bool MethodInfo (IO NativeWord) | -- for invoke{interface,virtual}
-  InstanceOf B.ByteString | -- class name
-  NewObject B.ByteString | -- class name
-  StaticField StaticFieldInfo
+data TrapCause
+  = StaticMethod MethodInfo -- for static calls
+  | VirtualCall Bool MethodInfo (IO NativeWord) -- for invoke{interface,virtual}
+  | InstanceOf B.ByteString -- class name
+  | NewObject B.ByteString -- class name
+  | StaticField StaticFieldInfo
 
 data StaticFieldInfo = StaticFieldInfo {
   sfiClassName :: B.ByteString,
