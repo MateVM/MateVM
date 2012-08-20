@@ -47,6 +47,7 @@ import Java.JAR
 import Mate.BasicBlocks
 import {-# SOURCE #-} Mate.MethodPool
 import Mate.Types
+import Mate.Utilities
 import Mate.Debug
 import Mate.GarbageAlloc
 import Mate.NativeSizes
@@ -149,11 +150,14 @@ readClass path = do
       let wn_iftable = fromIntegral $ ptrToIntPtr iftable :: NativeWord
       -- store interface-table at offset 0 in method-table
       pokeElemOff (intPtrToPtr $ fromIntegral mbase) 0 wn_iftable
-      printfCp "staticmap: %s @ %s\n" (show staticmap) (toString path)
-      printfCp "fieldmap:  %s @ %s\n" (show fieldmap) (toString path)
-      printfCp "methodmap: %s @ %s\n" (show methodmap) (toString path)
-      printfCp "mbase: 0x%08x\n" mbase
-      printfCp "interfacemethod: %s @ %s\n" (show immap) (toString path)
+      let strpath = toString path
+#ifdef DBG_CLASS
+      hexDumpMap ("staticmap @ " ++ strpath) staticmap
+      hexDumpMap ("fieldmap @ " ++ strpath) fieldmap
+      hexDumpMap ("methodmap @ " ++ strpath) methodmap
+      hexDumpMap ("interfacemap @ " ++ strpath) immap
+#endif
+      printfCp "mbase:   0x%08x\n" mbase
       printfCp "iftable: 0x%08x\n" wn_iftable
       virtual_map <- getVirtualMap
       setVirtualMap $ M.insert mbase path virtual_map

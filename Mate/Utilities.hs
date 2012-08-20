@@ -14,6 +14,9 @@ import JVM.ClassFile
 import Mate.Types
 import Mate.NativeSizes
 
+#ifdef DEBUG
+import Text.Printf
+#endif
 
 buildMethodID :: Class Direct -> Word16 -> MethodInfo
 buildMethodID cls idx = MethodInfo (ntName nt) rc (ntSignature nt)
@@ -73,3 +76,15 @@ methodIsStatic = S.member ACC_STATIC . methodAccessFlags
 lookupMethodSig :: B.ByteString -> MethodSignature -> Class Direct -> Maybe (Method Direct)
 lookupMethodSig name sig cls =
   find (\x -> methodName x == name && methodSignature x == sig) $ classMethods cls
+
+hexDumpMap :: Integral v => String -> M.Map B.ByteString v -> IO ()
+#ifdef DEBUG
+hexDumpMap header mmap = do
+  let printValue :: B.ByteString -> IO ()
+      printValue key = printf "\t%-70s: 0x%08x\n" (toString key) val
+        where val = fromIntegral (mmap M.! key) :: NativeWord
+  printf "%s\n" header
+  mapM_ printValue (M.keys mmap)
+#else
+hexDumpMap _ _ = return ()
+#endif
