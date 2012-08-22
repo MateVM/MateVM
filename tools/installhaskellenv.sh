@@ -28,4 +28,7 @@ cabal install disassembler $CABAL_OPT
 # cabal install harpy $CABAL_OPT
 gitinstall git://wien.tomnetworks.com/harpy.git
 
+# cabal install hs-boehmgc $CABAL_OPT 
+gitinstall git://wien.tomnetworks.com/hs-boehmgc.git 
+
 echo DONE
