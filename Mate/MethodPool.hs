@@ -36,6 +36,9 @@ import Mate.Utilities
 foreign import ccall "dynamic"
    code_void :: FunPtr (IO ()) -> IO ()
 
+foreign import ccall "&demoInterfaceCall"
+  demoInterfaceCallAddr :: FunPtr (CUInt -> IO ())
+
 
 getMethodEntry :: CPtrdiff -> CPtrdiff -> IO CPtrdiff
 getMethodEntry signal_from methodtable = do
@@ -65,15 +68,23 @@ getMethodEntry signal_from methodtable = do
             let flags = methodAccessFlags mm'
             if S.member ACC_NATIVE flags
               then do
-                -- TODO(bernhard): cleaner please... *do'h*
-                let sym1 = replace "/" "_" $ toString cm
-                    parenth = replace "(" "_" $ replace ")" "_" $ toString $ encode sig
-                    sym2 = replace ";" "_" $ replace "/" "_" parenth
-                    symbol = sym1 ++ "__" ++ toString method ++ "__" ++ sym2
-                printfMp "native-call: symbol: %s\n" symbol
-                nf <- loadNativeFunction symbol
-                setMethodMap $ M.insert mi' nf mmap
-                return nf
+                let scm = toString cm; smethod = toString method
+                if scm == "jmate/lang/MateRuntime" then do
+                  case smethod of
+                    "demoInterfaceCall" ->
+                       return . funPtrToAddr $ demoInterfaceCallAddr
+                    _ ->
+                       error $ "native-call: " ++ smethod ++ " not found."
+                else do
+                  -- TODO(bernhard): cleaner please... *do'h*
+                  let sym1 = replace "/" "_" scm
+                      parenth = replace "(" "_" $ replace ")" "_" $ toString $ encode sig
+                      sym2 = replace ";" "_" $ replace "/" "_" parenth
+                      symbol = sym1 ++ "__" ++ smethod ++ "__" ++ sym2
+                  printfMp "native-call: symbol: %s\n" symbol
+                  nf <- loadNativeFunction symbol
+                  setMethodMap $ M.insert mi' nf mmap
+                  return nf
               else do
                 rawmethod <- parseMethod cls' method sig
                 entry <- compileBB rawmethod (MethodInfo method (thisClass cls') sig)
@@ -82,6 +93,9 @@ getMethodEntry signal_from methodtable = do
         Nothing -> error $ show method ++ " not found. abort"
     Just w32 -> return w32
   return $ fromIntegral entryaddr
+
+funPtrToAddr :: Num b => FunPtr a -> b
+funPtrToAddr = fromIntegral . ptrToIntPtr . castFunPtrToPtr
 
 lookupMethodRecursive :: B.ByteString -> MethodSignature -> [B.ByteString] -> Class Direct
                          -> IO (Maybe (Method Direct, [B.ByteString], Class Direct))
