@@ -22,6 +22,8 @@ import Mate.Types
 import Mate.ClassPool
 import Mate.NativeMachine
 
+import Mate.GC.Boehm
+
 main ::  IO ()
 main = do
   args <- getArgs
@@ -61,7 +63,8 @@ parseArgs _ _ = parseArgs ["-"] False
 
 
 executeMain :: B.ByteString -> Class Direct -> IO ()
-executeMain bclspath cls = do
+executeMain bclspath cls = do 
+  initGC --required on some platforms. [todo bernhard: maybe this should be moved somewhere else - maybe at a global place where vm initialization takes place
   let methods = classMethods cls; methods :: [Method Direct]
   case find (\x -> methodName x == "main") methods of
     Just m -> do

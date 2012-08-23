@@ -11,6 +11,19 @@ function gitinstall {
 	rm -rf tmprepo
 }
 
+#hs: i ran into the problem that cabal install does not execute
+#my Setup.hs - as workaround i invoke runhaskell Setup.hs etc directly
+function gitinstallWithCustomSetup {
+	url=$1
+	git clone $url tmprepo
+	cd tmprepo
+        runhaskell Setup.hs configure --user $CABAL_OPT
+        runhaskell Setup.hs build 
+        runhaskell Setup.hs install
+	cd ..
+	rm -rf tmprepo
+}
+
 rm -rf ~/.ghc ~/.cabal
 cabal update
 cabal install cabal-install $CABAL_OPT
@@ -28,7 +41,6 @@ cabal install disassembler $CABAL_OPT
 # cabal install harpy $CABAL_OPT
 gitinstall git://wien.tomnetworks.com/harpy.git
 
-# cabal install hs-boehmgc $CABAL_OPT 
-gitinstall git://wien.tomnetworks.com/hs-boehmgc.git 
+gitinstallWithCustomSetup git://wien.tomnetworks.com/hs-boehmgc.git 
 
 echo DONE

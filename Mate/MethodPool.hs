@@ -32,6 +32,7 @@ import Mate.NativeMachine
 import Mate.ClassPool
 import Mate.Debug
 import Mate.Utilities
+import Mate.GarbageAlloc
 
 foreign import ccall "dynamic"
    code_void :: FunPtr (IO ()) -> IO ()
@@ -39,7 +40,9 @@ foreign import ccall "dynamic"
 foreign import ccall "&demoInterfaceCall"
   demoInterfaceCallAddr :: FunPtr (CUInt -> IO ())
 
-
+foreign import ccall "&printMemoryUsage"
+  printMemoryUsageAddr :: FunPtr (IO ())
+ 
 getMethodEntry :: CPtrdiff -> CPtrdiff -> IO CPtrdiff
 getMethodEntry signal_from methodtable = do
   mmap <- getMethodMap
@@ -73,6 +76,8 @@ getMethodEntry signal_from methodtable = do
                   case smethod of
                     "demoInterfaceCall" ->
                        return . funPtrToAddr $ demoInterfaceCallAddr
+                    "printMemoryUsage" ->
+                       return . funPtrToAddr $ printMemoryUsageAddr
                     _ ->
                        error $ "native-call: " ++ smethod ++ " not found."
                 else do

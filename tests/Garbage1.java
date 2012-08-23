@@ -1,5 +1,6 @@
 package tests;
 
+//import jmate.lang.MateRuntime;
 
 public class Garbage1
 {
@@ -9,13 +10,20 @@ public class Garbage1
 
 	public static void main(String args[])
 	{
+         	//MateRuntime runtime = new MateRuntime();
+		System.out.println("a string object");
 
-	        Big2 big2 = new Big2();
 		for(int i=0;i<0x2800;i++)
 		{
-			big2 = new Big2();
+			Big2 big2 = new Big2(); 
+                        if(i%0x1F==0) 
+                        { 
+                           //runtime.printMemoryUsage();
+                            System.out.printf("foo gah 0x%08x\n", i);
+                        }
+                        big2.foo();
 		}
-		System.out.println("memory: todo");
+		System.out.println("done.");
 	}
 }
 
@@ -28,4 +36,8 @@ class Big2
 		arr = new int[0x400];
 		//System.out.println("foo");
 	}
+        
+        public void foo()
+        {
+        }
 }
