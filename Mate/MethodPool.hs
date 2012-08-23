@@ -32,7 +32,7 @@ import Mate.NativeMachine
 import Mate.ClassPool
 import Mate.Debug
 import Mate.Utilities
-import Mate.GarbageAlloc
+import Mate.Rts()
 
 foreign import ccall "dynamic"
    code_void :: FunPtr (IO ()) -> IO ()
@@ -43,6 +43,9 @@ foreign import ccall "&demoInterfaceCall"
 foreign import ccall "&printMemoryUsage"
   printMemoryUsageAddr :: FunPtr (IO ())
  
+foreign import ccall "&loadLibrary"
+  loadLibraryAddr :: FunPtr (IO ())
+
 getMethodEntry :: CPtrdiff -> CPtrdiff -> IO CPtrdiff
 getMethodEntry signal_from methodtable = do
   mmap <- getMethodMap
@@ -74,6 +77,8 @@ getMethodEntry signal_from methodtable = do
                 let scm = toString cm; smethod = toString method
                 if scm == "jmate/lang/MateRuntime" then do
                   case smethod of
+                    "loadLibrary" ->
+                       return . funPtrToAddr $ loadLibraryAddr
                     "demoInterfaceCall" ->
                        return . funPtrToAddr $ demoInterfaceCallAddr
                     "printMemoryUsage" ->

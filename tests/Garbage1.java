@@ -4,7 +4,15 @@ package tests;
 
 public class Garbage1
 {
-	
+	static
+	{
+		loadLibrary();
+	}
+
+	public static void loadLibrary()
+	{
+		//Runtime.getRuntime().loadLibrary("MateRuntime");
+	}	
 
 	public Garbage1(){}
 
@@ -33,7 +41,7 @@ class Big2
 
 	public Big2()
 	{
-		arr = new int[0x400];
+		arr = new int[0xF400];
 		//System.out.println("foo");
 	}
         

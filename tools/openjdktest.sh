@@ -8,7 +8,7 @@ fi
 
 class2test=$1
 
-openjdk="java -client"
+openjdk="java -client -Djava.library.path=rts/mock"
 openjdk_output=`mktemp`
 mate="./mate"
 mate_output=`mktemp`

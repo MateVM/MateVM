@@ -54,6 +54,11 @@ COMPILEF = $(basename $@).compile
 ffi/native.o: ffi/native.c
 	ghc -Wall -O2 -c $< -o $@
 
+runtime: jmate/lang/MateRuntime.java
+	javac jmate/lang/MateRuntime.java
+	javah  -o rts/mock/jmate_lang_MateRuntime.h jmate.lang.MateRuntime
+	gcc -shared -fPIC -I$(JAVA_HOME)/include rts/mock/jmate_lang_MateRuntime.c -I./rts/mock -o rts/mock/libMateRuntime.so 
+
 GHCCALL = ghc --make $(GHC_OPT) Mate.hs ffi/trap.c -o $@ $(GHC_LD) -outputdir
 mate: Mate.hs ffi/trap.c $(HS_FILES) $(HS_BOOT) ffi/native.o $(CLASS_FILES)
 	@mkdir -p $(B_RELEASE)
