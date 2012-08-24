@@ -47,7 +47,6 @@ import Java.JAR
 import Mate.BasicBlocks
 import {-# SOURCE #-} Mate.MethodPool
 import Mate.Types
-import Mate.Utilities
 import Mate.Debug
 import Mate.GarbageAlloc
 import Mate.NativeSizes
@@ -150,8 +149,8 @@ readClass path = do
       let wn_iftable = fromIntegral $ ptrToIntPtr iftable :: NativeWord
       -- store interface-table at offset 0 in method-table
       pokeElemOff (intPtrToPtr $ fromIntegral mbase) 0 wn_iftable
-      let strpath = toString path
 #ifdef DBG_CLASS
+      let strpath = toString path
       hexDumpMap ("staticmap @ " ++ strpath) staticmap
       hexDumpMap ("fieldmap @ " ++ strpath) fieldmap
       hexDumpMap ("methodmap @ " ++ strpath) methodmap

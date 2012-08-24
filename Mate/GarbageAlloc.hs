@@ -16,7 +16,9 @@ import Foreign.C
 
 import Mate.GC.Boehm
 
---import Text.Printf
+#ifdef DBG_STR
+import Text.Printf
+#endif
 import Mate.Debug
 
 -- unified place for allocating Memory
