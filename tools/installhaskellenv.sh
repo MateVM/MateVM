@@ -15,13 +15,12 @@ function gitinstall {
 #my Setup.hs - as workaround i invoke runhaskell Setup.hs etc directly
 function gitinstallWithCustomSetup {
 	url=$1
-	git clone $url tmprepo
-	cd tmprepo
+	git clone $url hs-boehmgc
+	cd hs-boehmgc
         runhaskell Setup.hs configure --user $CABAL_OPT
         runhaskell Setup.hs build 
         runhaskell Setup.hs install
 	cd ..
-	rm -rf tmprepo
 }
 
 rm -rf ~/.ghc ~/.cabal

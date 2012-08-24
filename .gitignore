@@ -13,3 +13,4 @@ tags
 *.o-boot
 dist
 *.jar
+tools/hs-boehmgc
