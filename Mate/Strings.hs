@@ -57,7 +57,7 @@ allocateJavaString str = do
   -- build object layout
   fsize <- getObjectSize "java/lang/String"
   printfStr "string: fsize: %d (should be 4 * 5)\n" fsize
-  tblptr <- mallocObjectVM $ fromIntegral fsize
+  tblptr <- mallocObjectUnmanaged $ fromIntegral fsize
   let ptr = intPtrToPtr (fromIntegral tblptr) :: Ptr CPtrdiff
   mtbl <- getMethodTable "java/lang/String"
   poke ptr $ fromIntegral mtbl
@@ -65,7 +65,7 @@ allocateJavaString str = do
   -- build array layout
   let strlen = fromIntegral $ B.length str
   -- (+1) for \0, (+4) for length
-  newstr <- mallocStringVM (strlen + 5)
+  newstr <- mallocStringUnmanaged (strlen + 5) --[TODO hs,bernhard: should be managed right?]
   BI.memset newstr 0 (fromIntegral $ strlen + 5)
   arr <- newArray ((map fromIntegral $ B.unpack str) :: [Word8])
   copyBytes (plusPtr newstr 4) arr strlen

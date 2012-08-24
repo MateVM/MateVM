@@ -3,13 +3,13 @@
 #include "debug.h"
 module Mate.GarbageAlloc(
     mallocClassData,
-    mallocString,
-    mallocObject,
+    mallocStringGC,
+    mallocObjectGC,
     getHeapMemory,
     printMemoryUsage,
-    mallocStringVM,
-    mallocObjectVM,
-    printGCStats)  where
+    printGCStats,
+    mallocObjectUnmanaged,
+    mallocStringUnmanaged)  where
 
 import Foreign
 import Foreign.C
@@ -29,26 +29,29 @@ mallocClassData size = do
   addRootGC mem (plusPtr mem size)
   return mem
 
-mallocString :: Int -> IO (Ptr a)
-mallocString size = do
+mallocStringGC :: Int -> IO (Ptr a)
+mallocStringGC size = do
   printfStr "mallocString: %d\n" size
   mallocBytesGC size
 
-mallocStringVM :: Int -> IO (Ptr a)
-mallocStringVM = mallocBytes
-
-foreign export ccall mallocObject :: Int -> IO CPtrdiff
-mallocObject :: Int -> IO CPtrdiff
-mallocObject size = do
+foreign export ccall mallocObjectGC :: Int -> IO CPtrdiff
+mallocObjectGC :: Int -> IO CPtrdiff
+mallocObjectGC size = do
   ptr <- mallocBytesGC size
   printfStr "mallocObject: %d\n" size
   return $ fromIntegral $ ptrToIntPtr ptr
 
-mallocObjectVM :: Int -> IO CPtrdiff
-mallocObjectVM size = do
+mallocObjectUnmanaged :: Int -> IO CPtrdiff
+mallocObjectUnmanaged size = do
   ptr <- mallocBytes size
-  printfStr "mallocObject VM: %d\n" size
+  printfStr "mallocObjectUnmanged: %d\n" size
   return $ fromIntegral $ ptrToIntPtr ptr
+
+mallocStringUnmanaged :: Int -> IO (Ptr a)
+mallocStringUnmanaged size = do
+  printfStr "mallocStringUnamaged: %d\n" size
+  mallocBytes size
+
 
 getHeapMemory :: IO Int
 getHeapMemory = getHeapSizeGC

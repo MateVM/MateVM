@@ -35,7 +35,7 @@ import Text.Printf
 #endif
 
 
-foreign import ccall "&mallocObject"
+foreign import ccall "&mallocObjectGC"
   mallocObjectAddr :: FunPtr (Int -> IO CPtrdiff)
 
 type EntryPoint = Ptr Word8
