@@ -37,14 +37,14 @@ import Mate.Rts()
 foreign import ccall "dynamic"
    code_void :: FunPtr (IO ()) -> IO ()
 
-foreign import ccall "&demoInterfaceCall"
-  demoInterfaceCallAddr :: FunPtr (CUInt -> IO ())
-
 foreign import ccall "&printMemoryUsage"
   printMemoryUsageAddr :: FunPtr (IO ())
  
 foreign import ccall "&loadLibrary"
   loadLibraryAddr :: FunPtr (IO ())
+
+foreign import ccall "&printGCStats"
+  printGCStatsAddr :: FunPtr (IO ())
 
 getMethodEntry :: CPtrdiff -> CPtrdiff -> IO CPtrdiff
 getMethodEntry signal_from methodtable = do
@@ -79,8 +79,8 @@ getMethodEntry signal_from methodtable = do
                   case smethod of
                     "loadLibrary" ->
                        return . funPtrToAddr $ loadLibraryAddr
-                    "demoInterfaceCall" ->
-                       return . funPtrToAddr $ demoInterfaceCallAddr
+                    "printGCStats" ->
+                       return . funPtrToAddr $ printGCStatsAddr
                     "printMemoryUsage" ->
                        return . funPtrToAddr $ printMemoryUsageAddr
                     _ ->

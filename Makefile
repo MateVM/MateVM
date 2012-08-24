@@ -88,7 +88,8 @@ clean:
 	rm -rf $(BUILD) mate mate.static mate.dbg ffi/native.o \
 		tests/*.class Mate/*_stub.* \
 		jmate/lang/*.class jmate/io/*.class java/io/*.class \
-		java/lang/{Integer,Character,String,System}.class
+		java/lang/{Integer,Character,String,System}.class \
+		scratch/*.class
 
 ghci: mate.static
 	ghci -I. $(PACKAGES) -outputdir $(B_STATIC) Mate.hs $(GHC_CPP)
@@ -107,3 +108,8 @@ hlint:
 	@# ignore error code from hlint
 	-hlint Mate.hs Mate/
 	@mv debug_tmp.h debug.h
+
+scratch: mate $(wildcard jmate/lang/*.java) scratch/GCTest.java
+	javac $(wildcard jmate/lang/*.java)
+	javac scratch/GCTest.java
+	./mate scratch.GCTest  

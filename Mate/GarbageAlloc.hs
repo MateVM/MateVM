@@ -8,14 +8,15 @@ module Mate.GarbageAlloc(
     getHeapMemory,
     printMemoryUsage,
     mallocStringVM,
-    mallocObjectVM)  where
+    mallocObjectVM,
+    printGCStats)  where
 
 import Foreign
 import Foreign.C
 
 import Mate.GC.Boehm
 
-import Text.Printf
+--import Text.Printf
 import Mate.Debug
 
 -- unified place for allocating Memory
@@ -49,17 +50,13 @@ mallocObjectVM size = do
   printfStr "mallocObject VM: %d\n" size
   return $ fromIntegral $ ptrToIntPtr ptr
 
--- TODO: delete me
-foreign export ccall demoInterfaceCall :: CUInt -> IO ()
-demoInterfaceCall :: CUInt -> IO ()
-demoInterfaceCall val = do
-  printf "demoInterfaceCall: 0x%08x\n" (fromIntegral val :: Word32)
-  return ()
-
 getHeapMemory :: IO Int
 getHeapMemory = getHeapSizeGC
-
 
 foreign export ccall printMemoryUsage :: IO ()
 printMemoryUsage :: IO ()
 printMemoryUsage = getHeapMemory >>= print
+
+foreign export ccall printGCStats :: IO ()
+printGCStats :: IO ()
+printGCStats = putStrLn "Should print GC Stats"

@@ -4,4 +4,5 @@ public class MateRuntime {
 
 	public static native void loadLibrary(String lib);
         public static native int getCurrentHeapSize();
+	public static native void printGCStats();
 }
