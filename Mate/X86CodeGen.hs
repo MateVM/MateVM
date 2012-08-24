@@ -324,6 +324,7 @@ emitFromBB cls method = do
     emit IRETURN = do pop eax; emit RETURN
     emit invalid = error $ "insn not implemented yet: " ++ show invalid
 
+    -- TODO(bernhard): delay to runtime (find counter example!)
     emitFieldOffset :: Word16 -> CodeGen e s Int32
     emitFieldOffset x = do
       pop eax -- this pointer

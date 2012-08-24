@@ -1,9 +1,10 @@
+{-# LANGUAGE CPP #-}
 module Mate.NativeSizes where
 
 import Data.Word
 
 ptrSize, longSize :: NativeWord
-#ifdef i386_HOST_ARCH
+#if defined(ARCH_X86)
 ptrSize = 4
 longSize = 8
 

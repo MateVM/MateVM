@@ -7,7 +7,7 @@ module Mate.NativeMachine(
   NativeWord
   )where
 
-#ifdef i386_HOST_ARCH
+#ifdef ARCH_X86
 import Mate.X86CodeGen
 import Mate.X86TrapHandling
 import Mate.NativeSizes

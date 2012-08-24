@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE CPP #-}
 module Mate.Types where
 
 import Data.Int
@@ -112,7 +111,6 @@ toString :: B.ByteString -> String
 toString bstr = decodeString $ map (chr . fromIntegral) $ B.unpack bstr
 -}
 
--- better solutions for a global map hack are welcome! (typeclasses, TH, ...?)
 
 data MateCtx = MateCtx {
   ctxMethodMap :: MethodMap,
@@ -130,32 +128,79 @@ mateCtx :: IORef MateCtx
 {-# NOINLINE mateCtx #-}
 mateCtx = unsafePerformIO $ newIORef emptyMateCtx
 
--- TODO(bernhard): if we ever have thread support, don't forget MVars
-#define SETMAP(name) set##name :: name -> IO (); \
-  set##name m = do ctx <- readIORef mateCtx; \
-  writeIORef mateCtx $ ctx { ctx##name = m };
 
-#define GETMAP(name) get##name :: IO name ; \
-  get##name = do ctx <- readIORef mateCtx; \
-  return $ ctx##name ctx;
+setMethodMap :: MethodMap -> IO ()
+setMethodMap m = do
+  ctx <- readIORef mateCtx
+  writeIORef mateCtx $ ctx { ctxMethodMap = m }
 
-SETMAP(MethodMap);
-GETMAP(MethodMap)
+getMethodMap :: IO MethodMap
+getMethodMap = do
+  ctx <- readIORef mateCtx
+  return $ ctxMethodMap ctx
 
-SETMAP(TrapMap)
-GETMAP(TrapMap)
 
-SETMAP(ClassMap)
-GETMAP(ClassMap)
+setTrapMap :: TrapMap -> IO ()
+setTrapMap m = do
+  ctx <- readIORef mateCtx
+  writeIORef mateCtx $ ctx { ctxTrapMap = m }
 
-SETMAP(VirtualMap)
-GETMAP(VirtualMap)
+getTrapMap :: IO TrapMap
+getTrapMap = do
+  ctx <- readIORef mateCtx
+  return $ ctxTrapMap ctx
 
-SETMAP(StringMap)
-GETMAP(StringMap)
 
-SETMAP(InterfaceMap)
-GETMAP(InterfaceMap)
+setClassMap :: ClassMap -> IO ()
+setClassMap m = do
+  ctx <- readIORef mateCtx
+  writeIORef mateCtx $ ctx { ctxClassMap = m }
 
-SETMAP(InterfaceMethodMap)
-GETMAP(InterfaceMethodMap)
+getClassMap :: IO ClassMap
+getClassMap = do
+  ctx <- readIORef mateCtx
+  return $ ctxClassMap ctx
+
+
+setVirtualMap :: VirtualMap -> IO ()
+setVirtualMap m = do
+  ctx <- readIORef mateCtx
+  writeIORef mateCtx $ ctx { ctxVirtualMap = m }
+
+getVirtualMap :: IO VirtualMap
+getVirtualMap = do
+  ctx <- readIORef mateCtx
+  return $ ctxVirtualMap ctx
+
+
+setStringMap :: StringMap -> IO ()
+setStringMap m = do
+  ctx <- readIORef mateCtx
+  writeIORef mateCtx $ ctx { ctxStringMap = m }
+
+getStringMap :: IO StringMap
+getStringMap = do
+  ctx <- readIORef mateCtx
+  return $ ctxStringMap ctx
+
+
+setInterfaceMap :: InterfaceMap -> IO ()
+setInterfaceMap m = do
+  ctx <- readIORef mateCtx
+  writeIORef mateCtx $ ctx { ctxInterfaceMap = m }
+
+getInterfaceMap :: IO InterfaceMap
+getInterfaceMap = do
+  ctx <- readIORef mateCtx
+  return $ ctxInterfaceMap ctx
+
+
+setInterfaceMethodMap :: InterfaceMethodMap -> IO ()
+setInterfaceMethodMap m = do
+  ctx <- readIORef mateCtx
+  writeIORef mateCtx $ ctx { ctxInterfaceMethodMap = m }
+
+getInterfaceMethodMap :: IO InterfaceMethodMap
+getInterfaceMethodMap = do
+  ctx <- readIORef mateCtx
+  return $ ctxInterfaceMethodMap ctx
