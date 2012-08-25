@@ -1,15 +1,11 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
-#include "debug.h"
 module Mate.BasicBlocks(
   BlockID,
   BasicBlock,
   BBEnd,
   MapBB,
   Method,
-#ifdef DBG_BB
   printMapBB,
-#endif
   parseMethod,
   testCFG -- added by hs to perform benches from outside
   )where
@@ -29,49 +25,40 @@ import Mate.Types
 import Mate.Debug
 import Mate.Utilities
 
-#ifdef DEBUG
-import Text.Printf
-#endif
-
 -- for immediate representation to determine BBs
 type Offset = (Int, Maybe BBEnd) -- (offset in bytecode, offset to jump target)
 type OffIns = (Offset, Instruction)
 
 
-#ifdef DBG_BB
 printMapBB :: MapBB -> IO ()
 printMapBB hmap = do
-  putStr "BlockIDs: "
+  printfBb "BlockIDs: "
   let keys = M.keys hmap
-  mapM_ (putStr . (flip (++)) ", " . show) keys
-  putStrLn "\n\nBasicBlocks:"
+  mapM_ (printfBb. (flip (++)) ", " . show) keys
+  printfBb "\n\nBasicBlocks:"
   printMapBB' keys hmap
     where
       printMapBB' :: [BlockID] -> MapBB -> IO ()
       printMapBB' [] _ = return ()
       printMapBB' (i:is) hmap' = case M.lookup i hmap' of
         Just bb -> do
-          putStrLn $ "Block " ++ (show i)
-          mapM_ putStrLn (map ((++) "\t" . show) $ code bb)
-          case successor bb of
-            Return -> putStrLn ""
-            FallThrough t1 -> putStrLn $ "Sucessor: " ++ (show t1) ++ "\n"
-            OneTarget t1 -> putStrLn $ "Sucessor: " ++ (show t1) ++ "\n"
-            TwoTarget t1 t2 -> putStrLn $ "Sucessor: " ++ (show t1) ++ ", " ++ (show t2) ++ "\n"
+          printfBb $ "Block " ++ (show i)
+          mapM_ printfBb (map ((++) "\t" . show) $ code bb)
+          printfBb $ case successor bb of
+            Return -> ""
+            FallThrough t1 -> "Sucessor: " ++ (show t1) ++ "\n"
+            OneTarget t1 -> "Sucessor: " ++ (show t1) ++ "\n"
+            TwoTarget t1 t2 -> "Sucessor: " ++ (show t1) ++ ", " ++ (show t2) ++ "\n"
           printMapBB' is hmap
         Nothing -> error $ "BlockID " ++ show i ++ " not found."
-#endif
 
-#if 0
-#ifdef DBG_BB
+{-
 testInstance :: String -> B.ByteString -> MethodSignature -> IO ()
 testInstance cf method sig = do
   cls <- parseClassFile cf
   hmap <- parseMethod cls method sig
   printMapBB hmap
-#endif
 
-#ifdef DBG_BB
 test_main :: IO ()
 test_main = do
   test_01
@@ -84,8 +71,7 @@ test_01 = testInstance "./tests/Fib.class" "fib"
 test_02 = testInstance "./tests/While.class" "f"
 test_03 = testInstance "./tests/While.class" "g"
 test_04 = testInstance "./tests/Fac.class" "fac"
-#endif
-#endif
+-}
 
 
 parseMethod :: Class Direct -> B.ByteString -> MethodSignature -> IO RawMethod
@@ -107,19 +93,17 @@ parseMethod cls methodname sig = do
   let argscount = methodGetArgsCount nametype + (if isStatic then 0 else 1)
 
   let msig = methodSignature method
-  printfBb "BB: analysing \"%s\"\n" $ toString (methodname `B.append` ": " `B.append` encode msig)
-#ifdef DBG_BB
+  printfBb $ printf "BB: analysing \"%s\"\n" $ toString (methodname `B.append` ": " `B.append` encode msig)
   printMapBB mapbb
-#endif
   -- small example how to get information about
   -- exceptions of a method
   -- TODO: remove ;-)
   let (Just m) = lookupMethodSig methodname sig cls
   case attrByName m "Code" of
     Nothing ->
-      printfBb "exception: no handler for this method\n"
+      printfBb $ printf "exception: no handler for this method\n"
     Just exceptionstream ->
-      printfBb "exception: \"%s\"\n" (show $ codeExceptions $ decodeMethod exceptionstream)
+      printfBb $ printf "exception: \"%s\"\n" (show $ codeExceptions $ decodeMethod exceptionstream)
   return $ RawMethod mapbb locals stacks argscount codelen
 
 

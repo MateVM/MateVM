@@ -68,24 +68,11 @@ mate.static: Mate.hs ffi/trap.c $(HS_FILES) $(HS_BOOT) ffi/native.o $(CLASS_FILE
 	@mkdir -p $(B_STATIC)
 	$(GHCCALL) $(B_STATIC) -static
 
-%.dbg: %.class mate.dbg
-	./mate.dbg $(basename $<)
-
-%.gdb: %.class mate.dbg
-	gdb -x .gdbcmds -q --args mate.dbg $(basename $<) +RTS -V0 --install-signal-handlers=no
-
-ifeq (${DBGFLAGS},)
-DEBUGFLAGS = -DDBG_JIT -DDBG_MP
-else
-DEBUGFLAGS = ${DBGFLAGS}
-endif
-mate.dbg: Mate.hs ffi/trap.c $(HS_FILES) $(HS_BOOT) ffi/native.o $(CLASS_FILES)
-	@mkdir -p $(B_DEBUG)/{ffi,Mate,}
-	gcc -Wall $(DEBUGFLAGS) -O0 -c ffi/trap.c -o $(B_DEBUG)/ffi/trap.o
-	ghc --make $(DEBUGFLAGS) $(GHC_OPT) Mate.hs $(B_DEBUG)/ffi/trap.o -o $@ $(GHC_LD) -outputdir $(B_DEBUG)
+%.gdb: %.class mate
+	gdb -x .gdbcmds -q --args mate $(basename $<) +RTS -V0 --install-signal-handlers=no
 
 clean:
-	rm -rf $(BUILD) mate mate.static mate.dbg ffi/native.o \
+	rm -rf $(BUILD) mate mate.static ffi/native.o \
 		tests/*.class Mate/*_stub.* \
 		jmate/lang/*.class jmate/io/*.class java/io/*.class \
 		java/lang/{Integer,Character,String,System}.class \
@@ -101,13 +88,7 @@ tags: mate.static
 	ghc -I. -fforce-recomp -fobject-code $(PACKAGES) Mate.hs -outputdir $(B_STATIC) -e :ctags $(GHC_CPP)
 
 hlint:
-	@# hlint isn't able to evaluate CPP comments correctly *sigh*
-	@cp debug.h debug_tmp.h
-	@# so we remove them "by hand", for hlint
-	@gcc -E -x c -fpreprocessed -dD -E debug_tmp.h | grep -v 'debug_tmp.h' > debug.h
-	@# ignore error code from hlint
-	-hlint Mate.hs Mate/
-	@mv debug_tmp.h debug.h
+	hlint Mate.hs Mate/
 
 scratch: mate $(wildcard jmate/lang/*.java) scratch/GCTest.java
 	javac $(wildcard jmate/lang/*.java)

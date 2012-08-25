@@ -1,48 +1,45 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
-#include "debug.h"
 
-module Mate.Debug where
+module Mate.Debug
+  ( printfJit
+  , printfBb
+  , printfMp
+  , printfCp
+  , printfStr
+  , printfInfo
+  , mateDEBUG
+  , printf -- TODO: delete me
+  ) where
 
-{- we cannot use `PrintfType' from Text.Printf, as it isn't exported.
- - so we implement a `VarArgsFake' here.
- - http://www.haskell.org/haskellwiki/Varargs -}
-class VarArgsFake t where
-  varFake :: [String] -> t
-
-instance VarArgsFake (IO a) where
-  varFake _ = return undefined
-
-instance (Show a, VarArgsFake r) => VarArgsFake (a -> r) where
-  varFake _ _ = varFake []
-
--- note: with -O2 GHC is able to completely optimize away such a `printfFake' call
-printfFake :: String -> (VarArgsFake t) => t
-printfFake _ = varFake []
+import Text.Printf
+import System.IO
+import System.IO.Unsafe
 
 
--- see counterpart at `debug.h'
-#ifndef DBG_JIT
-printfJit :: String -> (VarArgsFake t) => t
-printfJit = printfFake
-#endif
+{-# NOINLINE logHandle #-}
+-- TODO(bernhard): use MVar if threaded
+logHandle :: Handle
+logHandle = unsafePerformIO $ openFile "mate.log" WriteMode
 
-#ifndef DBG_BB
-printfBb :: String -> (VarArgsFake t) => t
-printfBb = printfFake
-#endif
+{-# INLINE mateDEBUG #-}
+mateDEBUG :: Bool
+mateDEBUG = False
 
-#ifndef DBG_MP
-printfMp :: String -> (VarArgsFake t) => t
-printfMp = printfFake
-#endif
+{-# INLINE printString #-}
+printString :: String -> String -> IO ()
+printString prefix str = if mateDEBUG
+  then hPutStr logHandle . (++) prefix $ str
+  else return ()
 
-#ifndef DBG_CP
-printfCp :: String -> (VarArgsFake t) => t
-printfCp = printfFake
-#endif
 
-#ifndef DBG_STR
-printfStr :: String -> (VarArgsFake t) => t
-printfStr = printfFake
-#endif
+printfJit, printfBb, printfMp, printfCp, printfStr, printfInfo  :: String -> IO ()
+{-
+-- TODO(bernhard):
+-- http://stackoverflow.com/questions/12123082/function-composition-with-text-printf-printf
+-}
+printfJit  = printString "Jit: "
+printfBb   = printString "Bb: "
+printfMp   = printString "Mp: "
+printfCp   = printString "Cp: "
+printfStr  = printString "Str: "
+printfInfo = printString "Info: "

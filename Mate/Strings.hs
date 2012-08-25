@@ -1,6 +1,4 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
-#include "debug.h"
 module Mate.Strings (
   getUniqueStringAddr
   ) where
@@ -9,9 +7,6 @@ import Data.Word
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as B
 import qualified Data.ByteString.Internal as BI
-#ifdef DEBUG
-import Text.Printf
-#endif
 
 import JVM.ClassFile
 
@@ -56,7 +51,7 @@ allocateJavaString str = do
    -}
   -- build object layout
   fsize <- getObjectSize "java/lang/String"
-  printfStr "string: fsize: %d (should be 4 * 5)\n" fsize
+  printfStr $ printf "string: fsize: %d (should be 4 * 5)\n" fsize
   tblptr <- mallocObjectUnmanaged $ fromIntegral fsize
   let ptr = intPtrToPtr (fromIntegral tblptr) :: Ptr CPtrdiff
   mtbl <- getMethodTable "java/lang/String"
@@ -69,7 +64,7 @@ allocateJavaString str = do
   BI.memset newstr 0 (fromIntegral $ strlen + 5)
   arr <- newArray ((map fromIntegral $ B.unpack str) :: [Word8])
   copyBytes (plusPtr newstr 4) arr strlen
-  printfStr "new str ptr: (%s)@%d\n" (toString str) strlen
+  printfStr $ printf "new str ptr: (%s)@%d\n" (toString str) strlen
 
   let newstr_length = castPtr newstr :: Ptr CPtrdiff
   poke newstr_length $ fromIntegral strlen

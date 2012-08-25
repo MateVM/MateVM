@@ -1,7 +1,5 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
-#include "debug.h"
 module Mate.X86CodeGen where
 
 import Prelude hiding (and, div)
@@ -30,9 +28,6 @@ import Mate.Types
 import Mate.Utilities
 import Mate.ClassPool
 import Mate.Strings
-#ifdef DEBUG
-import Text.Printf
-#endif
 
 
 foreign import ccall "&mallocObjectGC"

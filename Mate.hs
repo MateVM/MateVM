@@ -1,6 +1,4 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
-#include "debug.h"
 module Main where
 
 import System.Environment
@@ -10,9 +8,6 @@ import Data.List.Split
 import qualified Data.ByteString.Lazy as B
 import Control.Monad
 
-#ifdef DEBUG
-import Text.Printf
-#endif
 import JVM.ClassFile
 import Java.JAR
 
@@ -21,6 +16,7 @@ import Mate.MethodPool
 import Mate.Types
 import Mate.ClassPool
 import Mate.NativeMachine
+import Mate.Debug
 
 import Mate.GC.Boehm
 
@@ -65,6 +61,7 @@ parseArgs _ _ = parseArgs ["-"] False
 executeMain :: B.ByteString -> Class Direct -> IO ()
 executeMain bclspath cls = do 
   initGC --required on some platforms. [todo bernhard: maybe this should be moved somewhere else - maybe at a global place where vm initialization takes place
+
   let methods = classMethods cls; methods :: [Method Direct]
   case find (\x -> methodName x == "main") methods of
     Just m -> do
@@ -72,8 +69,6 @@ executeMain bclspath cls = do
       rawmethod <- parseMethod cls "main" $ methodSignature m
       entry <- compileBB rawmethod mi
       addMethodRef entry mi [bclspath]
-#ifdef DEBUG
-      printf "executing `main' now:\n"
-#endif
+      printfInfo "executing `main' now:\n"
       executeFuncPtr entry
     Nothing -> error "main not found"

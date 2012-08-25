@@ -1,7 +1,5 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
-#include "debug.h"
 module Mate.MethodPool where
 
 import Data.Binary
@@ -18,13 +16,7 @@ import Foreign.C.String
 import JVM.ClassFile
 
 import Harpy
-#ifdef DBG_JIT
 import Harpy.X86Disassembler
-#endif
-
-#ifdef DEBUG
-import Text.Printf
-#endif
 
 import Mate.BasicBlocks
 import Mate.Types
@@ -67,7 +59,7 @@ getMethodEntry signal_from methodtable = do
   entryaddr <- case M.lookup mi' mmap of
     Nothing -> do
       cls <- getClassFile cm
-      printfMp "getMethodEntry(from 0x%08x): no method \"%s\" found. compile it\n" w32_from (show mi')
+      printfMp $ printf "getMethodEntry(from 0x%08x): no method \"%s\" found. compile it\n" w32_from (show mi')
       mm <- lookupMethodRecursive method sig [] cls
       case mm of
         Just (mm', clsnames, cls') -> do
@@ -91,7 +83,7 @@ getMethodEntry signal_from methodtable = do
                       parenth = replace "(" "_" $ replace ")" "_" $ toString $ encode sig
                       sym2 = replace ";" "_" $ replace "/" "_" parenth
                       symbol = sym1 ++ "__" ++ smethod ++ "__" ++ sym2
-                  printfMp "native-call: symbol: %s\n" symbol
+                  printfMp $ printf "native-call: symbol: %s\n" symbol
                   nf <- loadNativeFunction symbol
                   setMethodMap $ M.insert mi' nf mmap
                   return nf
@@ -165,12 +157,12 @@ compileBB rawmethod methodinfo = do
   let ((entry, _, _, new_tmap), _) = right
   setTrapMap $ tmap `M.union` new_tmap -- prefers elements in tmap
 
-  printfJit "generated code of \"%s\" from \"%s\":\n" (toString $ methName methodinfo) (toString $ methClassName methodinfo)
-  printfJit "\tstacksize: 0x%04x, locals: 0x%04x\n" (rawStackSize rawmethod) (rawLocals rawmethod)
-#ifdef DBG_JIT
-  mapM_ (printfJit "%s\n" . showAtt) (snd right)
-#endif
-  printfJit "\n\n"
+  printfJit $ printf "generated code of \"%s\" from \"%s\":\n" (toString $ methName methodinfo) (toString $ methClassName methodinfo)
+  printfJit $ printf "\tstacksize: 0x%04x, locals: 0x%04x\n" (rawStackSize rawmethod) (rawLocals rawmethod)
+  if mateDEBUG
+    then mapM_ (printfJit . printf "%s\n" . showAtt) (snd right)
+    else return ()
+  printfJit $ printf "\n\n"
   -- UNCOMMENT NEXT LINES FOR GDB FUN
   -- if (toString $ methName methodinfo) == "thejavamethodIwant2debug"
   --   then putStrLn "press CTRL+C now for setting a breakpoint. then `c' and ENTER for continue" >> getLine

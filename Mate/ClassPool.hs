@@ -1,6 +1,4 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
-#include "debug.h"
 module Mate.ClassPool (
   getClassInfo,
   classLoaded,
@@ -24,12 +22,7 @@ import qualified Data.ByteString.Lazy as B
 import Data.String.Utils
 import Control.Monad
 
-#ifdef DEBUG
-import Text.Printf
-#endif
-#ifdef DBG_CLASS
-import JVM.Dump
-#endif
+-- import JVM.Dump
 
 import Foreign.Ptr
 import Foreign.C.Types
@@ -126,9 +119,8 @@ readClass path = do
     Just cm -> return cm
     Nothing -> do
       cfile <- readClassFile $ toString path
-#ifdef DBG_CLASS
-      dumpClass cfile
-#endif
+      -- TODO(bernhard): hDumpClass
+      -- dumpClass cfile
       -- load all interfaces, which are implemented by this class
       sequence_ [ loadInterface i | i <- interfaces cfile ]
       superclass <- if path /= "java/lang/Object"
@@ -149,15 +141,23 @@ readClass path = do
       let wn_iftable = fromIntegral $ ptrToIntPtr iftable :: NativeWord
       -- store interface-table at offset 0 in method-table
       pokeElemOff (intPtrToPtr $ fromIntegral mbase) 0 wn_iftable
-#ifdef DBG_CLASS
-      let strpath = toString path
-      hexDumpMap ("staticmap @ " ++ strpath) staticmap
-      hexDumpMap ("fieldmap @ " ++ strpath) fieldmap
-      hexDumpMap ("methodmap @ " ++ strpath) methodmap
-      hexDumpMap ("interfacemap @ " ++ strpath) immap
-#endif
-      printfCp "mbase:   0x%08x\n" mbase
-      printfCp "iftable: 0x%08x\n" wn_iftable
+      let hexDumpMap :: Integral v => String -> M.Map B.ByteString v -> IO ()
+          hexDumpMap header mmap = do
+            let printValue :: B.ByteString -> IO ()
+                printValue key = printfCp $ printf "\t%-70s: 0x%08x\n" (toString key) val
+                  where val = fromIntegral (mmap M.! key) :: NativeWord
+            printfCp $ printf "%s\n" header
+            mapM_ printValue (M.keys mmap)
+      if mateDEBUG
+        then do
+          let strpath = toString path
+          hexDumpMap ("staticmap @ " ++ strpath) staticmap
+          hexDumpMap ("fieldmap @ " ++ strpath) fieldmap
+          hexDumpMap ("methodmap @ " ++ strpath) methodmap
+          hexDumpMap ("interfacemap @ " ++ strpath) immap
+          printfCp $ printf "mbase:   0x%08x\n" mbase
+          printfCp $ printf "iftable: 0x%08x\n" wn_iftable
+        else return ()
       virtual_map <- getVirtualMap
       setVirtualMap $ M.insert mbase path virtual_map
 
@@ -174,7 +174,7 @@ loadInterface path = do
   case M.lookup path imap of
     Just _ -> return ()
     Nothing -> do
-      printfCp "interface: loading \"%s\"\n" $ toString path
+      printfCp $ printf "interface: loading \"%s\"\n" $ toString path
       cfile <- readClassFile $ toString path
       -- load "superinterfaces" first
       sequence_ [ loadInterface i | i <- interfaces cfile ]
@@ -267,9 +267,9 @@ loadAndInitClass path = do
       let mi = MethodInfo "<clinit>" path (methodSignature m)
       entry <- compileBB rawmethod mi
       addMethodRef entry mi [path]
-      printfCp "executing static initializer from %s now\n" (toString path)
+      printfCp $ printf "executing static initializer from %s now\n" (toString path)
       executeFuncPtr entry
-      printfCp "static initializer from %s done\n" (toString path)
+      printfCp $ printf "static initializer from %s done\n" (toString path)
     Nothing -> return ()
 
   class_map' <- getClassMap
@@ -286,13 +286,13 @@ readClassFile path' = readIORef classPaths >>= rcf
     rcf [] = error $ "readClassFile: Class \"" ++ show path ++ "\" not found."
     rcf (Directory pre:xs) = do
       let cf = pre ++ path ++ ".class"
-      printfCp "rcf: searching @ %s for %s\n" (show pre) (show path)
+      printfCp $ printf "rcf: searching @ %s for %s\n" (show pre) (show path)
       b <- doesFileExist cf
       if b
         then parseClassFile cf
         else rcf xs
     rcf (JAR p:xs) = do
-      printfCp "rcf: searching %s in JAR\n" (show path)
+      printfCp $ printf "rcf: searching %s in JAR\n" (show path)
       entry <- getEntry p path
       case entry of
         Just (LoadedJAR _ cls) -> return cls

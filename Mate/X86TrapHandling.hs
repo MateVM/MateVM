@@ -1,7 +1,5 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
-#include "debug.h"
 module Mate.X86TrapHandling (
   mateHandler,
   register_signal
@@ -22,9 +20,6 @@ import {-# SOURCE #-} Mate.MethodPool
 import Mate.ClassPool
 import Mate.X86CodeGen
 
-#ifdef DBG_JIT
-import Text.Printf
-#endif
 import Mate.Debug
 import Harpy.X86Disassembler
 
@@ -57,7 +52,7 @@ patchWithHarpy patcher reip = do
   let entry = Just (intPtrToPtr (fromIntegral reip), fixme)
   let cgconfig = defaultCodeGenConfig { customCodeBuffer = entry }
   (_, Right right) <- runCodeGenWithConfig (withDisasm $ patcher reip) () () cgconfig
-  mapM_ (printfJit "patched: %s\n" . showAtt) $ snd right
+  mapM_ (printfJit . printf "patched: %s\n" . showAtt) $ snd right
   return reip
 
 withDisasm :: CodeGen e s CPtrdiff -> CodeGen e s (CPtrdiff, [Instruction])

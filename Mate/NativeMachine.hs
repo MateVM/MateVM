@@ -11,7 +11,10 @@ module Mate.NativeMachine(
 import Mate.X86CodeGen
 import Mate.X86TrapHandling
 import Mate.NativeSizes
-
 #else
-#error "no other arch supported yet :/"
+
+-- HACK, for ghc-mod ...
+import Mate.X86CodeGen
+import Mate.X86TrapHandling
+import Mate.NativeSizes
 #endif
