@@ -29,6 +29,9 @@ import qualified Data.ByteString.Lazy as B
 import Data.IORef
 import System.IO.Unsafe
 
+import Harpy
+import Foreign.C.Types
+
 import JVM.ClassFile
 import JVM.Assembler
 
@@ -63,12 +66,15 @@ data RawMethod = RawMethod {
 -- MethodInfo = relevant information about callee
 type TrapMap = M.Map NativeWord TrapCause
 
+type TrapPatcher = CPtrdiff -> CodeGen () () CPtrdiff
+
 data TrapCause
   = StaticMethod MethodInfo -- for static calls
   | VirtualCall Bool MethodInfo (IO NativeWord) -- for invoke{interface,virtual}
   | InstanceOf B.ByteString -- class name
   | NewObject B.ByteString -- class name
   | StaticField StaticFieldInfo
+  | ObjectField TrapPatcher
 
 data StaticFieldInfo = StaticFieldInfo {
   sfiClassName :: B.ByteString,

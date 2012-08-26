@@ -154,6 +154,7 @@ emitFromBB cls method = do
     emit' (INVOKESTATIC cpidx) = emitInvoke cpidx False
     emit' (INVOKEINTERFACE cpidx _) = virtualCall cpidx True
     emit' (INVOKEVIRTUAL cpidx) = virtualCall cpidx False
+
     emit' (PUTSTATIC cpidx) = do
       pop eax
       trapaddr <- getCurrentOffset
@@ -164,6 +165,31 @@ emitFromBB cls method = do
       mov eax (Addr 0x00000000) -- it's a trap
       push eax
       return $ Just (trapaddr, StaticField $ buildStaticFieldID cls cpidx)
+
+    emit' (GETFIELD x) = do
+      pop eax -- this pointer
+      trapaddr <- getCurrentOffset
+      -- like: 099db064  ff b0 e4 14 00 00 pushl  5348(%eax)
+      emit32 (0x9090ffff :: Word32); nop; nop
+      let patcher reip = do
+            let (cname, fname) = buildFieldOffset cls x
+            offset <- liftIO $ getFieldOffset cname fname
+            push32_rel_eax (Disp (fromIntegral offset)) -- get field
+            return reip
+      return $ Just (trapaddr, ObjectField patcher)
+    emit' (PUTFIELD x) = do
+      pop ebx -- value to write
+      pop eax -- this pointer
+      trapaddr <- getCurrentOffset
+      -- like: 4581fc6b  89 98 30 7b 00 00 movl   %ebx,31536(%eax)
+      emit32 (0x9090ffff :: Word32); nop; nop
+      let patcher reip = do
+            let (cname, fname) = buildFieldOffset cls x
+            offset <- liftIO $ getFieldOffset cname fname
+            mov32_rel_ebx_eax (Disp (fromIntegral offset)) -- set field
+            return reip
+      return $ Just (trapaddr, ObjectField patcher)
+
     emit' (INSTANCEOF cpidx) = do
       pop eax
       mov eax (Disp 0, eax) -- mtable of objectref
@@ -277,13 +303,6 @@ emitFromBB cls method = do
                     (CInteger i) -> liftIO $ return i
                     e -> error $ "LDCI... missing impl.: " ++ show e
       push value
-    emit (GETFIELD x) = do
-      offset <- emitFieldOffset x
-      push (Disp (fromIntegral offset), eax) -- get field
-    emit (PUTFIELD x) = do
-      pop ebx -- value to write
-      offset <- emitFieldOffset x
-      mov (Disp (fromIntegral offset), eax) ebx -- set field
 
     emit IADD = do pop ebx; pop eax; add eax ebx; push eax
     emit ISUB = do pop ebx; pop eax; sub eax ebx; push eax
@@ -318,13 +337,6 @@ emitFromBB cls method = do
     emit ARETURN = emit IRETURN
     emit IRETURN = do pop eax; emit RETURN
     emit invalid = error $ "insn not implemented yet: " ++ show invalid
-
-    -- TODO(bernhard): delay to runtime (find counter example!)
-    emitFieldOffset :: Word16 -> CodeGen e s Int32
-    emitFieldOffset x = do
-      pop eax -- this pointer
-      let (cname, fname) = buildFieldOffset cls x
-      liftIO $ getFieldOffset cname fname
 
     emitIF :: CMP -> CodeGen e s ()
     emitIF cond = let
@@ -367,11 +379,22 @@ callMalloc = do
   add esp (ptrSize :: Word32)
   push eax
 
--- the regular push implementation, considers the provided immediate and selects
--- a different instruction if it fits in 8bit. but this is not useful for
--- patching.
+
+-- harpy tries to cut immediates (or displacements), if they fit in 8bit.
+-- however, this is bad for patching so we want to put always 32bit.
+
+-- push imm32
 push32 :: Word32 -> CodeGen e s ()
 push32 imm32 = emit8 0x68 >> emit32 imm32
 
+-- call disp32(%eax)
 call32_eax :: Disp -> CodeGen e s ()
 call32_eax (Disp disp32) = emit8 0xff >> emit8 0x90 >> emit32 disp32
+
+-- push disp32(%eax)
+push32_rel_eax :: Disp -> CodeGen e s ()
+push32_rel_eax (Disp disp32) = emit8 0xff >> emit8 0xb0 >> emit32 disp32
+
+-- mov %ebx, disp32(%eax)
+mov32_rel_ebx_eax :: Disp -> CodeGen e s ()
+mov32_rel_ebx_eax (Disp disp32) = emit8 0x89 >> emit8 0x98 >> emit32 disp32

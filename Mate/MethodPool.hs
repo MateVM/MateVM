@@ -52,10 +52,6 @@ getMethodEntry signal_from methodtable = do
          (VirtualCall _ (MethodInfo methname _ msig) _) -> newMi methname msig
          _ -> error "getMethodEntry: no TrapCause found. abort."
        where newMi mn = MethodInfo mn (vmap M.! fromIntegral methodtable)
-  -- bernhard (TODO): doesn't work with gnu classpath at some point. didn't
-  --                  figured out the problem yet :/ therefore, I have no
-  --                  testcase for replaying the situation.
-  -- setTrapMap $ M.delete w32_from tmap
   entryaddr <- case M.lookup mi' mmap of
     Nothing -> do
       cls <- getClassFile cm

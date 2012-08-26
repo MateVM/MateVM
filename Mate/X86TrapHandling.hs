@@ -36,6 +36,8 @@ mateHandler reip reax rebx resi = do
         patchWithHarpy patchStaticCall reip >>= delTrue
     (Just (StaticField _))  ->
         staticFieldHandler reip >>= delTrue
+    (Just (ObjectField patcher)) ->
+        patchWithHarpy patcher reip >>= delTrue
     (Just (InstanceOf cn))  ->
         patchWithHarpy (`patchInstanceOf` cn) reip >>= delFalse
     (Just (NewObject cn))   ->
@@ -55,7 +57,7 @@ mateHandler reip reax rebx resi = do
     else return ()
   return ret_nreip
   where
-    delTrue = (\nreip -> return (False, nreip))
+    delTrue = (\nreip -> return (False, nreip)) -- TODO: FIXME
     delFalse = (\nreip -> return (False, nreip))
 
 
