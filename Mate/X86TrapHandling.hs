@@ -33,7 +33,7 @@ mateHandler reip reax rebx resi = do
   let reipw32 = fromIntegral reip
   (deleteMe, ret_nreip) <- case M.lookup reipw32 tmap of
     (Just (StaticMethod patcher)) ->
-        patchWithHarpy patcher reip >>= delTrue
+        patchWithHarpy patcher reip >>= delFalse
     (Just (StaticField _))  ->
         staticFieldHandler reip >>= delTrue
     (Just (ObjectField patcher)) ->
@@ -44,10 +44,10 @@ mateHandler reip reax rebx resi = do
         patchWithHarpy patcher reip >>= delTrue
     (Just (VirtualCall False mi io_offset)) ->
         patchWithHarpy (patchInvoke mi reax reax io_offset) reip
-        >>= delTrue
+        >>= delFalse
     (Just (VirtualCall True  mi io_offset)) ->
         patchWithHarpy (patchInvoke mi rebx reax io_offset) reip
-        >>= delTrue
+        >>= delFalse
     Nothing -> case resi of
         0x13371234 -> return (-1) >>= delFalse
         _ -> error $ "getTrapType: abort :-( " ++ (showHex reip ". ")
@@ -57,7 +57,7 @@ mateHandler reip reax rebx resi = do
     else return ()
   return ret_nreip
   where
-    delTrue = (\nreip -> return (False, nreip)) -- TODO: FIXME
+    delTrue = (\nreip -> return (True, nreip))
     delFalse = (\nreip -> return (False, nreip))
 
 
