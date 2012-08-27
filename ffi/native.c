@@ -48,11 +48,13 @@ void java_io_PrintStream__printf___I_V(int a)
 
 struct integer {
 	unsigned int method_table_ptr;
+	unsigned int gc_data;
 	int value;
 };
 
 struct string {
 	unsigned int method_table_ptr;
+	unsigned int gc_data;
 	struct chararray *value;
 };
 

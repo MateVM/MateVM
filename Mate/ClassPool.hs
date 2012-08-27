@@ -89,7 +89,8 @@ getObjectSize path = do
   -- TODO(bernhard): correct sizes for different types...
   let fsize = fromIntegral $ M.size $ ciFieldMap ci
   -- one slot for "method-table-ptr"
-  return $ (1 + fsize) * ptrSize
+  -- one slot for GC-data
+  return $ (2 + fsize) * ptrSize
 
 getStaticFieldAddr :: CPtrdiff -> IO CPtrdiff
 getStaticFieldAddr from = do
@@ -137,7 +138,7 @@ readClass path = do
       -- TODO(bernhard): we have some duplicates in immap (i.e. some
       --                 entries have the same offset), so we could
       --                 save some memory here.
-      iftable <- mallocClassData ((4*) $ M.size immap)
+      iftable <- mallocClassData ((ptrSize*) $ M.size immap)
       let wn_iftable = fromIntegral $ ptrToIntPtr iftable :: NativeWord
       -- store interface-table at offset 0 in method-table
       pokeElemOff (intPtrToPtr $ fromIntegral mbase) 0 wn_iftable
@@ -183,7 +184,7 @@ loadInterface path = do
       -- load map again, because there could be new entries now
       -- due to loading superinterfaces
       imap' <- getInterfaceMap
-      let max_off = fromIntegral $ M.size immap * 4
+      let max_off = fromIntegral $ M.size immap * ptrSize
       -- create index of methods by this interface
       let mm = zipbase max_off (classMethods cfile)
 
@@ -198,7 +199,7 @@ loadInterface path = do
       setInterfaceMethodMap $ M.fromList sm `M.union` M.fromList mm `M.union` immap
       setInterfaceMap $ M.insert path cfile imap'
   where
-    zipbase base = zipWith (\x y -> (entry y, x + base)) [0,4..]
+    zipbase base = zipWith (\x y -> (entry y, x + base)) [0,ptrSize..]
     entry = getname path
     getname p y = p `B.append` methodName y `B.append` encode (methodSignature y)
 
@@ -210,14 +211,14 @@ calculateFields cf superclass = do
     let (sfields, ifields) = partition (S.member ACC_STATIC . fieldAccessFlags) (classFields cf)
 
     let sc_sm = getsupermap superclass ciStaticMap
-    staticbase <- mallocClassData $ fromIntegral (length sfields) * 4
+    staticbase <- mallocClassData $ fromIntegral (length sfields) * ptrSize
     let sm = zipbase (fromIntegral $ ptrToIntPtr staticbase) sfields
     -- new fields "overwrite" old ones, if they have the same name
     let staticmap = sm `M.union` sc_sm
 
     let sc_im = getsupermap superclass ciFieldMap
-    -- "+ 4" for the method table pointer
-    let max_off = (4+) $ fromIntegral $ M.size sc_im * 4
+    -- "+ (2*ptrsize)" for the method table pointer and GC data
+    let max_off = (+ (2*ptrSize)) $ fromIntegral $ M.size sc_im * ptrSize
     let im = zipbase max_off ifields
     -- new fields "overwrite" old ones, if they have the same name
     let fieldmap = im `M.union` sc_im
@@ -225,7 +226,7 @@ calculateFields cf superclass = do
     return (staticmap, fieldmap)
   where
     zipbase :: Int32 -> [Field Direct] -> FieldMap
-    zipbase base = foldr (\(x,y) -> M.insert (fieldName y) (x + base)) M.empty . zip [0,4..]
+    zipbase base = foldr (\(x,y) -> M.insert (fieldName y) (x + base)) M.empty . zip [0,ptrSize..]
 
 -- helper
 getsupermap :: Maybe ClassInfo -> (ClassInfo -> FieldMap) -> FieldMap
@@ -239,14 +240,14 @@ calculateMethodMap cf superclass = do
                          ((/=) "<init>" . methodName) x)
                   (classMethods cf)
     let sc_mm = getsupermap superclass ciMethodMap
-    let max_off = fromIntegral $ M.size sc_mm * 4
+    let max_off = fromIntegral $ M.size sc_mm * ptrSize
     let mm = zipbase max_off methods
     let methodmap = M.fromList mm `M.union` sc_mm
 
     -- (+1): one slot for the interface-table-ptr
-    methodbase <- mallocClassData (((+1) $ fromIntegral $ M.size methodmap) * 4)
+    methodbase <- mallocClassData (((+1) $ fromIntegral $ M.size methodmap) * ptrSize)
     return (methodmap, fromIntegral $ ptrToIntPtr methodbase)
-  where zipbase base = zipWith (\x y -> (entry y, x + base)) [0,4..]
+  where zipbase base = zipWith (\x y -> (entry y, x + base)) [0,ptrSize..]
           where entry y = methodName y `B.append` encode (methodSignature y)
 
 

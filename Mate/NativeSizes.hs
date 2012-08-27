@@ -3,7 +3,7 @@ module Mate.NativeSizes where
 
 import Data.Word
 
-ptrSize, longSize :: NativeWord
+ptrSize, longSize :: Num a => a
 #if defined(ARCH_X86)
 ptrSize = 4
 longSize = 8

@@ -37,11 +37,11 @@ allocateJavaString str = do
    -  this -+
    -        |
    -        v
-   -  +-------------+-------+-------+----------------+--------+
-   -  | MethodTable | value | count | cachedhashcode | offset |
-   -  +-------------+-------+-------+----------------+--------+
-   -        |           |
-   -        |           +------------+
+   -  +-------------+---------+-------+-------+----------------+--------+
+   -  | MethodTable | GC Data | value | count | cachedhashcode | offset |
+   -  +-------------+---------+-------+-------+----------------+--------+
+   -        |                     |
+   -        |                     +--+
    -        v                        v
    -  java/lang/String           +--------+--------+--------+-----+------------------+
    -                             | length | str[0] | str[1] | ... | str [length - 1] |
@@ -51,7 +51,7 @@ allocateJavaString str = do
    -}
   -- build object layout
   fsize <- getObjectSize "java/lang/String"
-  printfStr $ printf "string: fsize: %d (should be 4 * 5)\n" fsize
+  printfStr $ printf "string: fsize: %d (should be 4 * 6)\n" fsize
   tblptr <- mallocObjectUnmanaged $ fromIntegral fsize
   let ptr = intPtrToPtr (fromIntegral tblptr) :: Ptr CPtrdiff
   mtbl <- getMethodTable "java/lang/String"
@@ -69,13 +69,15 @@ allocateJavaString str = do
   let newstr_length = castPtr newstr :: Ptr CPtrdiff
   poke newstr_length $ fromIntegral strlen
 
+  -- set GC Data (TODO)
+  poke (plusPtr ptr 0x4) (0 :: CPtrdiff)
   -- set value pointer
-  poke (plusPtr ptr 4) (fromIntegral (ptrToIntPtr newstr) :: CPtrdiff)
+  poke (plusPtr ptr 0x8) (fromIntegral (ptrToIntPtr newstr) :: CPtrdiff)
   -- set count field
-  poke (plusPtr ptr 8) (fromIntegral strlen :: CPtrdiff)
+  poke (plusPtr ptr 0xc) (fromIntegral strlen :: CPtrdiff)
   -- set hash code (TODO)
-  poke (plusPtr ptr 12) (0 :: CPtrdiff)
+  poke (plusPtr ptr 0x10) (0 :: CPtrdiff)
   -- set offset
-  poke (plusPtr ptr 16) (0 :: CPtrdiff)
+  poke (plusPtr ptr 0x14) (0 :: CPtrdiff)
 
   return $ fromIntegral tblptr

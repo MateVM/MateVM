@@ -11,6 +11,7 @@ import Data.List (genericLength)
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as B
 import Control.Monad
+import Control.Applicative
 
 import Foreign hiding (xor)
 import Foreign.C.Types
@@ -178,8 +179,8 @@ emitFromBB cls method = do
       emit32 (0x9090ffff :: Word32); nop; nop
       let patcher reip = do
             let (cname, fname) = buildFieldOffset cls x
-            offset <- liftIO $ getFieldOffset cname fname
-            push32_rel_eax (Disp (fromIntegral offset)) -- get field
+            offset <- liftIO $ fromIntegral <$> getFieldOffset cname fname
+            push32_rel_eax (Disp offset) -- get field
             return reip
       return $ Just (trapaddr, ObjectField patcher)
     emit' (PUTFIELD x) = do
@@ -190,8 +191,8 @@ emitFromBB cls method = do
       emit32 (0x9090ffff :: Word32); nop; nop
       let patcher reip = do
             let (cname, fname) = buildFieldOffset cls x
-            offset <- liftIO $ getFieldOffset cname fname
-            mov32_rel_ebx_eax (Disp (fromIntegral offset)) -- set field
+            offset <- liftIO $ fromIntegral <$> getFieldOffset cname fname
+            mov32_rel_ebx_eax (Disp offset) -- set field
             return reip
       return $ Just (trapaddr, ObjectField patcher)
 
@@ -215,12 +216,14 @@ emitFromBB cls method = do
       callMalloc
       -- 0x13371337 is just a placeholder; will be replaced with mtable ptr
       mov (Disp 0, eax) (0x13371337 :: Word32)
+      mov (Disp 4, eax) (0x1337babe :: Word32)
       let patcher reip = do
             objsize <- liftIO $ getObjectSize objname
             push32 objsize
             callMalloc
             mtable <- liftIO $ getMethodTable objname
             mov (Disp 0, eax) mtable
+            mov (Disp 4, eax) (0x1337babe :: Word32)
             return reip
       return $ Just (trapaddr, NewObject patcher)
 
