@@ -1,5 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables #-}
-module GC 
+module Mate.GC 
   ({- dont export generic versions for high performance ;-) -}) where
 
 import Control.Monad

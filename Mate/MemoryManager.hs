@@ -1,12 +1,16 @@
-module MemoryManager ( ) where
+{-# LANGUAGE ExistentialQuantification #-}
+module Mate.MemoryManager ( ) where
 
 import qualified Foreign.Marshal.Alloc as Alloc
 import Foreign.Ptr
 import Foreign.Storable
 
+import Data.HashTable
+
+import Text.Printf
 import Control.Monad.State
 
---import GC
+import Mate.GC
 
 class AllocationManager a where
   mallocBytes :: a -> Int -> (a,Ptr b)
@@ -29,3 +33,24 @@ mallocBytes' bytes = do state <- get
                              put $ state { toHeap = end } 
                              return $ intPtrToPtr ptr
         fail = error "no space left in two space (mallocBytes')"
+
+-- here its time for monadtransformer :)
+evacuate :: [Ptr a] -> State TwoSpace (IO (HashTable (Ptr a) (Ptr a)))
+evacuate = undefined
+
+
+initTwoSpace :: Int -> IO TwoSpace
+initTwoSpace size =  do printf "initializing TwoSpace memory manager with %d bytes." size
+                        fromSpace <- Alloc.mallocBytes size
+                        toSpace   <- Alloc.mallocBytes size
+                        if fromSpace /= nullPtr && toSpace /= nullPtr 
+                           then return $ buildToSpace fromSpace toSpace
+                           else error "Could not initialize TwoSpace memory manager (malloc returned null ptr)"
+   where buildToSpace from to = let fromBase' = ptrToIntPtr from
+                                    toBase' = ptrToIntPtr to
+                                    fromExtreme' = ptrToIntPtr $ from `plusPtr` size
+                                    toExtreme' = ptrToIntPtr $ to `plusPtr` size
+                                in TwoSpace { fromBase = fromBase', toBase = toBase',
+                                              fromHeap = fromBase', toHeap = toBase',
+                                              fromExtreme = fromExtreme', toExtreme = toExtreme' }
+
