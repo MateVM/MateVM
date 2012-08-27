@@ -69,10 +69,10 @@ type TrapMap = M.Map NativeWord TrapCause
 type TrapPatcher = CPtrdiff -> CodeGen () () CPtrdiff
 
 data TrapCause
-  = StaticMethod MethodInfo -- for static calls
+  = StaticMethod TrapPatcher -- for static calls
   | VirtualCall Bool MethodInfo (IO NativeWord) -- for invoke{interface,virtual}
   | InstanceOf B.ByteString -- class name
-  | NewObject B.ByteString -- class name
+  | NewObject TrapPatcher -- class name
   | StaticField StaticFieldInfo
   | ObjectField TrapPatcher
 

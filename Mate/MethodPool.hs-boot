@@ -12,4 +12,4 @@ import Foreign.C.Types
 addMethodRef :: NativeWord -> MethodInfo -> [B.ByteString] -> IO ()
 compileBB :: RawMethod -> MethodInfo -> IO NativeWord
 executeFuncPtr :: NativeWord -> IO ()
-getMethodEntry :: CPtrdiff -> CPtrdiff -> IO CPtrdiff
+getMethodEntry :: MethodInfo -> IO CPtrdiff

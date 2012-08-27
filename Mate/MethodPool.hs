@@ -38,24 +38,14 @@ foreign import ccall "&loadLibrary"
 foreign import ccall "&printGCStats"
   printGCStatsAddr :: FunPtr (IO ())
 
-getMethodEntry :: CPtrdiff -> CPtrdiff -> IO CPtrdiff
-getMethodEntry signal_from methodtable = do
+getMethodEntry :: MethodInfo -> IO CPtrdiff
+getMethodEntry mi@(MethodInfo method cm sig) = do
   mmap <- getMethodMap
-  tmap <- getTrapMap
-  vmap <- getVirtualMap
 
-  let w32_from = fromIntegral signal_from
-  let mi = tmap M.! w32_from
-  let mi'@(MethodInfo method cm sig) =
-       case mi of
-         (StaticMethod x) -> x
-         (VirtualCall _ (MethodInfo methname _ msig) _) -> newMi methname msig
-         _ -> error "getMethodEntry: no TrapCause found. abort."
-       where newMi mn = MethodInfo mn (vmap M.! fromIntegral methodtable)
-  entryaddr <- case M.lookup mi' mmap of
+  entryaddr <- case M.lookup mi mmap of
     Nothing -> do
       cls <- getClassFile cm
-      printfMp $ printf "getMethodEntry(from 0x%08x): no method \"%s\" found. compile it\n" w32_from (show mi')
+      printfMp $ printf "getMethodEntry: no method \"%s\" found. compile it\n" (show mi)
       mm <- lookupMethodRecursive method sig [] cls
       case mm of
         Just (mm', clsnames, cls') -> do
@@ -81,12 +71,12 @@ getMethodEntry signal_from methodtable = do
                       symbol = sym1 ++ "__" ++ smethod ++ "__" ++ sym2
                   printfMp $ printf "native-call: symbol: %s\n" symbol
                   nf <- loadNativeFunction symbol
-                  setMethodMap $ M.insert mi' nf mmap
+                  setMethodMap $ M.insert mi nf mmap
                   return nf
               else do
                 rawmethod <- parseMethod cls' method sig
                 entry <- compileBB rawmethod (MethodInfo method (thisClass cls') sig)
-                addMethodRef entry mi' clsnames
+                addMethodRef entry mi clsnames
                 return $ fromIntegral entry
         Nothing -> error $ show method ++ " not found. abort"
     Just w32 -> return w32

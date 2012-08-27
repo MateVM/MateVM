@@ -27,6 +27,7 @@ import Mate.NativeSizes
 import Mate.Types
 import Mate.Utilities
 import Mate.ClassPool
+import {-# SOURCE #-} Mate.MethodPool
 import Mate.Strings
 
 
@@ -109,12 +110,16 @@ emitFromBB cls method = do
       -- causes SIGILL. in the signal handler we patch it to the acutal call.
       -- place two nop's at the end, therefore the disasm doesn't screw up
       emit32 (0x9090ffff :: Word32); nop
+      let patcher reip = do
+            entryAddr <- liftIO $ getMethodEntry l
+            call (fromIntegral (entryAddr - (reip + 5)) :: NativeWord)
+            return reip
       -- discard arguments on stack
       let argcnt = ((if hasThis then 1 else 0) + methodGetArgsCount (methodNameTypeByIdx cls cpidx)) * ptrSize
       when (argcnt > 0) (add esp argcnt)
       -- push result on stack if method has a return value
       when (methodHaveReturnValue cls cpidx) (push eax)
-      return $ Just (calladdr, StaticMethod l)
+      return $ Just (calladdr, StaticMethod patcher)
 
     virtualCall :: Word16 -> Bool -> CodeGen e s (Maybe (Word32, TrapCause))
     virtualCall cpidx isInterface = do
@@ -210,7 +215,14 @@ emitFromBB cls method = do
       callMalloc
       -- 0x13371337 is just a placeholder; will be replaced with mtable ptr
       mov (Disp 0, eax) (0x13371337 :: Word32)
-      return $ Just (trapaddr, NewObject objname)
+      let patcher reip = do
+            objsize <- liftIO $ getObjectSize objname
+            push32 objsize
+            callMalloc
+            mtable <- liftIO $ getMethodTable objname
+            mov (Disp 0, eax) mtable
+            return reip
+      return $ Just (trapaddr, NewObject patcher)
 
     emit' insn = emit insn >> return Nothing
 

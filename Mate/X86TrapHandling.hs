@@ -32,21 +32,21 @@ mateHandler reip reax rebx resi = do
   tmap <- getTrapMap
   let reipw32 = fromIntegral reip
   (deleteMe, ret_nreip) <- case M.lookup reipw32 tmap of
-    (Just (StaticMethod _)) ->
-        patchWithHarpy patchStaticCall reip >>= delTrue
+    (Just (StaticMethod patcher)) ->
+        patchWithHarpy patcher reip >>= delTrue
     (Just (StaticField _))  ->
         staticFieldHandler reip >>= delTrue
     (Just (ObjectField patcher)) ->
         patchWithHarpy patcher reip >>= delTrue
     (Just (InstanceOf cn))  ->
         patchWithHarpy (`patchInstanceOf` cn) reip >>= delFalse
-    (Just (NewObject cn))   ->
-        patchWithHarpy (`patchNewObject` cn) reip >>= delTrue
-    (Just (VirtualCall False _ io_offset)) ->
-        patchWithHarpy (patchInvoke reax reax io_offset) reip
+    (Just (NewObject patcher))   ->
+        patchWithHarpy patcher reip >>= delTrue
+    (Just (VirtualCall False mi io_offset)) ->
+        patchWithHarpy (patchInvoke mi reax reax io_offset) reip
         >>= delTrue
-    (Just (VirtualCall True  _ io_offset)) ->
-        patchWithHarpy (patchInvoke rebx reax io_offset) reip
+    (Just (VirtualCall True  mi io_offset)) ->
+        patchWithHarpy (patchInvoke mi rebx reax io_offset) reip
         >>= delTrue
     Nothing -> case resi of
         0x13371234 -> return (-1) >>= delFalse
@@ -80,13 +80,6 @@ withDisasm patcher = do
   d <- disassemble
   return (reip, d)
 
-patchStaticCall :: CPtrdiff -> CodeGen e s CPtrdiff
-patchStaticCall reip = do
-  entryAddr <- liftIO $ getMethodEntry reip 0
-  call (fromIntegral (entryAddr - (reip + 5)) :: NativeWord)
-  return reip
-
-
 staticFieldHandler :: CPtrdiff -> IO CPtrdiff
 staticFieldHandler reip = do
   -- patch the offset here, first two bytes are part of the insn (opcode + reg)
@@ -104,19 +97,12 @@ patchInstanceOf reip classname = do
   mov edx mtable
   return reip
 
-patchNewObject :: CPtrdiff -> B.ByteString -> CodeGen e s CPtrdiff
-patchNewObject reip classname = do
-  objsize <- liftIO $ getObjectSize classname
-  push32 objsize
-  callMalloc
-  mtable <- liftIO $ getMethodTable classname
-  mov (Disp 0, eax) mtable
-  return reip
-
-patchInvoke :: CPtrdiff -> CPtrdiff -> IO NativeWord -> CPtrdiff -> CodeGen e s CPtrdiff
-patchInvoke method_table table2patch io_offset reip = do
+patchInvoke :: MethodInfo -> CPtrdiff -> CPtrdiff -> IO NativeWord -> CPtrdiff -> CodeGen e s CPtrdiff
+patchInvoke (MethodInfo methname _ msig)  method_table table2patch io_offset reip = do
+  vmap <- liftIO $ getVirtualMap
+  let newmi = MethodInfo methname (vmap M.! fromIntegral method_table) msig
   offset <- liftIO io_offset
-  entryAddr <- liftIO $ getMethodEntry reip method_table
+  entryAddr <- liftIO $ getMethodEntry newmi
   call32_eax (Disp offset)
   -- patch entry in table
   let call_insn = intPtrToPtr . fromIntegral $ table2patch + fromIntegral offset
