@@ -30,19 +30,34 @@ foreign export ccall mateHandler :: CPtrdiff -> CPtrdiff -> CPtrdiff -> CPtrdiff
 mateHandler :: CPtrdiff -> CPtrdiff -> CPtrdiff -> CPtrdiff -> IO CPtrdiff
 mateHandler reip reax rebx resi = do
   tmap <- getTrapMap
-  case M.lookup (fromIntegral reip) tmap of
-    (Just (StaticMethod _)) -> patchWithHarpy patchStaticCall reip
-    (Just (StaticField _))  -> staticFieldHandler reip
-    (Just (InstanceOf cn))  -> patchWithHarpy (`patchInstanceOf` cn) reip
-    (Just (NewObject cn))   -> patchWithHarpy (`patchNewObject` cn) reip
+  let reipw32 = fromIntegral reip
+  (deleteMe, ret_nreip) <- case M.lookup reipw32 tmap of
+    (Just (StaticMethod _)) ->
+        patchWithHarpy patchStaticCall reip >>= delTrue
+    (Just (StaticField _))  ->
+        staticFieldHandler reip >>= delTrue
+    (Just (InstanceOf cn))  ->
+        patchWithHarpy (`patchInstanceOf` cn) reip >>= delFalse
+    (Just (NewObject cn))   ->
+        patchWithHarpy (`patchNewObject` cn) reip >>= delTrue
     (Just (VirtualCall False _ io_offset)) ->
-          patchWithHarpy (patchInvoke reax reax io_offset) reip
+        patchWithHarpy (patchInvoke reax reax io_offset) reip
+        >>= delTrue
     (Just (VirtualCall True  _ io_offset)) ->
-          patchWithHarpy (patchInvoke rebx reax io_offset) reip
+        patchWithHarpy (patchInvoke rebx reax io_offset) reip
+        >>= delTrue
     Nothing -> case resi of
-        0x13371234 -> return (-1)
+        0x13371234 -> return (-1) >>= delFalse
         _ -> error $ "getTrapType: abort :-( " ++ (showHex reip ". ")
              ++ (concatMap (`showHex` ", ") (M.keys tmap))
+  if deleteMe
+    then setTrapMap $ M.delete reipw32 tmap
+    else return ()
+  return ret_nreip
+  where
+    delTrue = (\nreip -> return (False, nreip))
+    delFalse = (\nreip -> return (False, nreip))
+
 
 patchWithHarpy :: (CPtrdiff -> CodeGen () () CPtrdiff) -> CPtrdiff -> IO CPtrdiff
 patchWithHarpy patcher reip = do
@@ -52,7 +67,9 @@ patchWithHarpy patcher reip = do
   let entry = Just (intPtrToPtr (fromIntegral reip), fixme)
   let cgconfig = defaultCodeGenConfig { customCodeBuffer = entry }
   (_, Right right) <- runCodeGenWithConfig (withDisasm $ patcher reip) () () cgconfig
-  mapM_ (printfJit . printf "patched: %s\n" . showAtt) $ snd right
+  if mateDEBUG
+    then mapM_ (printfJit . printf "patched: %s\n" . showAtt) $ snd right
+    else return ()
   return reip
 
 withDisasm :: CodeGen e s CPtrdiff -> CodeGen e s (CPtrdiff, [Instruction])
