@@ -171,7 +171,7 @@ readClass path = do
       super_mtable <- case superclass of
         Nothing -> return 0
         Just x -> getMethodTable $ ciName x
-      addClassEntry mbase super_mtable
+      addClassEntry mbase super_mtable (interfaces cfile)
 
       return new_ci
 
@@ -196,7 +196,7 @@ loadInterface path = do
       -- create index of methods by this interface
       let mm = zipbase max_off (classMethods cfile)
 
-      -- create for each method from *every* superinterface a entry to,
+      -- create for each method from *every* superinterface an entry too,
       -- but just put in the same offset as it is already in the map
       let (ifnames, methodnames) = unzip $ concat
             [ zip (repeat ifname) (classMethods $ imap' M.! ifname)
@@ -206,6 +206,9 @@ loadInterface path = do
       -- merge all offset tables
       setInterfaceMethodMap $ M.fromList sm `M.union` M.fromList mm `M.union` immap
       setInterfaceMap $ M.insert path cfile imap'
+
+      -- add Interface to Hierarchy
+      addInterfaceEntry path (interfaces cfile)
   where
     zipbase base = zipWith (\x y -> (entry y, x + base)) [0,ptrSize..]
     entry = getname path
