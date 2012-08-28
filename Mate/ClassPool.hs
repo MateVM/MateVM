@@ -43,6 +43,7 @@ import Mate.Types
 import Mate.Debug
 import Mate.GarbageAlloc
 import Mate.NativeSizes
+import {-# SOURCE #-} Mate.ClassHierarchy
 
 getClassInfo :: B.ByteString -> IO ClassInfo
 getClassInfo path = do
@@ -165,6 +166,13 @@ readClass path = do
       class_map <- getClassMap
       let new_ci = ClassInfo path cfile staticmap fieldmap methodmap mbase False
       setClassMap $ M.insert path new_ci class_map
+
+      -- add Class to Hierarchy
+      super_mtable <- case superclass of
+        Nothing -> return 0
+        Just x -> getMethodTable $ ciName x
+      addClassEntry mbase super_mtable
+
       return new_ci
 
 

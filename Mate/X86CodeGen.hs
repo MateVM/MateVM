@@ -199,26 +199,18 @@ emitFromBB cls method = do
 
     emit' (INSTANCEOF cpidx) = do
       pop eax
-      mov eax (Disp 0, eax) -- mtable of objectref
       trapaddr <- getCurrentOffset
       -- place something like `mov edx $mtable_of_objref' instead
-      emit32 (0x9090ffff :: Word32); nop
+      emit32 (0x9090ffff :: Word32)
       push (0 :: Word32)
       let patcher reax reip = do
-            -- mtable <- liftIO $ getMethodTable (buildClassID cls cpidx)
-            -- mov edx mtable
-            emit32 (0x9090ffff :: Word32); nop
+            emit32 (0x9090ffff :: Word32)
             let classname = buildClassID cls cpidx
             check <- liftIO $ isInstanceOf (fromIntegral reax) classname
             if check
               then push (1 :: Word32)
               else push (0 :: Word32)
-            return (reip + 5)
-      -- cmp eax edx
-      -- sete al
-      -- movzxb eax al
-      -- push eax
-      -- forceRegDump
+            return (reip + 4)
       return $ Just (trapaddr, InstanceOf patcher)
     emit' (NEW objidx) = do
       let objname = buildClassID cls objidx
