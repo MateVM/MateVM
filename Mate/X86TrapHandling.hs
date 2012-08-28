@@ -12,7 +12,7 @@ import qualified Data.ByteString.Lazy as B
 import Foreign
 import Foreign.C.Types
 
-import Harpy
+import Harpy hiding (fst)
 
 import Mate.Types
 import Mate.NativeSizes
@@ -38,8 +38,8 @@ mateHandler reip reax rebx resi = do
         staticFieldHandler reip >>= delTrue
     (Just (ObjectField patcher)) ->
         patchWithHarpy patcher reip >>= delTrue
-    (Just (InstanceOf cn))  ->
-        patchWithHarpy (`patchInstanceOf` cn) reip >>= delFalse
+    (Just (InstanceOf patcher))  ->
+        patchWithHarpy (patcher reax) reip >>= delFalse
     (Just (NewObject patcher))   ->
         patchWithHarpy patcher reip >>= delTrue
     (Just (VirtualCall False mi io_offset)) ->
@@ -72,7 +72,7 @@ patchWithHarpy patcher reip = do
   if mateDEBUG
     then mapM_ (printfJit . printf "patched: %s\n" . showAtt) $ snd right
     else return ()
-  return reip
+  return $ fst right
 
 withDisasm :: CodeGen e s CPtrdiff -> CodeGen e s (CPtrdiff, [Instruction])
 withDisasm patcher = do
@@ -90,12 +90,6 @@ staticFieldHandler reip = do
       getStaticFieldAddr reip >>= poke imm_ptr
       return reip
     else error "staticFieldHandler: something is wrong here. abort.\n"
-
-patchInstanceOf :: CPtrdiff -> B.ByteString -> CodeGen e s CPtrdiff
-patchInstanceOf reip classname = do
-  mtable <- liftIO $ getMethodTable classname
-  mov edx mtable
-  return reip
 
 patchInvoke :: MethodInfo -> CPtrdiff -> CPtrdiff -> IO NativeWord -> CPtrdiff -> CodeGen e s CPtrdiff
 patchInvoke (MethodInfo methname _ msig)  method_table table2patch io_offset reip = do

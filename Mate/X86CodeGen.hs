@@ -28,6 +28,7 @@ import Mate.NativeSizes
 import Mate.Types
 import Mate.Utilities
 import Mate.ClassPool
+import Mate.ClassHierarchy
 import {-# SOURCE #-} Mate.MethodPool
 import Mate.Strings
 
@@ -202,12 +203,23 @@ emitFromBB cls method = do
       trapaddr <- getCurrentOffset
       -- place something like `mov edx $mtable_of_objref' instead
       emit32 (0x9090ffff :: Word32); nop
-      cmp eax edx
-      sete al
-      movzxb eax al
-      push eax
-      forceRegDump
-      return $ Just (trapaddr, InstanceOf $ buildClassID cls cpidx)
+      push (0 :: Word32)
+      let patcher reax reip = do
+            -- mtable <- liftIO $ getMethodTable (buildClassID cls cpidx)
+            -- mov edx mtable
+            emit32 (0x9090ffff :: Word32); nop
+            let classname = buildClassID cls cpidx
+            check <- liftIO $ isInstanceOf (fromIntegral reax) classname
+            if check
+              then push (1 :: Word32)
+              else push (0 :: Word32)
+            return (reip + 5)
+      -- cmp eax edx
+      -- sete al
+      -- movzxb eax al
+      -- push eax
+      -- forceRegDump
+      return $ Just (trapaddr, InstanceOf patcher)
     emit' (NEW objidx) = do
       let objname = buildClassID cls objidx
       trapaddr <- getCurrentOffset
