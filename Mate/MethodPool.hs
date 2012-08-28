@@ -8,6 +8,7 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.ByteString.Lazy as B
 import System.Plugins
+import Control.Monad
 
 import Foreign.Ptr
 import Foreign.C.Types
@@ -53,7 +54,7 @@ getMethodEntry mi@(MethodInfo method cm sig) = do
             if S.member ACC_NATIVE flags
               then do
                 let scm = toString cm; smethod = toString method
-                if scm == "jmate/lang/MateRuntime" then do
+                if scm == "jmate/lang/MateRuntime" then
                   case smethod of
                     "loadLibrary" ->
                        return . funPtrToAddr $ loadLibraryAddr
@@ -137,7 +138,7 @@ compileBB rawmethod methodinfo = do
 
   cls <- getClassFile (methClassName methodinfo)
   let ebb = emitFromBB cls rawmethod
-  let cgconfig = defaultCodeGenConfig { codeBufferSize = fromIntegral $ (rawCodeLength rawmethod) * 32 }
+  let cgconfig = defaultCodeGenConfig { codeBufferSize = fromIntegral $ rawCodeLength rawmethod * 32 }
   (_, Right right) <- runCodeGenWithConfig ebb () () cgconfig
 
   let ((entry, _, _, new_tmap), _) = right
@@ -145,9 +146,7 @@ compileBB rawmethod methodinfo = do
 
   printfJit $ printf "generated code of \"%s\" from \"%s\":\n" (toString $ methName methodinfo) (toString $ methClassName methodinfo)
   printfJit $ printf "\tstacksize: 0x%04x, locals: 0x%04x\n" (rawStackSize rawmethod) (rawLocals rawmethod)
-  if mateDEBUG
-    then mapM_ (printfJit . printf "%s\n" . showAtt) (snd right)
-    else return ()
+  when mateDEBUG $ mapM_ (printfJit . printf "%s\n" . showAtt) (snd right)
   printfJit $ printf "\n\n"
   -- UNCOMMENT NEXT LINES FOR GDB FUN
   -- if (toString $ methName methodinfo) == "thejavamethodIwant2debug"

@@ -14,6 +14,7 @@ module Mate.Debug
 import Text.Printf
 import System.IO
 import System.IO.Unsafe
+import Control.Monad
 
 
 {-# NOINLINE logHandle #-}
@@ -27,9 +28,7 @@ mateDEBUG = False
 
 {-# INLINE printString #-}
 printString :: String -> String -> IO ()
-printString prefix str = if mateDEBUG
-  then hPutStr logHandle . (++) prefix $ str
-  else return ()
+printString prefix str = when mateDEBUG $ hPutStr logHandle . (++) prefix $ str
 
 
 printfJit, printfBb, printfMp, printfCp, printfStr, printfInfo  :: String -> IO ()

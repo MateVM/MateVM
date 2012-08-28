@@ -7,7 +7,7 @@ module Mate.X86TrapHandling (
 
 import Numeric
 import qualified Data.Map as M
-import qualified Data.ByteString.Lazy as B
+import Control.Monad
 
 import Foreign
 import Foreign.C.Types
@@ -49,16 +49,14 @@ mateHandler reip reax rebx resi = do
         patchWithHarpy (patchInvoke mi rebx reax io_offset) reip
         >>= delFalse
     Nothing -> case resi of
-        0x13371234 -> return (-1) >>= delFalse
-        _ -> error $ "getTrapType: abort :-( " ++ (showHex reip ". ")
-             ++ (concatMap (`showHex` ", ") (M.keys tmap))
-  if deleteMe
-    then setTrapMap $ M.delete reipw32 tmap
-    else return ()
+        0x13371234 -> delFalse (-1)
+        _ -> error $ "getTrapType: abort :-( " ++ showHex reip ". "
+             ++ concatMap (`showHex` ", ") (M.keys tmap)
+  when deleteMe $ setTrapMap $ M.delete reipw32 tmap
   return ret_nreip
-  where
-    delTrue = (\nreip -> return (True, nreip))
-    delFalse = (\nreip -> return (False, nreip))
+    where
+      delTrue x = return (True,x)
+      delFalse x = return (False,x)
 
 
 patchWithHarpy :: (CPtrdiff -> CodeGen () () CPtrdiff) -> CPtrdiff -> IO CPtrdiff
@@ -69,9 +67,7 @@ patchWithHarpy patcher reip = do
   let entry = Just (intPtrToPtr (fromIntegral reip), fixme)
   let cgconfig = defaultCodeGenConfig { customCodeBuffer = entry }
   (_, Right right) <- runCodeGenWithConfig (withDisasm $ patcher reip) () () cgconfig
-  if mateDEBUG
-    then mapM_ (printfJit . printf "patched: %s\n" . showAtt) $ snd right
-    else return ()
+  when mateDEBUG $ mapM_ (printfJit . printf "patched: %s\n" . showAtt) $ snd right
   return $ fst right
 
 withDisasm :: CodeGen e s CPtrdiff -> CodeGen e s (CPtrdiff, [Instruction])
@@ -93,11 +89,11 @@ staticFieldHandler reip = do
 
 patchInvoke :: MethodInfo -> CPtrdiff -> CPtrdiff -> IO NativeWord -> CPtrdiff -> CodeGen e s CPtrdiff
 patchInvoke (MethodInfo methname _ msig)  method_table table2patch io_offset reip = do
-  vmap <- liftIO $ getVirtualMap
+  vmap <- liftIO getVirtualMap
   let newmi = MethodInfo methname (vmap M.! fromIntegral method_table) msig
   offset <- liftIO io_offset
   entryAddr <- liftIO $ getMethodEntry newmi
-  call32_eax (Disp offset)
+  call32Eax (Disp offset)
   -- patch entry in table
   let call_insn = intPtrToPtr . fromIntegral $ table2patch + fromIntegral offset
   liftIO $ poke call_insn entryAddr

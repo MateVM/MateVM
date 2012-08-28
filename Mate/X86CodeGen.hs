@@ -107,11 +107,9 @@ emitFromBB cls method = do
     emitInvoke :: Word16 -> Bool -> CodeGen e s (Maybe (Word32, TrapCause))
     emitInvoke cpidx hasThis = do
       let l = buildMethodID cls cpidx
-      calladdr <- getCurrentOffset
       newNamedLabel (show l) >>= defineLabel
-      -- causes SIGILL. in the signal handler we patch it to the acutal call.
-      -- place two nop's at the end, therefore the disasm doesn't screw up
-      emit32 (0x9090ffff :: Word32); nop
+      -- like: call $0x01234567
+      calladdr <- emitSigIllTrap 5
       let patcher reip = do
             entryAddr <- liftIO $ getMethodEntry l
             call (fromIntegral (entryAddr - (reip + 5)) :: NativeWord)
@@ -134,15 +132,14 @@ emitFromBB cls method = do
       let argsLen = genericLength args
       -- objref lives somewhere on the argument stack
       mov ebx (Disp (argsLen * ptrSize), esp)
-      if isInterface
-        then mov ebx (Disp 0, ebx) -- get method-table-ptr, keep it in ebx
-        else return () -- invokevirtual
+      when isInterface $
+        mov ebx (Disp 0, ebx) -- get method-table-ptr, keep it in ebx
       -- get method-table-ptr (or interface-table-ptr)
       mov eax (Disp 0, ebx)
       -- make actual (indirect) call
       calladdr <- getCurrentOffset
       -- will be patched to this: call (Disp 0xXXXXXXXX, eax)
-      emit32 (0x9090ffff :: Word32); nop; nop
+      emitSigIllTrap 6
       -- discard arguments on stack (`+1' for "this")
       let argcnt = ptrSize * (1 + methodGetArgsCount (methodNameTypeByIdx cls cpidx))
       when (argcnt > 0) (add esp argcnt)
@@ -175,36 +172,33 @@ emitFromBB cls method = do
 
     emit' (GETFIELD x) = do
       pop eax -- this pointer
-      trapaddr <- getCurrentOffset
       -- like: 099db064  ff b0 e4 14 00 00 pushl  5348(%eax)
-      emit32 (0x9090ffff :: Word32); nop; nop
+      trapaddr <- emitSigIllTrap 6
       let patcher reip = do
             let (cname, fname) = buildFieldOffset cls x
             offset <- liftIO $ fromIntegral <$> getFieldOffset cname fname
-            push32_rel_eax (Disp offset) -- get field
+            push32RelEax (Disp offset) -- get field
             return reip
       return $ Just (trapaddr, ObjectField patcher)
     emit' (PUTFIELD x) = do
       pop ebx -- value to write
       pop eax -- this pointer
-      trapaddr <- getCurrentOffset
       -- like: 4581fc6b  89 98 30 7b 00 00 movl   %ebx,31536(%eax)
-      emit32 (0x9090ffff :: Word32); nop; nop
+      trapaddr <- emitSigIllTrap 6
       let patcher reip = do
             let (cname, fname) = buildFieldOffset cls x
             offset <- liftIO $ fromIntegral <$> getFieldOffset cname fname
-            mov32_rel_ebx_eax (Disp offset) -- set field
+            mov32RelEbxEax (Disp offset) -- set field
             return reip
       return $ Just (trapaddr, ObjectField patcher)
 
     emit' (INSTANCEOF cpidx) = do
       pop eax
-      trapaddr <- getCurrentOffset
       -- place something like `mov edx $mtable_of_objref' instead
-      emit32 (0x9090ffff :: Word32)
+      trapaddr <- emitSigIllTrap 4
       push (0 :: Word32)
       let patcher reax reip = do
-            emit32 (0x9090ffff :: Word32)
+            emitSigIllTrap 4
             let classname = buildClassID cls cpidx
             check <- liftIO $ isInstanceOf (fromIntegral reax) classname
             if check
@@ -214,9 +208,8 @@ emitFromBB cls method = do
       return $ Just (trapaddr, InstanceOf patcher)
     emit' (NEW objidx) = do
       let objname = buildClassID cls objidx
-      trapaddr <- getCurrentOffset
       -- place something like `push $objsize' instead
-      emit32 (0x9090ffff :: Word32); nop
+      trapaddr <- emitSigIllTrap 5
       callMalloc
       -- 0x13371337 is just a placeholder; will be replaced with mtable ptr
       mov (Disp 0, eax) (0x13371337 :: Word32)
@@ -372,6 +365,15 @@ emitFromBB cls method = do
         --  (it didn't work for gnu/classpath/SystemProperties.java)
         jmp l2
 
+    emitSigIllTrap :: Int -> CodeGen e s NativeWord
+    emitSigIllTrap traplen = do
+      trapaddr <- getCurrentOffset
+      -- 0xffff causes SIGILL
+      emit8 (0xff :: Word8); emit8 (0xff :: Word8)
+      -- fill rest up with NOPs
+      sequence_ [nop | _ <- [1 .. (traplen - 2)]]
+      return trapaddr
+
 
   -- for locals we use a different storage
   cArgs :: Word8 -> Word32
@@ -407,13 +409,13 @@ push32 :: Word32 -> CodeGen e s ()
 push32 imm32 = emit8 0x68 >> emit32 imm32
 
 -- call disp32(%eax)
-call32_eax :: Disp -> CodeGen e s ()
-call32_eax (Disp disp32) = emit8 0xff >> emit8 0x90 >> emit32 disp32
+call32Eax :: Disp -> CodeGen e s ()
+call32Eax (Disp disp32) = emit8 0xff >> emit8 0x90 >> emit32 disp32
 
 -- push disp32(%eax)
-push32_rel_eax :: Disp -> CodeGen e s ()
-push32_rel_eax (Disp disp32) = emit8 0xff >> emit8 0xb0 >> emit32 disp32
+push32RelEax :: Disp -> CodeGen e s ()
+push32RelEax (Disp disp32) = emit8 0xff >> emit8 0xb0 >> emit32 disp32
 
 -- mov %ebx, disp32(%eax)
-mov32_rel_ebx_eax :: Disp -> CodeGen e s ()
-mov32_rel_ebx_eax (Disp disp32) = emit8 0x89 >> emit8 0x98 >> emit32 disp32
+mov32RelEbxEax :: Disp -> CodeGen e s ()
+mov32RelEbxEax (Disp disp32) = emit8 0x89 >> emit8 0x98 >> emit32 disp32

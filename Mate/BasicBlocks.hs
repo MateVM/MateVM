@@ -34,21 +34,21 @@ printMapBB :: MapBB -> IO ()
 printMapBB hmap = do
   printfBb "BlockIDs: "
   let keys = M.keys hmap
-  mapM_ (printfBb. (flip (++)) ", " . show) keys
-  printfBb "\n\nBasicBlocks:"
+  mapM_ (printfBb . flip (++) ", " . show) keys
+  printfBb "\n\nBasicBlocks:\n"
   printMapBB' keys hmap
     where
       printMapBB' :: [BlockID] -> MapBB -> IO ()
       printMapBB' [] _ = return ()
       printMapBB' (i:is) hmap' = case M.lookup i hmap' of
         Just bb -> do
-          printfBb $ "Block " ++ (show i)
-          mapM_ printfBb (map ((++) "\t" . show) $ code bb)
+          printfBb $ "Block " ++ show i ++ "\n"
+          mapM_ (printfBb . flip (++) "\n" . (++) "\t" . show) $ code bb
           printfBb $ case successor bb of
             Return -> ""
-            FallThrough t1 -> "Sucessor: " ++ (show t1) ++ "\n"
-            OneTarget t1 -> "Sucessor: " ++ (show t1) ++ "\n"
-            TwoTarget t1 t2 -> "Sucessor: " ++ (show t1) ++ ", " ++ (show t2) ++ "\n"
+            FallThrough t1 -> "Sucessor: " ++ show t1 ++ "\n"
+            OneTarget t1 -> "Sucessor: " ++ show t1 ++ "\n"
+            TwoTarget t1 t2 -> "Sucessor: " ++ show t1 ++ ", " ++ show t2 ++ "\n"
           printMapBB' is hmap
         Nothing -> error $ "BlockID " ++ show i ++ " not found."
 

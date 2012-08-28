@@ -150,16 +150,14 @@ readClass path = do
                   where val = fromIntegral (mmap M.! key) :: NativeWord
             printfCp $ printf "%s\n" header
             mapM_ printValue (M.keys mmap)
-      if mateDEBUG
-        then do
-          let strpath = toString path
-          hexDumpMap ("staticmap @ " ++ strpath) staticmap
-          hexDumpMap ("fieldmap @ " ++ strpath) fieldmap
-          hexDumpMap ("methodmap @ " ++ strpath) methodmap
-          hexDumpMap ("interfacemap @ " ++ strpath) immap
-          printfCp $ printf "mbase:   0x%08x\n" mbase
-          printfCp $ printf "iftable: 0x%08x\n" wn_iftable
-        else return ()
+      when mateDEBUG $ do
+        let strpath = toString path
+        hexDumpMap ("staticmap @ " ++ strpath) staticmap
+        hexDumpMap ("fieldmap @ " ++ strpath) fieldmap
+        hexDumpMap ("methodmap @ " ++ strpath) methodmap
+        hexDumpMap ("interfacemap @ " ++ strpath) immap
+        printfCp $ printf "mbase:   0x%08x\n" mbase
+        printfCp $ printf "iftable: 0x%08x\n" wn_iftable
       virtual_map <- getVirtualMap
       setVirtualMap $ M.insert mbase path virtual_map
 
