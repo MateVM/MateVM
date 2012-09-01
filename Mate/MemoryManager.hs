@@ -5,8 +5,6 @@ import qualified Foreign.Marshal.Alloc as Alloc
 import Foreign.Ptr
 import Foreign.Storable
 
-import Data.HashTable
-
 import Text.Printf
 import Control.Monad.State
 
