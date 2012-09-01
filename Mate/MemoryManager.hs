@@ -14,7 +14,12 @@ import Control.Applicative
 import Mate.GC
 
 class AllocationManager a where
+  
+  -- | allocates n bytes in current space to space (may be to space or gen0 space)
   mallocBytes :: Int -> StateT a IO (Ptr b)
+  
+  -- | performs full gc and which is reflected in mem managers state
+  performCollection :: (RefObj b) => [b] ->  StateT a IO ()
 
 data TwoSpace = TwoSpace { fromBase :: IntPtr, 
                            toBase   :: IntPtr, 
@@ -25,6 +30,30 @@ data TwoSpace = TwoSpace { fromBase :: IntPtr,
 
 instance AllocationManager TwoSpace where
   mallocBytes = mallocBytes'
+  performCollection = performCollection'
+
+
+performCollection' :: (RefObj a) => [a] -> StateT TwoSpace IO ()
+performCollection' roots = do oldState <- get
+                              modify switchSpaces
+                              newState <- get
+                              lift (performCollectionIO newState roots)
+                              -- [todo hs]: patch gc roots
+                         
+-- [todo hs] this is slow. merge phases to eliminate list with refs
+performCollectionIO :: (AllocationManager b, RefObj a) => b -> [a] -> IO ()
+performCollectionIO manager refs = do lifeRefs <- liftM concat $ mapM (markTree'' marked mark []) refs
+                                      evacuateList lifeRefs manager
+                                      patchAllRefs lifeRefs                       
+
+switchSpaces :: TwoSpace -> TwoSpace
+switchSpaces old = old { fromHeap = toHeap old,
+                         toHeap = fromBase old, 
+                         fromBase = toBase old,
+                         toBase = fromBase old,
+                         fromExtreme = toExtreme old,
+                         toExtreme = fromExtreme old }
+
 
 mallocBytes' :: Int -> StateT TwoSpace IO (Ptr b)
 mallocBytes' bytes = do state <- get
@@ -41,7 +70,7 @@ mallocBytes' bytes = do state <- get
 
 
 evacuate' :: (RefObj a, AllocationManager b) => [a] -> StateT b IO ()
-evacuate' = foldr (\x evac -> evac >> evacuate'' x) (liftIO (return ())) 
+evacuate' =  mapM_ evacuate'' 
 
 evacuate'' :: (RefObj a, AllocationManager b) => a -> StateT b IO ()
 evacuate'' obj = do (size,payload) <- liftIO ((,) <$> size obj <*> payload obj)
@@ -50,7 +79,7 @@ evacuate'' obj = do (size,payload) <- liftIO ((,) <$> size obj <*> payload obj)
                     liftIO (putStrLn ("evacuating: " ++ show obj ++ " and set: " ++ show newPtr))
                     -- copy data over and leave notice
                     liftIO (copyBytes newPtr (intPtrToPtr payload) size >> 
-                            newRef obj (cast newPtr))
+                            setNewRef obj (cast newPtr))
 
 evacuateList :: (RefObj a, AllocationManager b) => [a] -> b -> IO ()
 evacuateList objs manager = evalStateT (evacuate' objs) manager

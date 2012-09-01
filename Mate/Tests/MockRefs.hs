@@ -19,7 +19,7 @@ instance RefObj (Ptr a) where
   marked      = markedRef
   mark        = markRef (0x1::Int32)
   unmark      = markRef (0x0::Int32)
-  newRef      = newRefPtr
+  setNewRef   = setNewRefPtr
   patchRefs   = patchRefsPtr
   cast = castPtr
   getNewRef ptr = peekByteOff ptr newRefOff
@@ -45,8 +45,8 @@ markedRef ptr = liftM ((/=0) . fromIntegral) (peekByteOff ptr markedOff :: IO In
 markRef :: Int32 -> Ptr a -> IO ()
 markRef val ptr = pokeByteOff ptr markedOff val
 
-newRefPtr :: Ptr a -> Ptr a -> IO ()
-newRefPtr ptr newPtr = pokeByteOff ptr newRefOff newPtr
+setNewRefPtr :: Ptr a -> Ptr a -> IO ()
+setNewRefPtr ptr newPtr = pokeByteOff ptr newRefOff newPtr
 
 patchRefsPtr :: Ptr a -> [Ptr a] -> IO ()
 patchRefsPtr ptr xs = pokeArray (ptr `plusPtr` fieldsOff) xs

@@ -16,7 +16,7 @@ class (Eq a, Ord a, Show a) => RefObj a where
  
   refs      :: a -> IO [a]
   patchRefs :: a -> [a] -> IO ()
-  newRef    :: a -> a -> IO ()
+  setNewRef :: a -> a -> IO ()
   getNewRef :: a -> IO a
   
   marked  :: a -> IO Bool
