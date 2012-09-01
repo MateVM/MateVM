@@ -1,10 +1,9 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module Mate.GC 
-  ({- dont export generic versions for high performance ;-) -}) where
+  ( RefObj
+    {- dont export generic versions for high performance -> remove for production -}) where
 
 import Control.Monad
-
---import Data.Foldable hiding (mapM_)
 
 import Foreign.Ptr
 import Foreign.Marshal.Alloc
@@ -16,15 +15,18 @@ import qualified Data.Set as S
 import Text.Printf
 
 class (Eq a, Ord a) => RefObj a where
+  
   payload :: a -> IO IntPtr
-  refs    :: a -> IO [a]
+
+  refs      :: a -> IO [a]
+  patchRefs :: a -> [a] -> IO ()
+  newRef    :: a -> a -> IO ()
+  
   marked  :: a -> IO Bool
   mark    :: a -> IO ()
   unmark  :: a -> IO ()
-
--- TODO hs: wtf? i am failing to create a printable class with superclass refobj??
---class RefObj a => PrintableRefObj a where 
---  printRef   :: a -> IO ()
+  
+  copy :: a -> IO a
 
 class PrintableRef a where
   printRef :: a -> IO ()
@@ -35,6 +37,9 @@ instance RefObj (Ptr a) where
   marked      = markedRef
   mark        = markRef (0x1::Int32)
   unmark      = markRef (0x0::Int32)
+  newRef      = newRefPtr
+  patchRefs   = undefined
+  copy = undefined
 
 instance PrintableRef (Ptr a) where
   printRef    = printRef'
@@ -42,8 +47,9 @@ instance PrintableRef (Ptr a) where
 
 idOff           = 0x0
 numberOfObjsOff = 0x4
-fieldsOff = 0xC
 markedOff = 0x8
+newRefOff = 0xC
+fieldsOff = 0x10
 
 unpackRefs :: Ptr Int32 -> IO [Ptr b]
 unpackRefs ptr = do  --dereference number of objs; mark field skipped via fieldsOffset
@@ -56,10 +62,14 @@ markedRef ptr = liftM ((/=0) . fromIntegral) (peekByteOff ptr markedOff :: IO In
 markRef :: Int32 -> Ptr a -> IO ()
 markRef val ptr = pokeByteOff ptr markedOff val
 
+newRefPtr :: Ptr a -> Ptr a -> IO ()
+newRefPtr ptr newRef = pokeByteOff ptr newRefOff newRef
+
 printRef' :: Ptr a -> IO ()
 printRef' ptr = do printf "obj 0x%08x\n" =<< (peekByteOff ptr idOff :: IO Int32)
                    printf "children 0x%08x\n" =<< (peekByteOff ptr numberOfObjsOff :: IO Int32)                  
-                   printf "marked 0x%08x\n\n" =<< (peekByteOff ptr markedOff :: IO Int32)
+                   printf "marked 0x%08x\n" =<< (peekByteOff ptr markedOff :: IO Int32)
+                   printf "newRef 0x%08x\n\n" =<< (peekByteOff ptr newRefOff :: IO Int32)
 
 -- | Generically marks a graph (can be used to set mark bit and reset mark bit at the same time
 -- using customized loopcheck and marker funcs (i.e. to set the bit check on ==1 and on ==0 otherwise)
@@ -88,26 +98,26 @@ printTree :: Ptr a -> IO ()
 printTree = traverseIO printRef'
 
 
-emptyObj id  = do mem <- mallocBytes 0xC
-                  pokeArray mem [id,0,0::Int32]
+emptyObj id  = do mem <- mallocBytes 0x10
+                  pokeArray mem [id,0,0::Int32,0]
                   return mem
 
-twoRefs = do mem <- mallocBytes 0x14
+twoRefs = do mem <- mallocBytes 0x18
              -- idOfObj; numberofObj; marked waste memory Int32
-             pokeArray mem [0::Int32,2,0]
+             pokeArray mem [0::Int32,2,0,0]
              obj1 <- emptyObj 1
              obj2 <- emptyObj 2
-             pokeByteOff mem 0xC obj1
-             pokeByteOff mem 0x10 obj2
+             pokeByteOff mem 0x10 obj1
+             pokeByteOff mem 0x14 obj2
              return mem
 
-cyclR = do mem <- mallocBytes 0x18
-           pokeArray mem [0::Int32,3,0]
+cyclR = do mem <- mallocBytes 0x1C
+           pokeArray mem [0::Int32,3,0,0]
            obj1 <- emptyObj 1
            obj2 <- emptyObj 2
-           pokeByteOff mem 0xC obj1
-           pokeByteOff mem 0x10 obj2
-           pokeByteOff mem 0x14 mem
+           pokeByteOff mem 0x10 obj1
+           pokeByteOff mem 0x14 obj2
+           pokeByteOff mem 0x18 mem
            return mem
 
 test objr = do twoRefs <- objr

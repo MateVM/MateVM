@@ -34,9 +34,13 @@ mallocBytes' bytes = do state <- get
                              return $ intPtrToPtr ptr
         fail = error "no space left in two space (mallocBytes')"
 
--- here its time for monadtransformer :)
-evacuate :: [Ptr a] -> State TwoSpace (IO (HashTable (Ptr a) (Ptr a)))
+type Action = IO ()
+
+evacuate :: RefObj a => [a] -> State TwoSpace Action
 evacuate = undefined
+
+evacuate' :: RefObj a => a -> State TwoSpace Action
+evacuate' = undefined
 
 
 initTwoSpace :: Int -> IO TwoSpace
