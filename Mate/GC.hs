@@ -1,6 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module Mate.GC 
-  ( RefObj(..), PrintableRef(..), traverseIO, markTree'' 
+  ( RefObj(..), PrintableRef(..), traverseIO, markTree'', patchAllRefs 
     {- dont export generic versions for high performance -> remove for production -}) where
 
 import Control.Monad
@@ -8,7 +8,7 @@ import qualified Data.Set as S
 
 import Foreign.Ptr (IntPtr, Ptr)
 
-class (Eq a, Ord a) => RefObj a where
+class (Eq a, Ord a, Show a) => RefObj a where
   
   payload :: a -> IO IntPtr
   size    :: a -> IO Int
@@ -17,6 +17,7 @@ class (Eq a, Ord a) => RefObj a where
   refs      :: a -> IO [a]
   patchRefs :: a -> [a] -> IO ()
   newRef    :: a -> a -> IO ()
+  getNewRef :: a -> IO a
   
   marked  :: a -> IO Bool
   mark    :: a -> IO ()
@@ -48,4 +49,18 @@ traverseIO' f ws root = if S.member root ws then f root >> return ws
 markTree :: RefObj a => a -> IO ()
 markTree root = marked root >>= (`unless` continue)
   where continue = mark root >> refs root >>= mapM_  markTree
+
+
+-- | This object is alive. so its children are alive. patch child references to point
+-- to childrens new references
+patchRefsObj :: (RefObj a) => a -> IO ()
+patchRefsObj obj = do obj' <- getNewRef obj 
+                      fields <- refs obj
+                      newRefs <- mapM getNewRef fields
+                      print newRefs
+                      patchRefs obj' newRefs                 
+
+patchAllRefs :: (RefObj a) => [a] -> IO ()
+patchAllRefs = mapM_ patchRefsObj
+
 

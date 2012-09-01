@@ -1,5 +1,6 @@
 {-# LANGUAGE ExistentialQuantification #-}
-module Mate.MemoryManager ( ) where
+module Mate.MemoryManager (evacuateList, AllocationManager, 
+                           TwoSpace, initTwoSpace) where
 
 import qualified Foreign.Marshal.Alloc as Alloc
 import Foreign.Ptr
@@ -34,6 +35,7 @@ mallocBytes' bytes = do state <- get
   where alloc :: TwoSpace -> IntPtr -> StateT TwoSpace IO (Ptr b)
         alloc state end = do let ptr = toHeap state
                              put $ state { toHeap = end } 
+                             liftIO (putStrLn $ "Allocated obj: " ++ (show ptr))
                              liftIO (return $ intPtrToPtr ptr)
         fail = error "no space left in two space (mallocBytes')"
 
@@ -45,21 +47,22 @@ evacuate'' :: (RefObj a, AllocationManager b) => a -> StateT b IO ()
 evacuate'' obj = do (size,payload) <- liftIO ((,) <$> size obj <*> payload obj)
                     -- malloc in TwoSpace
                     newPtr <- mallocBytes size
+                    liftIO (putStrLn ("evacuating: " ++ show obj ++ " and set: " ++ show newPtr))
                     -- copy data over and leave notice
                     liftIO (copyBytes newPtr (intPtrToPtr payload) size >> 
                             newRef obj (cast newPtr))
 
-evacuate :: (RefObj a, AllocationManager b) => [a] -> b -> IO ()
-evacuate objs manager = evalStateT (evacuate' objs) manager
+evacuateList :: (RefObj a, AllocationManager b) => [a] -> b -> IO ()
+evacuateList objs manager = evalStateT (evacuate' objs) manager
 
 
 initTwoSpace :: Int -> IO TwoSpace
-initTwoSpace size =  do printf "initializing TwoSpace memory manager with %d bytes." size
+initTwoSpace size =  do printf "initializing TwoSpace memory manager with %d bytes.\n" size
                         fromSpace <- Alloc.mallocBytes size
                         toSpace   <- Alloc.mallocBytes size
                         if fromSpace /= nullPtr && toSpace /= nullPtr 
                            then return $ buildToSpace fromSpace toSpace
-                           else error "Could not initialize TwoSpace memory manager (malloc returned null ptr)"
+                           else error "Could not initialize TwoSpace memory manager (malloc returned null ptr)\n"
    where buildToSpace from to = let fromBase' = ptrToIntPtr from
                                     toBase' = ptrToIntPtr to
                                     fromExtreme' = ptrToIntPtr $ from `plusPtr` size

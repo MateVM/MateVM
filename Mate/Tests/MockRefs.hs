@@ -1,6 +1,7 @@
 module Mate.Tests.MockRefs where
 
 import Mate.GC
+import Mate.MemoryManager
 
 import Foreign.Ptr
 import Foreign.Marshal.Alloc
@@ -13,14 +14,15 @@ import Control.Monad
 
 instance RefObj (Ptr a) where
   payload     = return . ptrToIntPtr
-  size a      = fmap ((+ 0x10) . length) (refs a)
+  size a      = fmap ((+ fieldsOff) . length) (refs a)
   refs        = unpackRefs . castPtr
   marked      = markedRef
   mark        = markRef (0x1::Int32)
   unmark      = markRef (0x0::Int32)
   newRef      = newRefPtr
-  patchRefs   = undefined
+  patchRefs   = patchRefsPtr
   cast = castPtr
+  getNewRef ptr = peekByteOff ptr newRefOff
 
 instance PrintableRef (Ptr a) where
   printRef    = printRef'
@@ -44,19 +46,32 @@ markRef :: Int32 -> Ptr a -> IO ()
 markRef val ptr = pokeByteOff ptr markedOff val
 
 newRefPtr :: Ptr a -> Ptr a -> IO ()
-newRefPtr ptr = pokeByteOff ptr newRefOff
+newRefPtr ptr newPtr = pokeByteOff ptr newRefOff newPtr
+
+patchRefsPtr :: Ptr a -> [Ptr a] -> IO ()
+patchRefsPtr ptr xs = pokeArray (ptr `plusPtr` fieldsOff) xs
 
 printRef' :: Ptr a -> IO ()
 printRef' ptr = do printf "obj 0x%08x\n" =<< (peekByteOff ptr idOff :: IO Int32)
                    printf "children 0x%08x\n" =<< (peekByteOff ptr numberOfObjsOff :: IO Int32)                  
-                   printf "marked 0x%08x\n" =<< (peekByteOff ptr markedOff :: IO Int32)
-                   printf "newRef 0x%08x\n\n" =<< (peekByteOff ptr newRefOff :: IO Int32)
+                   printf "marked 0x%08x\n" =<< (peekByteOff ptr markedOff :: IO Int32) 
+                   printf "payload 0x%08x\n" =<< ((liftM fromIntegral (payload ptr)) :: IO Int32)
+                   printf "newRef 0x%08x\n" =<< (peekByteOff ptr newRefOff :: IO Int32)
+                   printChildren ptr
+                   putStrLn ""
+
+printChildren :: Ptr a -> IO ()
+printChildren ptr = do children <- refs ptr
+                       putStrLn $ "children" ++ (show children)
+
 
 printTree :: Ptr a -> IO ()
 printTree = traverseIO printRef'
 
 emptyObj id  = do mem <- mallocBytes 0x10
-                  pokeArray mem [id,0,0::Int32,0]
+                  putStrLn $ "my memory: "  ++ show mem
+                  let self = fromIntegral (ptrToIntPtr mem)
+                  pokeArray mem [0,0,0::Int32,0]
                   return mem
 
 twoRefs = do mem <- mallocBytes 0x18
@@ -89,3 +104,27 @@ test objr = do twoRefs <- objr
                markTree'' (liftM not . marked) unmark [] twoRefs
                putStrLn "after unmarking\n"
                printTree twoRefs
+
+{-
+patchAllRefs :: (RefObj a) => a -> IO a
+patchAllRefs obj = do markTree'' patchAndCheckMark unmark [] obj
+                      getNewRef obj
+ where patchAndCheckMark :: a -> IO Bool
+       patchAndCheckMark a = undefined
+-}
+
+testEvacuation objr = do ref <- objr
+                         lifeRefs <- markTree'' marked mark [] ref
+                         putStrLn "initial objectTree"
+                         printTree ref
+                         memoryManager <- initTwoSpace 0x10000
+                         evacuateList lifeRefs memoryManager
+                         print lifeRefs
+                         putStrLn "oldObjectTree: "
+                         printTree ref
+                         patchAllRefs lifeRefs
+                         newRef <- getNewRef ref 
+                         putStrLn "resulting objectTree"
+                         printTree newRef
+                         
+                         
