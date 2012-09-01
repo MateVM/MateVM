@@ -13,13 +13,14 @@ import Control.Monad
 
 instance RefObj (Ptr a) where
   payload     = return . ptrToIntPtr
+  size a      = fmap ((+ 0x10) . length) (refs a)
   refs        = unpackRefs . castPtr
   marked      = markedRef
   mark        = markRef (0x1::Int32)
   unmark      = markRef (0x0::Int32)
   newRef      = newRefPtr
   patchRefs   = undefined
-  copy = undefined
+  cast = castPtr
 
 instance PrintableRef (Ptr a) where
   printRef    = printRef'
@@ -43,7 +44,7 @@ markRef :: Int32 -> Ptr a -> IO ()
 markRef val ptr = pokeByteOff ptr markedOff val
 
 newRefPtr :: Ptr a -> Ptr a -> IO ()
-newRefPtr ptr newRef = pokeByteOff ptr newRefOff newRef
+newRefPtr ptr = pokeByteOff ptr newRefOff
 
 printRef' :: Ptr a -> IO ()
 printRef' ptr = do printf "obj 0x%08x\n" =<< (peekByteOff ptr idOff :: IO Int32)

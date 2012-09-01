@@ -4,14 +4,16 @@ module Mate.MemoryManager ( ) where
 import qualified Foreign.Marshal.Alloc as Alloc
 import Foreign.Ptr
 import Foreign.Storable
+import Foreign.Marshal.Utils
 
 import Text.Printf
 import Control.Monad.State
+import Control.Applicative
 
 import Mate.GC
 
 class AllocationManager a where
-  mallocBytes :: a -> Int -> (a,Ptr b)
+  mallocBytes :: Int -> StateT a IO (Ptr b)
 
 data TwoSpace = TwoSpace { fromBase :: IntPtr, 
                            toBase   :: IntPtr, 
@@ -20,25 +22,35 @@ data TwoSpace = TwoSpace { fromBase :: IntPtr,
                            fromExtreme :: IntPtr,
                            toExtreme   :: IntPtr }
 
-mallocBytes' :: Int -> State TwoSpace (Ptr b)
+instance AllocationManager TwoSpace where
+  mallocBytes = mallocBytes'
+
+mallocBytes' :: Int -> StateT TwoSpace IO (Ptr b)
 mallocBytes' bytes = do state <- get
-                        let end = (toHeap state) + (ptrToIntPtr $ nullPtr `plusPtr` bytes) -- not really? FUUU
+                        let end = toHeap state + ptrToIntPtr (nullPtr `plusPtr` bytes) -- not really? FUUU
                         -- actually i would like to use an existential within TwoSpace but this requires
                         -- pattern matchingt at call site http://stackoverflow.com/questions/10192663/why-cant-existential-types-use-record-syntax which is i think even slower. 
                         if end <= toExtreme state then alloc state end else fail
-  where alloc :: TwoSpace -> IntPtr -> State TwoSpace (Ptr b)
+  where alloc :: TwoSpace -> IntPtr -> StateT TwoSpace IO (Ptr b)
         alloc state end = do let ptr = toHeap state
                              put $ state { toHeap = end } 
-                             return $ intPtrToPtr ptr
+                             liftIO (return $ intPtrToPtr ptr)
         fail = error "no space left in two space (mallocBytes')"
 
-type Action = IO ()
 
-evacuate :: RefObj a => [a] -> State TwoSpace Action
-evacuate = undefined
+evacuate' :: (RefObj a, AllocationManager b) => [a] -> StateT b IO ()
+evacuate' = foldr (\x evac -> evac >> evacuate'' x) (liftIO (return ())) 
 
-evacuate' :: RefObj a => a -> State TwoSpace Action
-evacuate' = undefined
+evacuate'' :: (RefObj a, AllocationManager b) => a -> StateT b IO ()
+evacuate'' obj = do (size,payload) <- liftIO ((,) <$> size obj <*> payload obj)
+                    -- malloc in TwoSpace
+                    newPtr <- mallocBytes size
+                    -- copy data over and leave notice
+                    liftIO (copyBytes newPtr (intPtrToPtr payload) size >> 
+                            newRef obj (cast newPtr))
+
+evacuate :: (RefObj a, AllocationManager b) => [a] -> b -> IO ()
+evacuate objs manager = evalStateT (evacuate' objs) manager
 
 
 initTwoSpace :: Int -> IO TwoSpace

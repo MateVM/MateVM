@@ -6,12 +6,14 @@ module Mate.GC
 import Control.Monad
 import qualified Data.Set as S
 
-import Foreign.Ptr (IntPtr)
+import Foreign.Ptr (IntPtr, Ptr)
 
 class (Eq a, Ord a) => RefObj a where
   
   payload :: a -> IO IntPtr
-
+  size    :: a -> IO Int
+  cast    :: Ptr b -> a
+ 
   refs      :: a -> IO [a]
   patchRefs :: a -> [a] -> IO ()
   newRef    :: a -> a -> IO ()
@@ -20,7 +22,6 @@ class (Eq a, Ord a) => RefObj a where
   mark    :: a -> IO ()
   unmark  :: a -> IO ()
   
-  copy :: a -> IO a
 
 class PrintableRef a where
   printRef :: a -> IO ()
