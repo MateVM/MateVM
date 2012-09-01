@@ -1,5 +1,5 @@
 {-# LANGUAGE ExistentialQuantification #-}
-module Mate.MemoryManager (evacuateList, AllocationManager, 
+module Mate.MemoryManager (evacuateList, AllocationManager(heapSize, performCollection), 
                            TwoSpace, initTwoSpace) where
 
 import qualified Foreign.Marshal.Alloc as Alloc
@@ -21,6 +21,8 @@ class AllocationManager a where
   -- | performs full gc and which is reflected in mem managers state
   performCollection :: (RefObj b) => [b] ->  StateT a IO ()
 
+  heapSize :: StateT a IO Int
+
 data TwoSpace = TwoSpace { fromBase :: IntPtr, 
                            toBase   :: IntPtr, 
                            fromHeap :: IntPtr, 
@@ -31,6 +33,9 @@ data TwoSpace = TwoSpace { fromBase :: IntPtr,
 instance AllocationManager TwoSpace where
   mallocBytes = mallocBytes'
   performCollection = performCollection'
+  
+  heapSize = do space <- get
+                return $ fromIntegral $ toHeap space - fromIntegral (toBase space)
 
 
 performCollection' :: (RefObj a) => [a] -> StateT TwoSpace IO ()
@@ -64,7 +69,7 @@ mallocBytes' bytes = do state <- get
   where alloc :: TwoSpace -> IntPtr -> StateT TwoSpace IO (Ptr b)
         alloc state end = do let ptr = toHeap state
                              put $ state { toHeap = end } 
-                             liftIO (putStrLn $ "Allocated obj: " ++ (show ptr))
+                             liftIO (putStrLn $ "Allocated obj: " ++ show ptr)
                              liftIO (return $ intPtrToPtr ptr)
         fail = error "no space left in two space (mallocBytes')"
 
@@ -82,7 +87,7 @@ evacuate'' obj = do (size,payload) <- liftIO ((,) <$> size obj <*> payload obj)
                             setNewRef obj (cast newPtr))
 
 evacuateList :: (RefObj a, AllocationManager b) => [a] -> b -> IO ()
-evacuateList objs manager = evalStateT (evacuate' objs) manager
+evacuateList objs = evalStateT (evacuate' objs) 
 
 
 initTwoSpace :: Int -> IO TwoSpace
