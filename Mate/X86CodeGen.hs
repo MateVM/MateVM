@@ -224,6 +224,13 @@ emitFromBB cls method = do
             return reip
       return $ Just (trapaddr, NewObject patcher)
 
+    emit' ATHROW = do
+      trapaddr <- emitSigIllTrap 2
+      let patcher resp reip = do
+            emitSigIllTrap 2
+            return reip
+      return $ Just (trapaddr, ThrowException patcher)
+
     emit' insn = emit insn >> return Nothing
 
     emit :: J.Instruction -> CodeGen e s ()
@@ -279,8 +286,6 @@ emitFromBB cls method = do
       push eax -- push ref again
 
     emit (CHECKCAST _) = nop -- TODO(bernhard): ...
-    emit ATHROW = -- TODO(bernhard): ...
-        emit32 (0xffffffff :: Word32)
     emit I2C = do
       pop eax
       and eax (0x000000ff :: Word32)
@@ -367,6 +372,7 @@ emitFromBB cls method = do
 
     emitSigIllTrap :: Int -> CodeGen e s NativeWord
     emitSigIllTrap traplen = do
+      when (traplen < 2) (error "emitSigIllTrap: trap len too short")
       trapaddr <- getCurrentOffset
       -- 0xffff causes SIGILL
       emit8 (0xff :: Word8); emit8 (0xff :: Word8)

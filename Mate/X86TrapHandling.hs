@@ -26,9 +26,9 @@ import Harpy.X86Disassembler
 foreign import ccall "register_signal"
   register_signal :: IO ()
 
-foreign export ccall mateHandler :: CPtrdiff -> CPtrdiff -> CPtrdiff -> CPtrdiff -> IO CPtrdiff
-mateHandler :: CPtrdiff -> CPtrdiff -> CPtrdiff -> CPtrdiff -> IO CPtrdiff
-mateHandler reip reax rebx resi = do
+foreign export ccall mateHandler :: CPtrdiff -> CPtrdiff -> CPtrdiff -> CPtrdiff -> CPtrdiff -> IO CPtrdiff
+mateHandler :: CPtrdiff -> CPtrdiff -> CPtrdiff -> CPtrdiff -> CPtrdiff -> IO CPtrdiff
+mateHandler reip reax rebx resi resp = do
   tmap <- getTrapMap
   let reipw32 = fromIntegral reip
   (deleteMe, ret_nreip) <- case M.lookup reipw32 tmap of
@@ -40,6 +40,8 @@ mateHandler reip reax rebx resi = do
         patchWithHarpy patcher reip >>= delTrue
     (Just (InstanceOf patcher))  ->
         patchWithHarpy (patcher reax) reip >>= delFalse
+    (Just (ThrowException patcher)) ->
+        patchWithHarpy (patcher resp) reip >>= delFalse
     (Just (NewObject patcher))   ->
         patchWithHarpy patcher reip >>= delTrue
     (Just (VirtualCall False mi io_offset)) ->

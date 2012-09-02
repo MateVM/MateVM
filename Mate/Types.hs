@@ -68,11 +68,13 @@ type TrapMap = M.Map NativeWord TrapCause
 
 type TrapPatcher = CPtrdiff -> CodeGen () () CPtrdiff
 type TrapPatcherEax = CPtrdiff -> CPtrdiff -> CodeGen () () CPtrdiff
+type TrapPatcherEsp = TrapPatcherEax
 
 data TrapCause
   = StaticMethod TrapPatcher -- for static calls
   | VirtualCall Bool MethodInfo (IO NativeWord) -- for invoke{interface,virtual}
   | InstanceOf TrapPatcherEax
+  | ThrowException TrapPatcherEsp
   | NewObject TrapPatcher
   | StaticField StaticFieldInfo
   | ObjectField TrapPatcher
