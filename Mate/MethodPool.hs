@@ -146,7 +146,7 @@ compileBB rawmethod methodinfo = do
 
   printfJit $ printf "generated code of \"%s\" from \"%s\":\n" (toString $ methName methodinfo) (toString $ methClassName methodinfo)
   printfJit $ printf "\tstacksize: 0x%04x, locals: 0x%04x\n" (rawStackSize rawmethod) (rawLocals rawmethod)
-  when mateDEBUG $ mapM_ (printfJit . printf "%s\n" . showAtt) (snd right)
+  when mateDEBUG $ mapM_ (printfJit . printf "%s\n" . showIntel) (snd right)
   printfJit $ printf "\n\n"
   -- UNCOMMENT NEXT LINES FOR GDB FUN
   -- if (toString $ methName methodinfo) == "thejavamethodIwant2debug"

@@ -67,7 +67,7 @@ patchWithHarpy patcher reip = do
   let entry = Just (intPtrToPtr (fromIntegral reip), fixme)
   let cgconfig = defaultCodeGenConfig { customCodeBuffer = entry }
   (_, Right right) <- runCodeGenWithConfig (withDisasm $ patcher reip) () () cgconfig
-  when mateDEBUG $ mapM_ (printfJit . printf "patched: %s\n" . showAtt) $ snd right
+  when mateDEBUG $ mapM_ (printfJit . printf "patched: %s\n" . showIntel) $ snd right
   return $ fst right
 
 withDisasm :: CodeGen e s CPtrdiff -> CodeGen e s (CPtrdiff, [Instruction])
