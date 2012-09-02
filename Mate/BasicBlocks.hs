@@ -125,10 +125,12 @@ markBackwardTargets (x:[]) = [x]
 markBackwardTargets insns@(x@((x_off,x_bbend),x_ins):y@((y_off,_),_):xs) =
   x_new:markBackwardTargets (y:xs)
     where
-      x_new = if isTarget then checkX y_off else x
-      checkX w16 = case x_bbend of
+      x_new = case x_bbend of
         Just _ -> x -- already marked, don't change
+        Nothing -> if isTarget then checkX y_off else x
+      checkX w16 = case x_bbend of
         Nothing -> ((x_off, Just $ FallThrough w16), x_ins) -- mark previous insn
+        _ -> error "basicblock: something is wrong"
 
       -- look through all remaining insns in the stream if there is a jmp to `y'
       isTarget = case find cmpOffset insns of Just _ -> True; Nothing -> False
