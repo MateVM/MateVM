@@ -16,6 +16,7 @@ import Data.List
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as B
 import Data.Maybe
+import Control.Monad.State
 
 import JVM.ClassFile
 import JVM.Converter
@@ -25,9 +26,12 @@ import Mate.Types
 import Mate.Debug
 import Mate.Utilities
 
--- for immediate representation to determine BBs
-type Offset = (Int, Maybe BBEnd) -- (offset in bytecode, offset to jump target)
-type OffIns = (Offset, Instruction)
+-- (offset in bytecode, offset to jump target, ins)
+type OffIns = (Int, Maybe BBEnd, Instruction)
+
+type Targets = [BlockID]
+type BBState = Targets
+type AnalyseState = State BBState [OffIns]
 
 
 printMapBB :: MapBB -> IO ()
@@ -122,26 +126,26 @@ buildCFG xs = buildCFG' M.empty xs' xs'
 markBackwardTargets :: [OffIns] -> [OffIns]
 markBackwardTargets [] = []
 markBackwardTargets (x:[]) = [x]
-markBackwardTargets insns@(x@((x_off,x_bbend),x_ins):y@((y_off,_),_):xs) =
+markBackwardTargets insns@(x@(x_off,x_bbend,x_ins):y@(y_off,_,_):xs) =
   x_new:markBackwardTargets (y:xs)
     where
       x_new = case x_bbend of
         Just _ -> x -- already marked, don't change
         Nothing -> if isTarget then checkX y_off else x
       checkX w16 = case x_bbend of
-        Nothing -> ((x_off, Just $ FallThrough w16), x_ins) -- mark previous insn
+        Nothing -> (x_off, Just $ FallThrough w16, x_ins) -- mark previous insn
         _ -> error "basicblock: something is wrong"
 
       -- look through all remaining insns in the stream if there is a jmp to `y'
       isTarget = case find cmpOffset insns of Just _ -> True; Nothing -> False
-      cmpOffset ((_,Just (OneTarget w16)),_) = w16 == y_off
-      cmpOffset ((_,Just (TwoTarget _ w16)),_) = w16 == y_off
+      cmpOffset (_,Just (OneTarget w16),_) = w16 == y_off
+      cmpOffset (_,Just (TwoTarget _ w16),_) = w16 == y_off
       cmpOffset _ = False
 
 
 buildCFG' :: MapBB -> [OffIns] -> [OffIns] -> MapBB
 buildCFG' hmap [] _ = hmap
-buildCFG' hmap (((off, entry), _):xs) insns = buildCFG' (insertlist entryi hmap) xs insns
+buildCFG' hmap ((off, entry, _):xs) insns = buildCFG' (insertlist entryi hmap) xs insns
   where
     insertlist :: [BlockID] -> MapBB -> MapBB
     insertlist [] hmap' = hmap'
@@ -163,9 +167,9 @@ buildCFG' hmap (((off, entry), _):xs) insns = buildCFG' (insertlist entryi hmap)
 parseBasicBlock :: Int -> [OffIns] -> BasicBlock
 parseBasicBlock i insns = BasicBlock insonly endblock
   where
-    startlist = dropWhile (\((x,_),_) -> x < i) insns
-    (Just ((_, Just endblock),_), is) = takeWhilePlusOne validins startlist
-    insonly = snd $ unzip is
+    startlist = dropWhile (\(x,_,_) -> x < i) insns
+    (Just (_, Just endblock, _), is) = takeWhilePlusOne validins startlist
+    (_, _, insonly) = unzip3 is
 
     -- also take last (non-matched) element and return it
     takeWhilePlusOne :: (a -> Bool) -> [a] -> (Maybe a,[a])
@@ -174,24 +178,24 @@ parseBasicBlock i insns = BasicBlock insonly endblock
       | p x       =  let (lastins, list) = takeWhilePlusOne p xs in (lastins, x:list)
       | otherwise =  (Just x,[x])
 
-    validins :: ((Int, Maybe BBEnd), Instruction) -> Bool
-    validins ((_,x),_) = case x of Just _ -> False; Nothing -> True
+    validins :: (Int, Maybe BBEnd, Instruction) -> Bool
+    validins (_,x,_) = case x of Just _ -> False; Nothing -> True
 
 
 calculateInstructionOffset :: [Instruction] -> [OffIns]
-calculateInstructionOffset = cio' (0, Nothing)
+calculateInstructionOffset = cio' (0, Nothing, NOP)
   where
-    newoffset :: Instruction -> Int -> Offset
-    newoffset x off = (off + fromIntegral (B.length $ encodeInstructions [x]), Nothing)
+    newoffset :: Instruction -> Int -> OffIns
+    newoffset x off = (off + fromIntegral (B.length $ encodeInstructions [x]), Nothing, NOP)
 
     addW16Signed :: Int -> Word16 -> Int
     addW16Signed i w16 = i + fromIntegral s16
       where s16 = fromIntegral w16 :: Int16
 
-    cio' :: Offset -> [Instruction] -> [OffIns]
+    cio' :: OffIns -> [Instruction] -> [OffIns]
     cio' _ [] = []
     -- TODO(bernhard): add more instruction with offset (IF_ACMP, JSR, ...)
-    cio' (off,_) (x:xs) = case x of
+    cio' (off,_,_) (x:xs) = case x of
         IF _ w16 -> twotargets w16
         IF_ICMP _ w16 -> twotargets w16
         IF_ACMP _ w16 -> twotargets w16
@@ -201,9 +205,9 @@ calculateInstructionOffset = cio' (0, Nothing)
         IRETURN -> notarget
         ARETURN -> notarget
         RETURN -> notarget
-        _ -> ((off, Nothing), x):next
+        _ -> (off, Nothing, x):next
       where
-        notarget = ((off, Just Return), x):next
-        onetarget w16 = ((off, Just $ OneTarget (off `addW16Signed` w16)), x):next
-        twotargets w16 = ((off, Just $ TwoTarget (off + 3) (off `addW16Signed` w16)), x):next
+        notarget = (off, Just Return, x):next
+        onetarget w16 = (off, Just $ OneTarget (off `addW16Signed` w16), x):next
+        twotargets w16 = (off, Just $ TwoTarget (off + 3) (off `addW16Signed` w16), x):next
         next = cio' (newoffset x off) xs
