@@ -10,13 +10,13 @@ module Mate.BasicBlocks(
   testCFG -- added by hs to perform benches from outside
   )where
 
-import Data.Binary
+import Data.Binary hiding (get)
 import Data.Int
-import Data.List
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as B
 import Data.Maybe
 import Control.Monad.State
+import Control.Applicative
 
 import JVM.ClassFile
 import JVM.Converter
@@ -118,29 +118,26 @@ buildCFG :: [Instruction] -> MapBB
 buildCFG xs = buildCFG' M.empty xs' xs'
   where
   xs' :: [OffIns]
-  xs' = markBackwardTargets $ calculateInstructionOffset xs
+  xs' = evalState (calculateInstructionOffset xs >>= markBackwardTargets) []
 
 -- get already calculated jmp-targets and mark the predecessor of the
 -- target-instruction as "FallThrough". we just care about backwards
 -- jumps here (forward jumps are handled in buildCFG')
-markBackwardTargets :: [OffIns] -> [OffIns]
-markBackwardTargets [] = []
-markBackwardTargets (x:[]) = [x]
-markBackwardTargets insns@(x@(x_off,x_bbend,x_ins):y@(y_off,_,_):xs) =
-  x_new:markBackwardTargets (y:xs)
-    where
+markBackwardTargets :: [OffIns] -> AnalyseState
+markBackwardTargets [] = return []
+markBackwardTargets (x:[]) = return [x]
+markBackwardTargets (x@(x_off,x_bbend,x_ins):y@(y_off,_,_):xs) = do
+  rest <- markBackwardTargets (y:xs)
+  targets <- get
+  let isTarget = y_off `elem` targets
       x_new = case x_bbend of
         Just _ -> x -- already marked, don't change
         Nothing -> if isTarget then checkX y_off else x
       checkX w16 = case x_bbend of
         Nothing -> (x_off, Just $ FallThrough w16, x_ins) -- mark previous insn
         _ -> error "basicblock: something is wrong"
+  return $ x_new:rest
 
-      -- look through all remaining insns in the stream if there is a jmp to `y'
-      isTarget = case find cmpOffset insns of Just _ -> True; Nothing -> False
-      cmpOffset (_,Just (OneTarget w16),_) = w16 == y_off
-      cmpOffset (_,Just (TwoTarget _ w16),_) = w16 == y_off
-      cmpOffset _ = False
 
 
 buildCFG' :: MapBB -> [OffIns] -> [OffIns] -> MapBB
@@ -167,34 +164,36 @@ buildCFG' hmap ((off, entry, _):xs) insns = buildCFG' (insertlist entryi hmap) x
 parseBasicBlock :: Int -> [OffIns] -> BasicBlock
 parseBasicBlock i insns = BasicBlock insonly endblock
   where
-    startlist = dropWhile (\(x,_,_) -> x < i) insns
-    (Just (_, Just endblock, _), is) = takeWhilePlusOne validins startlist
+    (lastblock, is) = takeWhilePlusOne validins omitins insns
     (_, _, insonly) = unzip3 is
+    (_, Just endblock, _) = fromJust lastblock
 
     -- also take last (non-matched) element and return it
-    takeWhilePlusOne :: (a -> Bool) -> [a] -> (Maybe a,[a])
-    takeWhilePlusOne _ [] = (Nothing,[])
-    takeWhilePlusOne p (x:xs)
-      | p x       =  let (lastins, list) = takeWhilePlusOne p xs in (lastins, x:list)
-      | otherwise =  (Just x,[x])
+    takeWhilePlusOne :: (a -> Bool) -> (a -> Bool) -> [a] -> (Maybe a, [a])
+    takeWhilePlusOne _ _ [] = (Nothing, [])
+    takeWhilePlusOne p omit (x:xs)
+      | omit x    = next
+      | p x       = (\(ys, xs') -> (ys, x:xs')) next
+      | otherwise = (Just x, [x])
+      where
+        next = takeWhilePlusOne p omit xs
 
-    validins :: (Int, Maybe BBEnd, Instruction) -> Bool
-    validins (_,x,_) = case x of Just _ -> False; Nothing -> True
+    validins :: OffIns -> Bool
+    validins (_, x, _) = isNothing x
+
+    omitins :: OffIns -> Bool
+    omitins (off, _, _) = off < i
 
 
-calculateInstructionOffset :: [Instruction] -> [OffIns]
+calculateInstructionOffset :: [Instruction] -> AnalyseState
 calculateInstructionOffset = cio' (0, Nothing, NOP)
   where
-    newoffset :: Instruction -> Int -> OffIns
-    newoffset x off = (off + fromIntegral (B.length $ encodeInstructions [x]), Nothing, NOP)
-
     addW16Signed :: Int -> Word16 -> Int
     addW16Signed i w16 = i + fromIntegral s16
       where s16 = fromIntegral w16 :: Int16
 
-    cio' :: OffIns -> [Instruction] -> [OffIns]
-    cio' _ [] = []
-    -- TODO(bernhard): add more instruction with offset (IF_ACMP, JSR, ...)
+    cio' :: OffIns -> [Instruction] -> AnalyseState
+    cio' _ [] = return $ []
     cio' (off,_,_) (x:xs) = case x of
         IF _ w16 -> twotargets w16
         IF_ICMP _ w16 -> twotargets w16
@@ -205,9 +204,23 @@ calculateInstructionOffset = cio' (0, Nothing, NOP)
         IRETURN -> notarget
         ARETURN -> notarget
         RETURN -> notarget
-        _ -> (off, Nothing, x):next
+        _ -> ((off, Nothing, x):) <$> next
       where
-        notarget = (off, Just Return, x):next
-        onetarget w16 = (off, Just $ OneTarget (off `addW16Signed` w16), x):next
-        twotargets w16 = (off, Just $ TwoTarget (off + 3) (off `addW16Signed` w16), x):next
-        next = cio' (newoffset x off) xs
+        notarget = ((off, Just Return, x):) <$> next
+        onetarget w16 = do
+          let jump = off `addW16Signed` w16
+          modify (jump:)
+          ((off, Just $ OneTarget jump, x):) <$> next
+        twotargets w16 = do
+          let nojump = off + 3
+          modify (nojump:)
+          let jump = off `addW16Signed` w16
+          modify (jump:)
+          ((off, Just $ TwoTarget nojump jump, x):) <$> next
+        next = cio' newoffset xs
+        newoffset = (off + insnLength x, Nothing, NOP)
+
+-- TODO(bernhard): does GHC memomize results? i.e. does it calculate the size
+--                 of `NOP' only once?
+insnLength :: Num a => Instruction -> a
+insnLength = fromIntegral . B.length . encodeInstructions . (:[])
