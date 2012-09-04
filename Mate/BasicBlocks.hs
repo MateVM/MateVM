@@ -119,26 +119,7 @@ buildCFG :: [Instruction] -> MapBB
 buildCFG xs = buildCFG' M.empty xs' xs'
   where
   xs' :: [OffIns]
-  xs' = evalState (calculateInstructionOffset xs >>= markBackwardTargets) []
-
--- get already calculated jmp-targets and mark the predecessor of the
--- target-instruction as "FallThrough". we just care about backwards
--- jumps here (forward jumps are handled in buildCFG')
-markBackwardTargets :: [OffIns] -> AnalyseState
-markBackwardTargets [] = return []
-markBackwardTargets (x:[]) = return [x]
-markBackwardTargets (x@(x_off,x_bbend,x_ins):y@(y_off,_,_):xs) = do
-  rest <- markBackwardTargets (y:xs)
-  targets <- get
-  let isTarget = y_off `elem` targets
-      x_new = case x_bbend of
-        Just _ -> x -- already marked, don't change
-        Nothing -> if isTarget then checkX y_off else x
-      checkX w16 = case x_bbend of
-        Nothing -> (x_off, Just $ FallThrough w16, x_ins) -- mark previous insn
-        _ -> error "basicblock: something is wrong"
-  return $ x_new:rest
-
+  xs' = evalState (calculateInstructionOffset xs) []
 
 
 buildCFG' :: MapBB -> [OffIns] -> [OffIns] -> MapBB
@@ -205,8 +186,15 @@ calculateInstructionOffset = cio' (0, Nothing, NOP)
         IRETURN -> notarget
         ARETURN -> notarget
         RETURN -> notarget
-        _ -> ((off, Nothing, x):) <$> next
+        _ -> normalins
       where
+        normalins = do
+          tailinsns <- next -- eval remaining instructions
+          isNextInsATarget <- (elem newoffset) <$> get
+          let bbtyp = if isNextInsATarget
+                then Just $ FallThrough newoffset
+                else Nothing
+          return $ (off, bbtyp, x):tailinsns
         notarget = ((off, Just Return, x):) <$> next
         onetarget w16 = do
           let jump = off `addW16Signed` w16
@@ -218,8 +206,9 @@ calculateInstructionOffset = cio' (0, Nothing, NOP)
           let jump = off `addW16Signed` w16
           modify (jump:)
           ((off, Just $ TwoTarget nojump jump, x):) <$> next
-        next = cio' newoffset xs
-        newoffset = (off + insnLength x, Nothing, NOP)
+        next = cio' nextins xs
+        nextins = (newoffset, Nothing, NOP)
+        newoffset = off + insnLength x
 
 -- TODO(bernhard): does GHC memomize results? i.e. does it calculate the size
 --                 of `NOP' only once?
