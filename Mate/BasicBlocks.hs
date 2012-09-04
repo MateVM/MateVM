@@ -35,6 +35,15 @@ type BBState = Targets
 type AnalyseState = State BBState [OffIns]
 
 
+noException :: B.ByteString
+noException = B.empty
+
+emptyBasicBlock :: BasicBlock
+emptyBasicBlock = BasicBlock
+                    { code = []
+                    , exception = noException
+                    , successor = Return }
+
 printMapBB :: MapBB -> IO ()
 printMapBB hmap = do
   printfBb "BlockIDs: "
@@ -144,7 +153,7 @@ buildCFG' hmap ((off, entry, _):xs) insns = buildCFG' (insertlist entryi hmap) x
 
 
 parseBasicBlock :: Int -> [OffIns] -> BasicBlock
-parseBasicBlock i insns = BasicBlock insonly endblock
+parseBasicBlock i insns = emptyBasicBlock { code = insonly, successor = endblock }
   where
     (lastblock, is) = takeWhilePlusOne validins omitins insns
     (_, _, insonly) = unzip3 is

@@ -42,6 +42,7 @@ type BlockID = Int
 -- Represents a CFG node
 data BasicBlock = BasicBlock {
   code :: [Instruction],
+  exception :: B.ByteString,
   successor :: BBEnd }
 
 -- describes (leaving) edges of a CFG node
