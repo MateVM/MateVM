@@ -17,6 +17,7 @@ import qualified Data.ByteString.Lazy as B
 import Data.Maybe
 import Control.Monad.State
 import Control.Applicative
+import Control.Arrow
 
 import JVM.ClassFile
 import JVM.Converter
@@ -173,7 +174,7 @@ parseBasicBlock i insns = BasicBlock insonly endblock
     takeWhilePlusOne _ _ [] = (Nothing, [])
     takeWhilePlusOne p omit (x:xs)
       | omit x    = next
-      | p x       = (\(ys, xs') -> (ys, x:xs')) next
+      | p x       = second (x:) next
       | otherwise = (Just x, [x])
       where
         next = takeWhilePlusOne p omit xs
