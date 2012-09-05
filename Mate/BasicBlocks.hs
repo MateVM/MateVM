@@ -13,9 +13,9 @@ module Mate.BasicBlocks(
 import Data.Binary hiding (get)
 import Data.Int
 import qualified Data.Map as M
+import qualified Data.Set as S
 import qualified Data.ByteString.Lazy as B
 import Data.Maybe
-import Data.List
 import Control.Monad.State
 import Control.Applicative
 import Control.Arrow
@@ -31,8 +31,8 @@ import Mate.Utilities
 -- (offset in bytecode, offset to jump target, ins)
 type OffIns = (Int, Maybe BBEnd, Instruction)
 
-type Targets = [BlockID]
-type BBState = Targets
+type Target = BlockID
+type BBState = S.Set Target
 type AnalyseState = State BBState [OffIns]
 
 
@@ -126,24 +126,15 @@ testCFG :: Code -> MapBB
 testCFG = buildCFG . codeInstructions
 
 buildCFG :: [Instruction] -> MapBB
-buildCFG xs = execState (buildCFG' 0 xs') M.empty
+buildCFG xs = execState (mapM (buildCFG' offins) alltargets) M.empty
   where
-  xs' :: [OffIns]
-  xs' = evalState (calculateInstructionOffset xs) []
+  (offins, targets) = runState (calculateInstructionOffset xs) S.empty
+  alltargets = S.toList $ S.insert 0 targets
 
-
-
-buildCFG' :: Int -> [OffIns] -> State MapBB ()
-buildCFG' off insns = do
-  isMember <- M.member off <$> get
-  when (not isMember) $ do
-    let value = parseBasicBlock off insns
-    modify (M.insert off value)
-    case successor value of
-      TwoTarget t1 t2 -> buildCFG' t1 insns >> buildCFG' t2 insns
-      OneTarget t -> buildCFG' t insns
-      FallThrough t -> buildCFG' t insns
-      Return -> return ()
+buildCFG' :: [OffIns] -> Int -> State MapBB ()
+buildCFG' insns off = do
+  let value = parseBasicBlock off insns
+  modify (M.insert off value)
 
 parseBasicBlock :: Int -> [OffIns] -> BasicBlock
 parseBasicBlock i insns = emptyBasicBlock { code = insonly, successor = endblock }
@@ -192,7 +183,7 @@ calculateInstructionOffset = cio' (0, Nothing, NOP)
       where
         normalins = do
           tailinsns <- next -- eval remaining instructions
-          isNextInsATarget <- (elem newoffset) <$> get
+          isNextInsATarget <- (S.member newoffset) <$> get
           let bbtyp = if isNextInsATarget
                 then Just $ FallThrough newoffset
                 else Nothing
@@ -200,13 +191,13 @@ calculateInstructionOffset = cio' (0, Nothing, NOP)
         notarget = ((off, Just Return, x):) <$> next
         onetarget w16 = do
           let jump = off `addW16Signed` w16
-          modify (jump:)
+          modify (S.insert jump)
           ((off, Just $ OneTarget jump, x):) <$> next
         twotargets w16 = do
           let nojump = off + 3
-          modify (nojump:)
+          modify (S.insert nojump)
           let jump = off `addW16Signed` w16
-          modify (jump:)
+          modify (S.insert jump)
           ((off, Just $ TwoTarget nojump jump, x):) <$> next
         next = cio' nextins xs
         nextins = (newoffset, Nothing, NOP)
