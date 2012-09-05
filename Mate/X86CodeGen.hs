@@ -63,7 +63,7 @@ emitFromBB cls method = do
   hmap = rawMapBB method
 
   getLabel :: BlockID -> [(BlockID, Label)] -> Label
-  getLabel _ [] = error "label not found!"
+  getLabel bid [] = error $ "label " ++ show bid ++ " not found"
   getLabel i ((x,l):xs) = if i==x then l else getLabel i xs
 
   efBB :: (BlockID, BasicBlock) -> TrapMap -> BBStarts -> [(BlockID, Label)] -> CodeGen e s (TrapMap, BBStarts)

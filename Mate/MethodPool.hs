@@ -137,6 +137,7 @@ compileBB rawmethod methodinfo = do
   tmap <- getTrapMap
 
   cls <- getClassFile (methClassName methodinfo)
+  printfJit $ printf "emit code of \"%s\" from \"%s\":\n" (toString $ methName methodinfo) (toString $ methClassName methodinfo)
   let ebb = emitFromBB cls rawmethod
   let cgconfig = defaultCodeGenConfig { codeBufferSize = fromIntegral $ rawCodeLength rawmethod * 32 }
   (_, Right right) <- runCodeGenWithConfig ebb () () cgconfig

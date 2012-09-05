@@ -28,8 +28,9 @@ mateDEBUG = False
 
 {-# INLINE printString #-}
 printString :: String -> String -> IO ()
-printString prefix str = when mateDEBUG $ hPutStr logHandle . (++) prefix $ str
-
+printString prefix str = do
+  when mateDEBUG $ hPutStr logHandle . (++) prefix $ str
+  hFlush logHandle
 
 printfJit, printfBb, printfMp, printfCp, printfStr, printfInfo  :: String -> IO ()
 {-

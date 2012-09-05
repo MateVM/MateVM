@@ -15,6 +15,7 @@ import Data.Int
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as B
 import Data.Maybe
+import Data.List
 import Control.Monad.State
 import Control.Applicative
 import Control.Arrow
@@ -125,32 +126,24 @@ testCFG :: Code -> MapBB
 testCFG = buildCFG . codeInstructions
 
 buildCFG :: [Instruction] -> MapBB
-buildCFG xs = buildCFG' M.empty xs' xs'
+buildCFG xs = execState (buildCFG' 0 xs') M.empty
   where
   xs' :: [OffIns]
   xs' = evalState (calculateInstructionOffset xs) []
 
 
-buildCFG' :: MapBB -> [OffIns] -> [OffIns] -> MapBB
-buildCFG' hmap [] _ = hmap
-buildCFG' hmap ((off, entry, _):xs) insns = buildCFG' (insertlist entryi hmap) xs insns
-  where
-    insertlist :: [BlockID] -> MapBB -> MapBB
-    insertlist [] hmap' = hmap'
-    insertlist (y:ys) hmap' = insertlist ys newhmap
-      where
-        newhmap = if M.member y hmap' then hmap' else M.insert y value hmap'
-        value = parseBasicBlock y insns
-    entryi :: [BlockID]
-    entryi = if off == 0 then 0:ys else ys -- also consider the entrypoint
-      where
-        ys = case entry of
-          Just (TwoTarget t1 t2) -> [t1, t2]
-          Just (OneTarget t) -> [t]
-          Just (FallThrough t) -> [t]
-          Just Return -> []
-          Nothing -> []
 
+buildCFG' :: Int -> [OffIns] -> State MapBB ()
+buildCFG' off insns = do
+  isMember <- M.member off <$> get
+  when (not isMember) $ do
+    let value = parseBasicBlock off insns
+    modify (M.insert off value)
+    case successor value of
+      TwoTarget t1 t2 -> buildCFG' t1 insns >> buildCFG' t2 insns
+      OneTarget t -> buildCFG' t insns
+      FallThrough t -> buildCFG' t insns
+      Return -> return ()
 
 parseBasicBlock :: Int -> [OffIns] -> BasicBlock
 parseBasicBlock i insns = emptyBasicBlock { code = insonly, successor = endblock }
