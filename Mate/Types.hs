@@ -5,6 +5,7 @@ module Mate.Types
   , BBEnd(..)
   , MapBB
   , ExceptionMap
+  , JpcNpcMap
   , RawMethod(..)
   , TrapMap, MethodMap, ClassMap, FieldMap
   , StringMap, VirtualMap, InterfaceMap
@@ -58,6 +59,9 @@ data BBEnd
 type MapBB = M.Map BlockID BasicBlock
 type ExceptionMap = M.Map (Word16, Word16) [(B.ByteString, Word16)]
 
+-- java byte code PC -> native PC
+type JpcNpcMap = M.Map Word32 Int
+
 data RawMethod = RawMethod {
   rawMapBB :: MapBB,
   rawExcpMap :: ExceptionMap,
@@ -92,7 +96,7 @@ data StaticFieldInfo = StaticFieldInfo {
 
 -- B.ByteString = name of method
 -- NativeWord = entrypoint of method
-type MethodMap = M.Map MethodInfo NativeWord
+type MethodMap = M.Map MethodInfo (NativeWord, JpcNpcMap)
 
 data MethodInfo = MethodInfo {
   methName :: B.ByteString,

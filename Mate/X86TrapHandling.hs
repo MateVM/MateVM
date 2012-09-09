@@ -94,7 +94,7 @@ patchInvoke (MethodInfo methname _ msig)  method_table table2patch io_offset rei
   vmap <- liftIO getVirtualMap
   let newmi = MethodInfo methname (vmap M.! fromIntegral method_table) msig
   offset <- liftIO io_offset
-  entryAddr <- liftIO $ getMethodEntry newmi
+  (entryAddr, _) <- liftIO $ getMethodEntry newmi
   call32Eax (Disp offset)
   -- patch entry in table
   let call_insn = intPtrToPtr . fromIntegral $ table2patch + fromIntegral offset

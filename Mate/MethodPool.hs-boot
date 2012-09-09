@@ -9,7 +9,7 @@ import Mate.NativeSizes
 import Foreign.C.Types
 
 
-addMethodRef :: NativeWord -> MethodInfo -> [B.ByteString] -> IO ()
-compileBB :: RawMethod -> MethodInfo -> IO NativeWord
+addMethodRef :: (NativeWord, JpcNpcMap) -> MethodInfo -> [B.ByteString] -> IO ()
+compileBB :: RawMethod -> MethodInfo -> IO (NativeWord, JpcNpcMap)
 executeFuncPtr :: NativeWord -> IO ()
-getMethodEntry :: MethodInfo -> IO CPtrdiff
+getMethodEntry :: MethodInfo -> IO (CPtrdiff, JpcNpcMap)

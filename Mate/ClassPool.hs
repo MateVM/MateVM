@@ -278,7 +278,7 @@ loadAndInitClass path = do
       entry <- compileBB rawmethod mi
       addMethodRef entry mi [path]
       printfCp $ printf "executing static initializer from %s now\n" (toString path)
-      executeFuncPtr entry
+      executeFuncPtr $ fst entry
       printfCp $ printf "static initializer from %s done\n" (toString path)
     Nothing -> return ()
 

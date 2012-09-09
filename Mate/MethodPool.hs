@@ -39,11 +39,11 @@ foreign import ccall "&loadLibrary"
 foreign import ccall "&printGCStats"
   printGCStatsAddr :: FunPtr (IO ())
 
-getMethodEntry :: MethodInfo -> IO CPtrdiff
+getMethodEntry :: MethodInfo -> IO (CPtrdiff, JpcNpcMap)
 getMethodEntry mi@(MethodInfo method cm sig) = do
   mmap <- getMethodMap
 
-  entryaddr <- case M.lookup mi mmap of
+  (entryaddr, jnmap) <- case M.lookup mi mmap of
     Nothing -> do
       cls <- getClassFile cm
       printfMp $ printf "getMethodEntry: no method \"%s\" found. compile it\n" (show mi)
@@ -57,11 +57,11 @@ getMethodEntry mi@(MethodInfo method cm sig) = do
                 if scm == "jmate/lang/MateRuntime" then
                   case smethod of
                     "loadLibrary" ->
-                       return . funPtrToAddr $ loadLibraryAddr
+                       return (funPtrToAddr loadLibraryAddr, M.empty)
                     "printGCStats" ->
-                       return . funPtrToAddr $ printGCStatsAddr
+                       return (funPtrToAddr printGCStatsAddr, M.empty)
                     "printMemoryUsage" ->
-                       return . funPtrToAddr $ printMemoryUsageAddr
+                       return (funPtrToAddr printMemoryUsageAddr, M.empty)
                     _ ->
                        error $ "native-call: " ++ smethod ++ " not found."
                 else do
@@ -72,16 +72,17 @@ getMethodEntry mi@(MethodInfo method cm sig) = do
                       symbol = sym1 ++ "__" ++ smethod ++ "__" ++ sym2
                   printfMp $ printf "native-call: symbol: %s\n" symbol
                   nf <- loadNativeFunction symbol
-                  setMethodMap $ M.insert mi nf mmap
-                  return nf
+                  let nf' = (nf, M.empty)
+                  setMethodMap $ M.insert mi nf' mmap
+                  return nf'
               else do
                 rawmethod <- parseMethod cls' method sig
                 entry <- compileBB rawmethod (MethodInfo method (thisClass cls') sig)
                 addMethodRef entry mi clsnames
-                return $ fromIntegral entry
+                return entry
         Nothing -> error $ show method ++ " not found. abort"
     Just w32 -> return w32
-  return $ fromIntegral entryaddr
+  return (fromIntegral entryaddr, jnmap)
 
 funPtrToAddr :: Num b => FunPtr a -> b
 funPtrToAddr = fromIntegral . ptrToIntPtr . castFunPtrToPtr
@@ -125,14 +126,14 @@ loadNativeFunction sym = do
 --   mmap2ptr mmap >>= set_mmap
 --   demo_mmap -- access Data.Map from C
 
-addMethodRef :: NativeWord -> MethodInfo -> [B.ByteString] -> IO ()
+addMethodRef :: (NativeWord, JpcNpcMap) -> MethodInfo -> [B.ByteString] -> IO ()
 addMethodRef entry (MethodInfo mmname _ msig) clsnames = do
   mmap <- getMethodMap
   let newmap = foldr (\i -> M.insert (MethodInfo mmname i msig) entry) M.empty clsnames
   setMethodMap $ mmap `M.union` newmap
 
 
-compileBB :: RawMethod -> MethodInfo -> IO NativeWord
+compileBB :: RawMethod -> MethodInfo -> IO (NativeWord, JpcNpcMap)
 compileBB rawmethod methodinfo = do
   tmap <- getTrapMap
 
@@ -140,7 +141,7 @@ compileBB rawmethod methodinfo = do
   printfJit $ printf "emit code of \"%s\" from \"%s\":\n" (toString $ methName methodinfo) (toString $ methClassName methodinfo)
   let ebb = emitFromBB cls rawmethod
   let cgconfig = defaultCodeGenConfig { codeBufferSize = fromIntegral $ rawCodeLength rawmethod * 32 }
-  (_, Right right) <- runCodeGenWithConfig ebb () () cgconfig
+  (jnmap, Right right) <- runCodeGenWithConfig ebb () M.empty cgconfig
 
   let ((entry, _, new_tmap), _) = right
   setTrapMap $ tmap `M.union` new_tmap -- prefers elements in tmap
@@ -158,7 +159,7 @@ compileBB rawmethod methodinfo = do
   -- (2) on getLine, press CTRL+C
   -- (3) `br *0x<addr>'; obtain the address from the disasm above
   -- (4) `cont' and press enter
-  return $ fromIntegral $ ptrToIntPtr entry
+  return (fromIntegral $ ptrToIntPtr entry, jnmap)
 
 
 executeFuncPtr :: NativeWord -> IO ()

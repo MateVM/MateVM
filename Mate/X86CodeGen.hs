@@ -45,7 +45,7 @@ type BBStarts = M.Map BlockID Int
 type CompileInfo = (EntryPoint, Int, TrapMap)
 
 
-emitFromBB :: Class Direct -> RawMethod -> CodeGen e s (CompileInfo, [Instruction])
+emitFromBB :: Class Direct -> RawMethod -> CodeGen e JpcNpcMap (CompileInfo, [Instruction])
 emitFromBB cls method = do
     let keys = M.keys hmap
     llmap <- mapM (newNamedLabel . (++) "bb_" . show) keys
@@ -65,16 +65,16 @@ emitFromBB cls method = do
   getLabel bid [] = error $ "label " ++ show bid ++ " not found"
   getLabel i ((x,l):xs) = if i==x then l else getLabel i xs
 
-  efBB :: [(BlockID, Label)] -> BlockID -> CodeGen e s [(Maybe (Word32, TrapCause))]
+  efBB :: [(BlockID, Label)] -> BlockID -> CodeGen e JpcNpcMap [(Maybe (Word32, TrapCause))]
   efBB lmap bid = do
     defineLabel $ getLabel bid lmap
-    ret <- mapM emit'' $ code bb
+    retval <- mapM emit'' $ code bb
     case successor bb of
         FallThrough t -> do
           -- TODO(bernhard): le dirty hax. see java/lang/Integer.toString(int, int)
           jmp (getLabel t lmap)
         _ -> return ()
-    return ret
+    return retval
     where
     bb = hmap M.! bid
 
@@ -98,7 +98,7 @@ emitFromBB cls method = do
       -- like: call $0x01234567
       calladdr <- emitSigIllTrap 5
       let patcher reip = do
-            entryAddr <- liftIO $ getMethodEntry l
+            (entryAddr, _) <- liftIO $ getMethodEntry l
             call (fromIntegral (entryAddr - (reip + 5)) :: NativeWord)
             return reip
       -- discard arguments on stack
@@ -137,8 +137,12 @@ emitFromBB cls method = do
       -- depending on the method-table-ptr
       return $ Just (calladdr, VirtualCall isInterface mi offset)
 
-    emit'' :: J.Instruction -> CodeGen e s (Maybe (Word32, TrapCause))
-    emit'' insn = newNamedLabel ("jvm_insn: " ++ show insn) >>= defineLabel >> emit' insn
+    emit'' :: J.Instruction -> CodeGen e JpcNpcMap (Maybe (Word32, TrapCause))
+    emit'' insn = do
+      ep <- (fromIntegral . ptrToIntPtr) <$> getEntryPoint
+      jpcrpc <- getState
+      setState (M.insert ep bid jpcrpc)
+      newNamedLabel ("jvm_insn: " ++ show insn) >>= defineLabel >> emit' insn
 
     emit' :: J.Instruction -> CodeGen e s (Maybe (Word32, TrapCause))
     emit' (INVOKESPECIAL cpidx) = emitInvoke cpidx True
