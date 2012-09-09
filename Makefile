@@ -74,8 +74,7 @@ mate.static: Mate.hs ffi/trap.c $(HS_FILES) $(HS_BOOT) ffi/native.o $(CLASS_FILE
 clean:
 	rm -rf $(BUILD) mate mate.static ffi/native.o \
 		tests/*.class Mate/*_stub.* \
-		jmate/lang/*.class jmate/io/*.class java/io/*.class \
-		java/lang/{Integer,Character,String,System}.class \
+		$(CLASS_FILES) \
 		scratch/*.class
 
 ghci: mate.static
