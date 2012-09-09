@@ -226,6 +226,7 @@ emitFromBB cls method = do
     emit' ATHROW = do
       trapaddr <- emitSigIllTrap 2
       let patcher resp reip = do
+            error "no athrow for you, sorry"
             emitSigIllTrap 2
             return reip
       return $ Just (trapaddr, ThrowException patcher)

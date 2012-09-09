@@ -107,29 +107,32 @@ parseMethod cls methodname sig = do
   let nametype = methodNameType methoddirect
   let argscount = methodGetArgsCount nametype + (if isStatic then 0 else 1)
 
-  let msig = methodSignature method
-  printfBb $ printf "BB: analysing \"%s\"\n" $ toString (methodname `B.append` ": " `B.append` encode msig)
-  printMapBB mapbb
+  -- TODO: remove ;-)
   -- small example how to get information about
   -- exceptions of a method
-  -- TODO: remove ;-)
   let (Just m) = lookupMethodSig methodname sig cls
   case attrByName m "Code" of
     Nothing ->
       printfBb $ printf "exception: no handler for this method\n"
     Just exceptionstream ->
       printfBb $ printf "exception: \"%s\"\n" (show $ codeExceptions $ decodeMethod exceptionstream)
+  -- [/remove]
+  let msig = methodSignature method
+  printfBb $ printf "BB: analysing \"%s\"\n" $ toString (methodname `B.append` ": " `B.append` encode msig)
+  printMapBB mapbb
   return $ RawMethod mapbb locals stacks argscount codelen
 
 
 testCFG :: Code -> MapBB
-testCFG = buildCFG . codeInstructions
+testCFG c = buildCFG (codeInstructions c) (codeExceptions c)
 
-buildCFG :: [Instruction] -> MapBB
-buildCFG xs = execState (mapM (buildCFG' offins) alltargets) M.empty
+buildCFG :: [Instruction] -> [CodeException] -> MapBB
+buildCFG xs excps = execState (mapM (buildCFG' offins) $ alltargets ++ handlerEntries) M.empty
   where
-  (offins, targets) = runState (calculateInstructionOffset xs) S.empty
+  (offins, targets) = runState (calculateInstructionOffset tryBlocks xs) S.empty
   alltargets = S.toList $ S.insert 0 targets
+  tryBlocks = map (fromIntegral . eStartPC) excps
+  handlerEntries = map (fromIntegral . eHandlerPC) excps
 
 buildCFG' :: [OffIns] -> Int -> State MapBB ()
 buildCFG' insns off = do
@@ -160,26 +163,30 @@ parseBasicBlock i insns = emptyBasicBlock { code = insonly, successor = endblock
     omitins (off, _, _) = off < i
 
 
-calculateInstructionOffset :: [Instruction] -> AnalyseState
-calculateInstructionOffset = cio' (0, Nothing, NOP)
+calculateInstructionOffset :: [BlockID] -> [Instruction] -> AnalyseState
+calculateInstructionOffset exstarts = cio' 0
   where
-    addW16Signed :: Int -> Word16 -> Int
     addW16Signed i w16 = i + fromIntegral s16
       where s16 = fromIntegral w16 :: Int16
 
-    cio' :: OffIns -> [Instruction] -> AnalyseState
+    cio' :: Int -> [Instruction] -> AnalyseState
     cio' _ [] = return $ []
-    cio' (off,_,_) (x:xs) = case x of
+    cio' off (x:xs) = case x of
         IF _ w16 -> twotargets w16
         IF_ICMP _ w16 -> twotargets w16
         IF_ACMP _ w16 -> twotargets w16
         IFNONNULL w16 -> twotargets w16
         IFNULL w16 -> twotargets w16
         GOTO w16 -> onetarget w16
+        ATHROW -> notarget
         IRETURN -> notarget
         ARETURN -> notarget
         RETURN -> notarget
-        _ -> normalins
+        _ -> if newoffset `elem` exstarts
+              then do
+                modify (S.insert newoffset)
+                ((off, Just $ OneTarget newoffset, x):) <$> next
+              else normalins
       where
         normalins = do
           tailinsns <- next -- eval remaining instructions
@@ -199,9 +206,9 @@ calculateInstructionOffset = cio' (0, Nothing, NOP)
           let jump = off `addW16Signed` w16
           modify (S.insert jump)
           ((off, Just $ TwoTarget nojump jump, x):) <$> next
-        next = cio' nextins xs
-        nextins = (newoffset, Nothing, NOP)
-        newoffset = off + insnLength x
+        next = cio' newoffset xs
+        newoffset = off + insLen
+        insLen = insnLength x
 
 -- TODO(bernhard): does GHC memomize results? i.e. does it calculate the size
 --                 of `NOP' only once?

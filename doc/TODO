@@ -81,6 +81,10 @@
 	-> seperate analysis, jit, execution, ...
 	-> maybe use ghc profiling? (it doesn't measure native execution, but well)
 
+(l) testing
+	-> specjvm98
+	-> dacapo benchmark suite
+
 
 (l) ... low priority
 (m) ... medium priority
