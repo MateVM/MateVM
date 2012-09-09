@@ -36,13 +36,10 @@ type BBState = S.Set Target
 type AnalyseState = State BBState [OffIns]
 
 
-noException :: B.ByteString
-noException = B.empty
-
 emptyBasicBlock :: BasicBlock
 emptyBasicBlock = BasicBlock
                     { code = []
-                    , exception = noException
+                    , bblength = 0
                     , successor = Return }
 
 printMapBB :: MapBB -> IO ()
@@ -57,7 +54,7 @@ printMapBB hmap = do
       printMapBB' [] _ = return ()
       printMapBB' (i:is) hmap' = case M.lookup i hmap' of
         Just bb -> do
-          printfBb $ "Block " ++ show i ++ "\n"
+          printfBb $ "Block " ++ show i ++ ". len: " ++ (show $ bblength bb) ++ "\n"
           mapM_ (printfBb . flip (++) "\n" . (++) "\t" . show) $ code bb
           printfBb $ case successor bb of
             Return -> ""
@@ -98,7 +95,7 @@ parseMethod cls methodname sig = do
                 (error $ "codeseg " ++ (show . toString) methodname ++ " not found")
                 (attrByName method "Code")
   let decoded = decodeMethod codeseg
-  let mapbb = testCFG cls decoded
+  let mapbb = testCFG decoded
   let locals = fromIntegral (codeMaxLocals decoded)
   let stacks = fromIntegral (codeStackSize decoded)
   let codelen = fromIntegral (codeLength decoded)
@@ -107,35 +104,8 @@ parseMethod cls methodname sig = do
   let nametype = methodNameType methoddirect
   let argscount = methodGetArgsCount nametype + (if isStatic then 0 else 1)
 
-  -- TODO: remove ;-)
-  -- small example how to get information about
-  -- exceptions of a method
-  let (Just m) = lookupMethodSig methodname sig cls
-  case attrByName m "Code" of
-    Nothing ->
-      printfBb $ printf "exception: no handler for this method\n"
-    Just exceptionstream ->
-      printfBb $ printf "exception: \"%s\"\n" (show $ codeExceptions $ decodeMethod exceptionstream)
-  -- [/remove]
-  let msig = methodSignature method
-  printfBb $ printf "BB: analysing \"%s\"\n" $ toString (methodname `B.append` ": " `B.append` encode msig)
-  printMapBB mapbb
-  return $ RawMethod mapbb locals stacks argscount codelen
-
-
-testCFG :: Class Direct -> Code -> MapBB
-testCFG cls c = buildCFG (codeInstructions c) (codeExceptions c)
-  where
-    buildCFG :: [Instruction] -> [CodeException] -> MapBB
-    buildCFG xs excps = execState (mapM buildCFG' $ alltargets ++ handlerEntries) M.empty
-      where
-      (offins, targets) = runState (calculateInstructionOffset tryBlocks xs) S.empty
-      alltargets = S.toList $ S.insert 0 targets
-      tryBlocks = map (fromIntegral . eStartPC) excps
-      handlerEntries = map (fromIntegral . eHandlerPC) excps
-
-      exceptionMap :: M.Map (Word16, Word16) [(B.ByteString, Word16)]
-      exceptionMap = foldl f M.empty excps
+  let exceptionMap :: ExceptionMap
+      exceptionMap = foldl f M.empty $ codeExceptions decoded
         where
           f emap ce =
             if M.member key emap
@@ -145,17 +115,37 @@ testCFG cls c = buildCFG (codeInstructions c) (codeExceptions c)
                 key = (&&&) eStartPC eEndPC ce
                 value = (&&&) (buildClassID cls . eCatchType) eHandlerPC ce
 
+  let msig = methodSignature method
+  printfBb $ printf "BB: analysing \"%s\"\n" $ toString (methodname `B.append` ": " `B.append` encode msig)
+  printMapBB mapbb
+  return $ RawMethod mapbb exceptionMap locals stacks argscount codelen
+
+
+testCFG :: Code -> MapBB
+testCFG c = buildCFG (codeInstructions c) (codeExceptions c)
+  where
+    buildCFG :: [Instruction] -> [CodeException] -> MapBB
+    buildCFG xs excps = execState (mapM buildCFG' $ alltargets ++ handlerEntries) M.empty
+      where
+      (offins, targets) = runState (calculateInstructionOffset tryBlocks xs) S.empty
+      alltargets = S.toList $ S.insert 0 targets
+      tryBlocks = map (fromIntegral . eStartPC) excps
+      handlerEntries = map (fromIntegral . eHandlerPC) excps
+
       buildCFG' :: Int -> State MapBB ()
       buildCFG' off = do
         let value = parseBasicBlock off offins
         modify (M.insert off value)
 
 parseBasicBlock :: Int -> [OffIns] -> BasicBlock
-parseBasicBlock i insns = emptyBasicBlock { code = insonly, successor = endblock }
+parseBasicBlock i insns = emptyBasicBlock
+          { code = insonly
+          , bblength = lastoff - i + (insnLength lastins)
+          , successor = endblock }
   where
     (lastblock, is) = takeWhilePlusOne validins omitins insns
     (_, _, insonly) = unzip3 is
-    (_, Just endblock, _) = fromJust lastblock
+    (lastoff, Just endblock, lastins) = fromJust lastblock
 
     -- also take last (non-matched) element and return it
     takeWhilePlusOne :: (a -> Bool) -> (a -> Bool) -> [a] -> (Maybe a, [a])

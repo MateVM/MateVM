@@ -4,6 +4,7 @@ module Mate.Types
   , BasicBlock(..)
   , BBEnd(..)
   , MapBB
+  , ExceptionMap
   , RawMethod(..)
   , TrapMap, MethodMap, ClassMap, FieldMap
   , StringMap, VirtualMap, InterfaceMap
@@ -23,6 +24,7 @@ module Mate.Types
 
 import Data.Int
 import Data.Functor
+import Data.Word
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as B
 
@@ -42,7 +44,7 @@ type BlockID = Int
 -- Represents a CFG node
 data BasicBlock = BasicBlock {
   code :: [Instruction],
-  exception :: B.ByteString,
+  bblength :: Int,
   successor :: BBEnd }
 
 -- describes (leaving) edges of a CFG node
@@ -54,9 +56,11 @@ data BBEnd
   deriving Show
 
 type MapBB = M.Map BlockID BasicBlock
+type ExceptionMap = M.Map (Word16, Word16) [(B.ByteString, Word16)]
 
 data RawMethod = RawMethod {
   rawMapBB :: MapBB,
+  rawExcpMap :: ExceptionMap,
   rawLocals :: Int,
   rawStackSize :: Int,
   rawArgCount :: NativeWord,
