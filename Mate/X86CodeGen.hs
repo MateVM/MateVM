@@ -45,8 +45,8 @@ type BBStarts = M.Map BlockID Int
 type CompileInfo = (EntryPoint, Int, TrapMap)
 
 
-emitFromBB :: Class Direct -> RawMethod -> CodeGen e JpcNpcMap (CompileInfo, [Instruction])
-emitFromBB cls method = do
+emitFromBB :: Class Direct -> MethodInfo -> RawMethod -> CodeGen e JpcNpcMap (CompileInfo, [Instruction])
+emitFromBB cls miThis method = do
     let keys = M.keys hmap
     llmap <- mapM (newNamedLabel . (++) "bb_" . show) keys
     let lmap = zip keys llmap
@@ -218,6 +218,7 @@ emitFromBB cls method = do
     emit' ATHROW = do
       trapaddr <- emitSigIllTrap 2
       let patcher resp reip = do
+            (_, jnmap) <- liftIO $ getMethodEntry miThis
             error "no athrow for you, sorry"
             emitSigIllTrap 2
             return reip

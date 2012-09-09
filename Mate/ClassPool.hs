@@ -275,7 +275,8 @@ loadAndInitClass path = do
     Just m -> do
       rawmethod <- parseMethod (ciFile ci) "<clinit>" $ MethodSignature [] ReturnsVoid
       let mi = MethodInfo "<clinit>" path (methodSignature m)
-      entry <- compileBB rawmethod mi
+      -- TODO(bernhard): test exception handling in static initalizer
+      entry <- compileBB mi rawmethod mi
       addMethodRef entry mi [path]
       printfCp $ printf "executing static initializer from %s now\n" (toString path)
       executeFuncPtr $ fst entry

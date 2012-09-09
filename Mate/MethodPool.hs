@@ -77,7 +77,7 @@ getMethodEntry mi@(MethodInfo method cm sig) = do
                   return nf'
               else do
                 rawmethod <- parseMethod cls' method sig
-                entry <- compileBB rawmethod (MethodInfo method (thisClass cls') sig)
+                entry <- compileBB mi rawmethod (MethodInfo method (thisClass cls') sig)
                 addMethodRef entry mi clsnames
                 return entry
         Nothing -> error $ show method ++ " not found. abort"
@@ -133,13 +133,13 @@ addMethodRef entry (MethodInfo mmname _ msig) clsnames = do
   setMethodMap $ mmap `M.union` newmap
 
 
-compileBB :: RawMethod -> MethodInfo -> IO (NativeWord, JpcNpcMap)
-compileBB rawmethod methodinfo = do
+compileBB :: MethodInfo -> RawMethod -> MethodInfo -> IO (NativeWord, JpcNpcMap)
+compileBB mi rawmethod methodinfo = do
   tmap <- getTrapMap
 
   cls <- getClassFile (methClassName methodinfo)
   printfJit $ printf "emit code of \"%s\" from \"%s\":\n" (toString $ methName methodinfo) (toString $ methClassName methodinfo)
-  let ebb = emitFromBB cls rawmethod
+  let ebb = emitFromBB cls mi rawmethod
   let cgconfig = defaultCodeGenConfig { codeBufferSize = fromIntegral $ rawCodeLength rawmethod * 32 }
   (jnmap, Right right) <- runCodeGenWithConfig ebb () M.empty cgconfig
 

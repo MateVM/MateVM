@@ -67,7 +67,7 @@ executeMain bclspath cls = do
     Just m -> do
       let mi = MethodInfo "main" bclspath $ methodSignature m
       rawmethod <- parseMethod cls "main" $ methodSignature m
-      entry <- compileBB rawmethod mi
+      entry <- compileBB mi rawmethod mi
       addMethodRef entry mi [bclspath]
       printfInfo "executing `main' now:\n"
       executeFuncPtr $ fst entry
