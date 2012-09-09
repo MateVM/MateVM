@@ -98,7 +98,7 @@ parseMethod cls methodname sig = do
                 (error $ "codeseg " ++ (show . toString) methodname ++ " not found")
                 (attrByName method "Code")
   let decoded = decodeMethod codeseg
-  let mapbb = testCFG decoded
+  let mapbb = testCFG cls decoded
   let locals = fromIntegral (codeMaxLocals decoded)
   let stacks = fromIntegral (codeStackSize decoded)
   let codelen = fromIntegral (codeLength decoded)
@@ -123,21 +123,32 @@ parseMethod cls methodname sig = do
   return $ RawMethod mapbb locals stacks argscount codelen
 
 
-testCFG :: Code -> MapBB
-testCFG c = buildCFG (codeInstructions c) (codeExceptions c)
-
-buildCFG :: [Instruction] -> [CodeException] -> MapBB
-buildCFG xs excps = execState (mapM (buildCFG' offins) $ alltargets ++ handlerEntries) M.empty
+testCFG :: Class Direct -> Code -> MapBB
+testCFG cls c = buildCFG (codeInstructions c) (codeExceptions c)
   where
-  (offins, targets) = runState (calculateInstructionOffset tryBlocks xs) S.empty
-  alltargets = S.toList $ S.insert 0 targets
-  tryBlocks = map (fromIntegral . eStartPC) excps
-  handlerEntries = map (fromIntegral . eHandlerPC) excps
+    buildCFG :: [Instruction] -> [CodeException] -> MapBB
+    buildCFG xs excps = execState (mapM buildCFG' $ alltargets ++ handlerEntries) M.empty
+      where
+      (offins, targets) = runState (calculateInstructionOffset tryBlocks xs) S.empty
+      alltargets = S.toList $ S.insert 0 targets
+      tryBlocks = map (fromIntegral . eStartPC) excps
+      handlerEntries = map (fromIntegral . eHandlerPC) excps
 
-buildCFG' :: [OffIns] -> Int -> State MapBB ()
-buildCFG' insns off = do
-  let value = parseBasicBlock off insns
-  modify (M.insert off value)
+      exceptionMap :: M.Map (Word16, Word16) [(B.ByteString, Word16)]
+      exceptionMap = foldl f M.empty excps
+        where
+          f emap ce =
+            if M.member key emap
+              then M.adjust (value:) key emap
+              else M.insert key [value] emap
+              where
+                key = (&&&) eStartPC eEndPC ce
+                value = (&&&) (buildClassID cls . eCatchType) eHandlerPC ce
+
+      buildCFG' :: Int -> State MapBB ()
+      buildCFG' off = do
+        let value = parseBasicBlock off offins
+        modify (M.insert off value)
 
 parseBasicBlock :: Int -> [OffIns] -> BasicBlock
 parseBasicBlock i insns = emptyBasicBlock { code = insonly, successor = endblock }
