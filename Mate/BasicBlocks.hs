@@ -12,6 +12,7 @@ module Mate.BasicBlocks(
 
 import Data.Binary hiding (get)
 import Data.Int
+import Data.List (foldl')
 import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.ByteString.Lazy as B
@@ -105,7 +106,7 @@ parseMethod cls methodname sig = do
   let argscount = methodGetArgsCount nametype + (if isStatic then 0 else 1)
 
   let exceptionMap :: ExceptionMap
-      exceptionMap = foldl f M.empty $ codeExceptions decoded
+      exceptionMap = foldl' f M.empty $ codeExceptions decoded
         where
           f emap ce =
             if M.member key emap

@@ -7,6 +7,7 @@ module Mate.Debug
   , printfCp
   , printfStr
   , printfInfo
+  , printfEx
   , mateDEBUG
   , printf -- TODO: delete me
   ) where
@@ -20,7 +21,9 @@ import Control.Monad
 {-# NOINLINE logHandle #-}
 -- TODO(bernhard): use MVar if threaded
 logHandle :: Handle
-logHandle = unsafePerformIO $ openFile "mate.log" WriteMode
+logHandle = if mateDEBUG
+    then unsafePerformIO $ openFile "mate.log" WriteMode
+    else stdout
 
 {-# INLINE mateDEBUG #-}
 mateDEBUG :: Bool
@@ -32,7 +35,8 @@ printString prefix str = do
   when mateDEBUG $ hPutStr logHandle . (++) prefix $ str
   hFlush logHandle
 
-printfJit, printfBb, printfMp, printfCp, printfStr, printfInfo  :: String -> IO ()
+printfJit, printfBb, printfMp, printfCp,
+  printfStr, printfInfo, printfEx  :: String -> IO ()
 {-
 -- TODO(bernhard):
 -- http://stackoverflow.com/questions/12123082/function-composition-with-text-printf-printf
@@ -43,3 +47,4 @@ printfMp   = printString "Mp: "
 printfCp   = printString "Cp: "
 printfStr  = printString "Str: "
 printfInfo = printString "Info: "
+printfEx = printString "Ex: "

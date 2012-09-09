@@ -143,8 +143,11 @@ emitFromBB cls miThis method = do
     emit'' (jpc, insn) = do
       npc <- getCurrentOffset
       jpcrpc <- getState
+      newNamedLabel ("jvm_insn: " ++ show insn) >>= defineLabel
+      res <- emit' insn
+      npc_end <- getCurrentOffset
       setState (BI.insert jpc npc jpcrpc)
-      newNamedLabel ("jvm_insn: " ++ show insn) >>= defineLabel >> emit' insn
+      return res
 
     emit' :: J.Instruction -> CodeGen e s (Maybe (Word32, TrapCause))
     emit' (INVOKESPECIAL cpidx) = emitInvoke cpidx True
@@ -224,32 +227,32 @@ emitFromBB cls miThis method = do
       trapaddr <- emitSigIllTrap 2
       let patcher :: TrapPatcherEaxEsp
           patcher reax resp reip = do
-            liftIO $ printfJit $ printf "reip: %d\n" (fromIntegral reip :: Word32)
-            liftIO $ printfJit $ printf "reax: %d\n" (fromIntegral reax :: Word32)
+            liftIO $ printfEx $ printf "reip: %d\n" (fromIntegral reip :: Word32)
+            liftIO $ printfEx $ printf "reax: %d\n" (fromIntegral reax :: Word32)
             (_, jnmap) <- liftIO $ getMethodEntry miThis
-            liftIO $ printfJit $ printf "size: %d\n" (BI.size jnmap)
-            liftIO $ printfJit $ printf "jnmap: %s\n" (show $ BI.toList jnmap)
+            liftIO $ printfEx $ printf "size: %d\n" (BI.size jnmap)
+            liftIO $ printfEx $ printf "jnmap: %s\n" (show $ BI.toList jnmap)
             -- TODO: (-4) is a hack (due to the insns above)
             let jpc = fromIntegral (jnmap BI.!> (fromIntegral reip - 4))
             let exceptionmap = rawExcpMap method
-            liftIO $ printfJit $ printf "exmap: %s\n" (show $ M.toList exceptionmap)
+            liftIO $ printfEx $ printf "exmap: %s\n" (show $ M.toList exceptionmap)
             let key =
                   case find f $ M.keys exceptionmap of
                     Just x -> x
                     Nothing -> error "exception: no handler found. (TODO1)"
                   where
                     f (x, y) = jpc >= x && jpc <= y
-            liftIO $ printfJit $ printf "exception: key is: %s\n" (show key)
+            liftIO $ printfEx $ printf "exception: key is: %s\n" (show key)
             let handlerJPCs = exceptionmap M.! key
             let f (x, y) = do x' <- getMethodTable x; return (fromIntegral x', y)
             handlers <- liftIO $ mapM f handlerJPCs
-            liftIO $ printfJit $ printf "exception: handlers: %s\n" (show handlers)
+            liftIO $ printfEx $ printf "exception: handlers: %s\n" (show handlers)
             let handlerJPC =
                   case find ((==) reax . fst) handlers of
                     Just x -> x
                     Nothing -> error "exception: no handler found (TODO2)"
             let handlerNPC = jnmap BI.! (fromIntegral $ snd handlerJPC)
-            liftIO $ printfJit $ printf "exception: handler at: 0x%08x\n" handlerNPC
+            liftIO $ printfEx $ printf "exception: handler at: 0x%08x\n" handlerNPC
             emitSigIllTrap 2
             return $ fromIntegral handlerNPC
       return $ Just (trapaddr, ThrowException patcher)
