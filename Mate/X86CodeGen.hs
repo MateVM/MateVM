@@ -99,8 +99,8 @@ emitFromBB cls method = do
 
     getCurrentOffset :: CodeGen e s Word32
     getCurrentOffset = do
-      ep <- (fromIntegral . ptrToIntPtr) `liftM` getEntryPoint
-      offset <- fromIntegral `liftM` getCodeOffset
+      ep <- (fromIntegral . ptrToIntPtr) <$> getEntryPoint
+      offset <- fromIntegral <$> getCodeOffset
       return $ ep + offset
 
     emitInvoke :: Word16 -> Bool -> CodeGen e s (Maybe (Word32, TrapCause))
