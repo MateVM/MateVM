@@ -7,6 +7,7 @@ module Mate.Types
   , ExceptionMap
   , JpcNpcMap
   , RawMethod(..)
+  , TrapPatcher, TrapPatcherEax, TrapPatcherEaxEsp
   , TrapMap, MethodMap, ClassMap, FieldMap
   , StringMap, VirtualMap, InterfaceMap
   , InterfaceMethodMap
@@ -27,6 +28,7 @@ import Data.Int
 import Data.Functor
 import Data.Word
 import qualified Data.Map as M
+import qualified Data.Bimap as BI
 import qualified Data.ByteString.Lazy as B
 
 import Data.IORef
@@ -44,7 +46,7 @@ import Mate.NativeSizes
 type BlockID = Int
 -- Represents a CFG node
 data BasicBlock = BasicBlock {
-  code :: [Instruction],
+  code :: [(Int, Instruction)],
   bblength :: Int,
   successor :: BBEnd }
 
@@ -60,7 +62,7 @@ type MapBB = M.Map BlockID BasicBlock
 type ExceptionMap = M.Map (Word16, Word16) [(B.ByteString, Word16)]
 
 -- java byte code PC -> native PC
-type JpcNpcMap = M.Map Word32 Int
+type JpcNpcMap = BI.Bimap Int Word32
 
 data RawMethod = RawMethod {
   rawMapBB :: MapBB,
@@ -76,14 +78,14 @@ data RawMethod = RawMethod {
 type TrapMap = M.Map NativeWord TrapCause
 
 type TrapPatcher = CPtrdiff -> CodeGen () () CPtrdiff
-type TrapPatcherEax = CPtrdiff -> CPtrdiff -> CodeGen () () CPtrdiff
-type TrapPatcherEsp = TrapPatcherEax
+type TrapPatcherEax = CPtrdiff -> TrapPatcher
+type TrapPatcherEaxEsp =  CPtrdiff -> TrapPatcherEax
 
 data TrapCause
   = StaticMethod TrapPatcher -- for static calls
   | VirtualCall Bool MethodInfo (IO NativeWord) -- for invoke{interface,virtual}
   | InstanceOf TrapPatcherEax
-  | ThrowException TrapPatcherEsp
+  | ThrowException TrapPatcherEaxEsp
   | NewObject TrapPatcher
   | StaticField StaticFieldInfo
   | ObjectField TrapPatcher

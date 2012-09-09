@@ -32,6 +32,7 @@ cabal install missingh $CABAL_OPT
 cabal install heap $CABAL_OPT
 cabal install plugins $CABAL_OPT
 cabal install split $CABAL_OPT
+cabal install bimap $CABAL_OPT
 
 # cabal install hs-java $CABAL_OPT
 gitinstall git://wien.tomnetworks.com/hs-java.git

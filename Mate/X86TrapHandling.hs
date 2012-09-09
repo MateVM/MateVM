@@ -41,7 +41,7 @@ mateHandler reip reax rebx resi resp = do
     (Just (InstanceOf patcher))  ->
         patchWithHarpy (patcher reax) reip >>= delFalse
     (Just (ThrowException patcher)) ->
-        patchWithHarpy (patcher resp) reip >>= delFalse
+        patchWithHarpy (patcher reax resp) reip >>= delFalse
     (Just (NewObject patcher))   ->
         patchWithHarpy patcher reip >>= delTrue
     (Just (VirtualCall False mi io_offset)) ->
@@ -52,8 +52,8 @@ mateHandler reip reax rebx resi resp = do
         >>= delFalse
     Nothing -> case resi of
         0x13371234 -> delFalse (-1)
-        _ -> error $ "getTrapType: abort :-( " ++ showHex reip ". "
-             ++ concatMap (`showHex` ", ") (M.keys tmap)
+        _ -> error $ "getTrapType: abort :-( eip: "
+             ++ showHex reip ". " ++ concatMap (`showHex` ", ") (M.keys tmap)
   when deleteMe $ setTrapMap $ M.delete reipw32 tmap
   return ret_nreip
     where

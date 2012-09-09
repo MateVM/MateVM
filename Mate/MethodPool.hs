@@ -5,6 +5,7 @@ module Mate.MethodPool where
 import Data.Binary
 import Data.String.Utils
 import qualified Data.Map as M
+import qualified Data.Bimap as BI
 import qualified Data.Set as S
 import qualified Data.ByteString.Lazy as B
 import System.Plugins
@@ -57,11 +58,11 @@ getMethodEntry mi@(MethodInfo method cm sig) = do
                 if scm == "jmate/lang/MateRuntime" then
                   case smethod of
                     "loadLibrary" ->
-                       return (funPtrToAddr loadLibraryAddr, M.empty)
+                       return (funPtrToAddr loadLibraryAddr, BI.empty)
                     "printGCStats" ->
-                       return (funPtrToAddr printGCStatsAddr, M.empty)
+                       return (funPtrToAddr printGCStatsAddr, BI.empty)
                     "printMemoryUsage" ->
-                       return (funPtrToAddr printMemoryUsageAddr, M.empty)
+                       return (funPtrToAddr printMemoryUsageAddr, BI.empty)
                     _ ->
                        error $ "native-call: " ++ smethod ++ " not found."
                 else do
@@ -72,7 +73,7 @@ getMethodEntry mi@(MethodInfo method cm sig) = do
                       symbol = sym1 ++ "__" ++ smethod ++ "__" ++ sym2
                   printfMp $ printf "native-call: symbol: %s\n" symbol
                   nf <- loadNativeFunction symbol
-                  let nf' = (nf, M.empty)
+                  let nf' = (nf, BI.empty)
                   setMethodMap $ M.insert mi nf' mmap
                   return nf'
               else do
@@ -141,7 +142,7 @@ compileBB mi rawmethod methodinfo = do
   printfJit $ printf "emit code of \"%s\" from \"%s\":\n" (toString $ methName methodinfo) (toString $ methClassName methodinfo)
   let ebb = emitFromBB cls mi rawmethod
   let cgconfig = defaultCodeGenConfig { codeBufferSize = fromIntegral $ rawCodeLength rawmethod * 32 }
-  (jnmap, Right right) <- runCodeGenWithConfig ebb () M.empty cgconfig
+  (jnmap, Right right) <- runCodeGenWithConfig ebb () BI.empty cgconfig
 
   let ((entry, _, new_tmap), _) = right
   setTrapMap $ tmap `M.union` new_tmap -- prefers elements in tmap

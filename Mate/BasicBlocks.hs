@@ -113,7 +113,11 @@ parseMethod cls methodname sig = do
               else M.insert key [value] emap
               where
                 key = (&&&) eStartPC eEndPC ce
-                value = (&&&) (buildClassID cls . eCatchType) eHandlerPC ce
+                value = (&&&) g eHandlerPC ce
+                  where
+                    g ce' = case eCatchType ce' of
+                        0 -> B.empty
+                        x -> buildClassID cls x
 
   let msig = methodSignature method
   printfBb $ printf "BB: analysing \"%s\"\n" $ toString (methodname `B.append` ": " `B.append` encode msig)
@@ -139,12 +143,12 @@ testCFG c = buildCFG (codeInstructions c) (codeExceptions c)
 
 parseBasicBlock :: Int -> [OffIns] -> BasicBlock
 parseBasicBlock i insns = emptyBasicBlock
-          { code = insonly
+          { code = zip offsets insonly
           , bblength = lastoff - i + (insnLength lastins)
           , successor = endblock }
   where
     (lastblock, is) = takeWhilePlusOne validins omitins insns
-    (_, _, insonly) = unzip3 is
+    (offsets, _, insonly) = unzip3 is
     (lastoff, Just endblock, lastins) = fromJust lastblock
 
     -- also take last (non-matched) element and return it

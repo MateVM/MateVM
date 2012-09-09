@@ -7,8 +7,9 @@ import Data.Binary
 import Data.BinaryState
 import Data.Int
 import Data.Maybe
-import Data.List (genericLength)
+import Data.List (genericLength, find)
 import qualified Data.Map as M
+import qualified Data.Bimap as BI
 import qualified Data.ByteString.Lazy as B
 import Control.Monad
 import Control.Applicative
@@ -20,7 +21,7 @@ import qualified JVM.Assembler as J
 import JVM.Assembler hiding (Instruction)
 import JVM.ClassFile
 
-import Harpy
+import Harpy hiding (fst)
 import Harpy.X86Disassembler
 
 import Mate.BasicBlocks
@@ -31,6 +32,7 @@ import Mate.ClassPool
 import Mate.ClassHierarchy
 import {-# SOURCE #-} Mate.MethodPool
 import Mate.Strings
+import Mate.Debug
 
 
 foreign import ccall "&mallocObjectGC"
@@ -137,11 +139,11 @@ emitFromBB cls miThis method = do
       -- depending on the method-table-ptr
       return $ Just (calladdr, VirtualCall isInterface mi offset)
 
-    emit'' :: J.Instruction -> CodeGen e JpcNpcMap (Maybe (Word32, TrapCause))
-    emit'' insn = do
-      ep <- (fromIntegral . ptrToIntPtr) <$> getEntryPoint
+    emit'' :: (Int, J.Instruction) -> CodeGen e JpcNpcMap (Maybe (Word32, TrapCause))
+    emit'' (jpc, insn) = do
+      npc <- getCurrentOffset
       jpcrpc <- getState
-      setState (M.insert ep bid jpcrpc)
+      setState (BI.insert jpc npc jpcrpc)
       newNamedLabel ("jvm_insn: " ++ show insn) >>= defineLabel >> emit' insn
 
     emit' :: J.Instruction -> CodeGen e s (Maybe (Word32, TrapCause))
@@ -216,12 +218,40 @@ emitFromBB cls miThis method = do
       return $ Just (trapaddr, NewObject patcher)
 
     emit' ATHROW = do
+      pop eax
+      push eax
+      mov eax (Disp 0, eax)
       trapaddr <- emitSigIllTrap 2
-      let patcher resp reip = do
+      let patcher :: TrapPatcherEaxEsp
+          patcher reax resp reip = do
+            liftIO $ printfJit $ printf "reip: %d\n" (fromIntegral reip :: Word32)
+            liftIO $ printfJit $ printf "reax: %d\n" (fromIntegral reax :: Word32)
             (_, jnmap) <- liftIO $ getMethodEntry miThis
-            error "no athrow for you, sorry"
+            liftIO $ printfJit $ printf "size: %d\n" (BI.size jnmap)
+            liftIO $ printfJit $ printf "jnmap: %s\n" (show $ BI.toList jnmap)
+            -- TODO: (-4) is a hack (due to the insns above)
+            let jpc = fromIntegral (jnmap BI.!> (fromIntegral reip - 4))
+            let exceptionmap = rawExcpMap method
+            liftIO $ printfJit $ printf "exmap: %s\n" (show $ M.toList exceptionmap)
+            let key =
+                  case find f $ M.keys exceptionmap of
+                    Just x -> x
+                    Nothing -> error "exception: no handler found. (TODO1)"
+                  where
+                    f (x, y) = jpc >= x && jpc <= y
+            liftIO $ printfJit $ printf "exception: key is: %s\n" (show key)
+            let handlerJPCs = exceptionmap M.! key
+            let f (x, y) = do x' <- getMethodTable x; return (fromIntegral x', y)
+            handlers <- liftIO $ mapM f handlerJPCs
+            liftIO $ printfJit $ printf "exception: handlers: %s\n" (show handlers)
+            let handlerJPC =
+                  case find ((==) reax . fst) handlers of
+                    Just x -> x
+                    Nothing -> error "exception: no handler found (TODO2)"
+            let handlerNPC = jnmap BI.! (fromIntegral $ snd handlerJPC)
+            liftIO $ printfJit $ printf "exception: handler at: 0x%08x\n" handlerNPC
             emitSigIllTrap 2
-            return reip
+            return $ fromIntegral handlerNPC
       return $ Just (trapaddr, ThrowException patcher)
 
     emit' insn = emit insn >> return Nothing
