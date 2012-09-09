@@ -142,7 +142,7 @@ compileBB rawmethod methodinfo = do
   let cgconfig = defaultCodeGenConfig { codeBufferSize = fromIntegral $ rawCodeLength rawmethod * 32 }
   (_, Right right) <- runCodeGenWithConfig ebb () () cgconfig
 
-  let ((entry, _, _, new_tmap), _) = right
+  let ((entry, _, new_tmap), _) = right
   setTrapMap $ tmap `M.union` new_tmap -- prefers elements in tmap
 
   printfJit $ printf "generated code of \"%s\" from \"%s\":\n" (toString $ methName methodinfo) (toString $ methClassName methodinfo)

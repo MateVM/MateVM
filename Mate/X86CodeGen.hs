@@ -42,7 +42,7 @@ type PatchInfo = (BlockID, EntryPointOffset)
 
 type BBStarts = M.Map BlockID Int
 
-type CompileInfo = (EntryPoint, BBStarts, Int, TrapMap)
+type CompileInfo = (EntryPoint, Int, TrapMap)
 
 
 emitFromBB :: Class Direct -> RawMethod -> CodeGen e s (CompileInfo, [Instruction])
@@ -54,11 +54,10 @@ emitFromBB cls method = do
     push ebp
     mov ebp esp
     sub esp (fromIntegral (rawLocals method) * ptrSize :: Word32)
-
-    (calls, bbstarts) <- efBB (0, hmap M.! 0) M.empty M.empty lmap
+    calls <- M.fromList . catMaybes . concat <$> mapM (efBB lmap) keys
     d <- disassemble
     end <- getCodeOffset
-    return ((ep, bbstarts, end, calls), d)
+    return ((ep, end, calls), d)
   where
   hmap = rawMapBB method
 
@@ -66,30 +65,19 @@ emitFromBB cls method = do
   getLabel bid [] = error $ "label " ++ show bid ++ " not found"
   getLabel i ((x,l):xs) = if i==x then l else getLabel i xs
 
-  efBB :: (BlockID, BasicBlock) -> TrapMap -> BBStarts -> [(BlockID, Label)] -> CodeGen e s (TrapMap, BBStarts)
-  efBB (bid, bb) calls bbstarts lmap =
-    if M.member bid bbstarts then
-      return (calls, bbstarts)
-    else do
-      bb_offset <- getCodeOffset
-      let bbstarts' = M.insert bid bb_offset bbstarts
-      defineLabel $ getLabel bid lmap
-      cs <- mapM emit'' $ code bb
-      let calls' = calls `M.union` M.fromList (catMaybes cs)
-      case successor bb of
-        Return -> return (calls', bbstarts')
+  efBB :: [(BlockID, Label)] -> BlockID -> CodeGen e s [(Maybe (Word32, TrapCause))]
+  efBB lmap bid = do
+    defineLabel $ getLabel bid lmap
+    ret <- mapM emit'' $ code bb
+    case successor bb of
         FallThrough t -> do
           -- TODO(bernhard): le dirty hax. see java/lang/Integer.toString(int, int)
           jmp (getLabel t lmap)
-          efBB (t, hmap M.! t) calls' bbstarts' lmap
-        OneTarget t -> efBB (t, hmap M.! t) calls' bbstarts' lmap
-        TwoTarget t1 t2 -> do
-          (calls'', bbstarts'') <- efBB (t1, hmap M.! t1) calls' bbstarts' lmap
-          efBB (t2, hmap M.! t2) calls'' bbstarts'' lmap
-    -- TODO(bernhard): also use metainformation
-    -- TODO(bernhard): implement `emit' as function which accepts a list of
-    --                 instructions, so we can use patterns for optimizations
+        _ -> return ()
+    return ret
     where
+    bb = hmap M.! bid
+
     forceRegDump :: CodeGen e s ()
     forceRegDump = do
       push esi
