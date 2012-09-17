@@ -98,7 +98,7 @@ data StaticFieldInfo = StaticFieldInfo {
 
 data CompiledMethod = CompiledMethod {
   methodEntryPoint :: NativeWord,
-  methodExceptionMap :: ExceptionMap Word32 }
+  methodExceptionMap :: ExceptionMap NativeWord }
 -- B.ByteString = name of method
 type MethodMap = M.Map MethodInfo CompiledMethod
 

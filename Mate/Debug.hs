@@ -35,6 +35,7 @@ printString prefix str = do
   when mateDEBUG $ hPutStr logHandle . (++) prefix $ str
   hFlush logHandle
 
+-- TODO(bernhard): inline
 printfJit, printfBb, printfMp, printfCp,
   printfStr, printfInfo, printfEx  :: String -> IO ()
 {-

@@ -250,18 +250,20 @@ emitFromBB cls miThis method = do
                   where
                     -- is the EIP somewhere in the range?
                     f (x, y) = weip >= x && weip <= y
-            liftIO $ printfEx $ printf "exception: key is: %s\n" (show key)
-            -- TODO: reverse this list?
-            let handlerObjs = exmap M.! key
-            let f (x, y) = do x' <- getMethodTable x; return (fromIntegral x', y)
-            handlers <- liftIO $ mapM f handlerObjs
-            liftIO $ printfEx $ printf "exception: handlers: %s\n" (show handlers)
+            liftIO $ printfEx $ printf "key is: %s\n" (show key)
+            -- reverse list, because matching order is important
+            let handlerObjs = reverse $ exmap M.! key
+            liftIO $ printfEx $ printf "handlerObjs: %s\n" (show handlerObjs)
+            -- TODO: find some way to avoid checking *every* handler here,
+            --       but abort on first match (fuuu @ IO ...)
+            let f (x, y) = do x' <- isInstanceOf' weax x; return (x', y)
+            handlers <- liftIO $ (mapM f handlerObjs :: IO [(Bool, Word32)])
+            liftIO $ printfEx $ printf "handlers: %s\n" (show handlers)
             let handlerNPC =
-                  -- TODO: check for subtypes too...
-                  case find ((==) weax . fst) handlers of
+                  case find fst handlers of
                     Just x -> snd x
                     Nothing -> error "exception: no handler found (TODO2)"
-            liftIO $ printfEx $ printf "exception: handler at: 0x%08x\n" handlerNPC
+            liftIO $ printfEx $ printf "handler at: 0x%08x\n" handlerNPC
             emitSigIllTrap 2
             return $ fromIntegral handlerNPC
       return $ Just (trapaddr, ThrowException patcher)
