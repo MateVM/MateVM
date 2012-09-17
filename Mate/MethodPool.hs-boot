@@ -4,12 +4,13 @@ module Mate.MethodPool where
 
 import qualified Data.ByteString.Lazy as B
 
+import Data.Word
 import Mate.Types
 import Mate.NativeSizes
 import Foreign.C.Types
 
 
-addMethodRef :: (NativeWord, JpcNpcMap) -> MethodInfo -> [B.ByteString] -> IO ()
-compileBB :: MethodInfo -> RawMethod -> MethodInfo -> IO (NativeWord, JpcNpcMap)
+addMethodRef :: (NativeWord, ExceptionMap Word32) -> MethodInfo -> [B.ByteString] -> IO ()
+compileBB :: MethodInfo -> RawMethod -> MethodInfo -> IO (NativeWord, ExceptionMap Word32)
 executeFuncPtr :: NativeWord -> IO ()
-getMethodEntry :: MethodInfo -> IO (CPtrdiff, JpcNpcMap)
+getMethodEntry :: MethodInfo -> IO (CPtrdiff, ExceptionMap Word32)

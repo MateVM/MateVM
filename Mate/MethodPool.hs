@@ -5,7 +5,6 @@ module Mate.MethodPool where
 import Data.Binary
 import Data.String.Utils
 import qualified Data.Map as M
-import qualified Data.Bimap as BI
 import qualified Data.Set as S
 import qualified Data.ByteString.Lazy as B
 import System.Plugins
@@ -40,11 +39,11 @@ foreign import ccall "&loadLibrary"
 foreign import ccall "&printGCStats"
   printGCStatsAddr :: FunPtr (IO ())
 
-getMethodEntry :: MethodInfo -> IO (CPtrdiff, JpcNpcMap)
+getMethodEntry :: MethodInfo -> IO (CPtrdiff, ExceptionMap Word32)
 getMethodEntry mi@(MethodInfo method cm sig) = do
   mmap <- getMethodMap
 
-  (entryaddr, jnmap) <- case M.lookup mi mmap of
+  (entryaddr, exmap) <- case M.lookup mi mmap of
     Nothing -> do
       cls <- getClassFile cm
       printfMp $ printf "getMethodEntry: no method \"%s\" found. compile it\n" (show mi)
@@ -58,11 +57,11 @@ getMethodEntry mi@(MethodInfo method cm sig) = do
                 if scm == "jmate/lang/MateRuntime" then
                   case smethod of
                     "loadLibrary" ->
-                       return (funPtrToAddr loadLibraryAddr, BI.empty)
+                       return (funPtrToAddr loadLibraryAddr, M.empty)
                     "printGCStats" ->
-                       return (funPtrToAddr printGCStatsAddr, BI.empty)
+                       return (funPtrToAddr printGCStatsAddr, M.empty)
                     "printMemoryUsage" ->
-                       return (funPtrToAddr printMemoryUsageAddr, BI.empty)
+                       return (funPtrToAddr printMemoryUsageAddr, M.empty)
                     _ ->
                        error $ "native-call: " ++ smethod ++ " not found."
                 else do
@@ -73,7 +72,7 @@ getMethodEntry mi@(MethodInfo method cm sig) = do
                       symbol = sym1 ++ "__" ++ smethod ++ "__" ++ sym2
                   printfMp $ printf "native-call: symbol: %s\n" symbol
                   nf <- loadNativeFunction symbol
-                  let nf' = (nf, BI.empty)
+                  let nf' = (nf, M.empty)
                   setMethodMap $ M.insert mi nf' mmap
                   return nf'
               else do
@@ -83,7 +82,7 @@ getMethodEntry mi@(MethodInfo method cm sig) = do
                 return entry
         Nothing -> error $ show method ++ " not found. abort"
     Just w32 -> return w32
-  return (fromIntegral entryaddr, jnmap)
+  return (fromIntegral entryaddr, exmap)
 
 funPtrToAddr :: Num b => FunPtr a -> b
 funPtrToAddr = fromIntegral . ptrToIntPtr . castFunPtrToPtr
@@ -127,14 +126,14 @@ loadNativeFunction sym = do
 --   mmap2ptr mmap >>= set_mmap
 --   demo_mmap -- access Data.Map from C
 
-addMethodRef :: (NativeWord, JpcNpcMap) -> MethodInfo -> [B.ByteString] -> IO ()
+addMethodRef :: (NativeWord, ExceptionMap Word32) -> MethodInfo -> [B.ByteString] -> IO ()
 addMethodRef entry (MethodInfo mmname _ msig) clsnames = do
   mmap <- getMethodMap
   let newmap = foldr (\i -> M.insert (MethodInfo mmname i msig) entry) M.empty clsnames
   setMethodMap $ mmap `M.union` newmap
 
 
-compileBB :: MethodInfo -> RawMethod -> MethodInfo -> IO (NativeWord, JpcNpcMap)
+compileBB :: MethodInfo -> RawMethod -> MethodInfo -> IO (NativeWord, ExceptionMap Word32)
 compileBB mi rawmethod methodinfo = do
   tmap <- getTrapMap
 
@@ -142,9 +141,9 @@ compileBB mi rawmethod methodinfo = do
   printfJit $ printf "emit code of \"%s\" from \"%s\":\n" (toString $ methName methodinfo) (toString $ methClassName methodinfo)
   let ebb = emitFromBB cls mi rawmethod
   let cgconfig = defaultCodeGenConfig { codeBufferSize = fromIntegral $ rawCodeLength rawmethod * 32 }
-  (jnmap, Right right) <- runCodeGenWithConfig ebb () BI.empty cgconfig
+  (jnmap, Right right) <- runCodeGenWithConfig ebb () M.empty cgconfig
 
-  let ((entry, _, new_tmap), _) = right
+  let ((entry, _, new_tmap, exmap), _) = right
   setTrapMap $ tmap `M.union` new_tmap -- prefers elements in tmap
 
   printfJit $ printf "generated code of \"%s\" from \"%s\":\n" (toString $ methName methodinfo) (toString $ methClassName methodinfo)
@@ -160,7 +159,7 @@ compileBB mi rawmethod methodinfo = do
   -- (2) on getLine, press CTRL+C
   -- (3) `br *0x<addr>'; obtain the address from the disasm above
   -- (4) `cont' and press enter
-  return (fromIntegral $ ptrToIntPtr entry, jnmap)
+  return (fromIntegral $ ptrToIntPtr entry, exmap)
 
 
 executeFuncPtr :: NativeWord -> IO ()

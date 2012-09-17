@@ -9,10 +9,10 @@ import Data.Int
 import Data.Maybe
 import Data.List (genericLength, find)
 import qualified Data.Map as M
-import qualified Data.Bimap as BI
 import qualified Data.ByteString.Lazy as B
-import Control.Monad
 import Control.Applicative
+import Control.Monad
+import Control.Arrow
 
 import Foreign hiding (xor)
 import Foreign.C.Types
@@ -44,7 +44,7 @@ type PatchInfo = (BlockID, EntryPointOffset)
 
 type BBStarts = M.Map BlockID Int
 
-type CompileInfo = (EntryPoint, Int, TrapMap)
+type CompileInfo = (EntryPoint, Int, TrapMap, ExceptionMap Word32)
 
 
 emitFromBB :: Class Direct -> MethodInfo -> RawMethod -> CodeGen e JpcNpcMap (CompileInfo, [Instruction])
@@ -57,9 +57,18 @@ emitFromBB cls miThis method = do
     mov ebp esp
     sub esp (fromIntegral (rawLocals method) * ptrSize :: Word32)
     calls <- M.fromList . catMaybes . concat <$> mapM (efBB lmap) keys
+    jpcnpcmap <- getState
     d <- disassemble
     end <- getCodeOffset
-    return ((ep, end, calls), d)
+    -- replace java program counter with native maschine program counter
+    let exmap = M.map (map h) $ M.mapKeys f $ rawExcpMap method
+          where
+            f (key1, key2) = (&&&) (M.! key1') (M.! key2') jpcnpcmap
+              where
+                key1' = fromIntegral key1
+                key2' = fromIntegral key2
+            h = second ((jpcnpcmap M.!) . fromIntegral)
+    return ((ep, end, calls, exmap), d)
   where
   hmap = rawMapBB method
 
@@ -142,11 +151,10 @@ emitFromBB cls miThis method = do
     emit'' :: (Int, J.Instruction) -> CodeGen e JpcNpcMap (Maybe (Word32, TrapCause))
     emit'' (jpc, insn) = do
       npc <- getCurrentOffset
-      jpcrpc <- getState
+      jpcnpc <- getState
       newNamedLabel ("jvm_insn: " ++ show insn) >>= defineLabel
       res <- emit' insn
-      npc_end <- getCurrentOffset
-      setState (BI.insert jpc npc jpcrpc)
+      setState (M.insert jpc npc jpcnpc)
       return res
 
     emit' :: J.Instruction -> CodeGen e s (Maybe (Word32, TrapCause))
@@ -227,31 +235,32 @@ emitFromBB cls miThis method = do
       trapaddr <- emitSigIllTrap 2
       let patcher :: TrapPatcherEaxEsp
           patcher reax resp reip = do
-            liftIO $ printfEx $ printf "reip: %d\n" (fromIntegral reip :: Word32)
-            liftIO $ printfEx $ printf "reax: %d\n" (fromIntegral reax :: Word32)
-            (_, jnmap) <- liftIO $ getMethodEntry miThis
-            liftIO $ printfEx $ printf "size: %d\n" (BI.size jnmap)
-            liftIO $ printfEx $ printf "jnmap: %s\n" (show $ BI.toList jnmap)
-            -- TODO: (-4) is a hack (due to the insns above)
-            let jpc = fromIntegral (jnmap BI.!> (fromIntegral reip - 4))
-            let exceptionmap = rawExcpMap method
-            liftIO $ printfEx $ printf "exmap: %s\n" (show $ M.toList exceptionmap)
+            let weax = fromIntegral reax :: Word32
+            let weip = fromIntegral reip :: Word32
+            liftIO $ printfEx $ printf "reip: %d\n" weip
+            liftIO $ printfEx $ printf "reax: %d\n" weax
+            -- get full exception map
+            (_, exmap) <- liftIO $ getMethodEntry miThis
+            liftIO $ printfEx $ printf "size: %d\n" (M.size exmap)
+            liftIO $ printfEx $ printf "exmap: %s\n" (show $ M.toList exmap)
             let key =
-                  case find f $ M.keys exceptionmap of
+                  case find f $ M.keys exmap of
                     Just x -> x
                     Nothing -> error "exception: no handler found. (TODO1)"
                   where
-                    f (x, y) = jpc >= x && jpc <= y
+                    -- is the EIP somewhere in the range?
+                    f (x, y) = weip >= x && weip <= y
             liftIO $ printfEx $ printf "exception: key is: %s\n" (show key)
-            let handlerJPCs = exceptionmap M.! key
+            -- TODO: reverse this list?
+            let handlerObjs = exmap M.! key
             let f (x, y) = do x' <- getMethodTable x; return (fromIntegral x', y)
-            handlers <- liftIO $ mapM f handlerJPCs
+            handlers <- liftIO $ mapM f handlerObjs
             liftIO $ printfEx $ printf "exception: handlers: %s\n" (show handlers)
-            let handlerJPC =
-                  case find ((==) reax . fst) handlers of
-                    Just x -> x
+            let handlerNPC =
+                  -- TODO: check for subtypes too...
+                  case find ((==) weax . fst) handlers of
+                    Just x -> snd x
                     Nothing -> error "exception: no handler found (TODO2)"
-            let handlerNPC = jnmap BI.! (fromIntegral $ snd handlerJPC)
             liftIO $ printfEx $ printf "exception: handler at: 0x%08x\n" handlerNPC
             emitSigIllTrap 2
             return $ fromIntegral handlerNPC

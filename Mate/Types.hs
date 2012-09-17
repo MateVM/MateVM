@@ -62,7 +62,7 @@ type MapBB = M.Map BlockID BasicBlock
 type ExceptionMap a = M.Map (a, a) [(B.ByteString, a)]
 
 -- java byte code PC -> native PC
-type JpcNpcMap = BI.Bimap Int Word32
+type JpcNpcMap = M.Map Int Word32
 
 data RawMethod = RawMethod {
   rawMapBB :: MapBB,
@@ -98,7 +98,7 @@ data StaticFieldInfo = StaticFieldInfo {
 
 -- B.ByteString = name of method
 -- NativeWord = entrypoint of method
-type MethodMap = M.Map MethodInfo (NativeWord, JpcNpcMap)
+type MethodMap = M.Map MethodInfo (NativeWord, ExceptionMap Word32)
 
 data MethodInfo = MethodInfo {
   methName :: B.ByteString,
