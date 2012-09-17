@@ -8,6 +8,7 @@ module Mate.Types
   , JpcNpcMap
   , RawMethod(..)
   , TrapPatcher, TrapPatcherEax, TrapPatcherEaxEsp
+  , CompiledMethod(..)
   , TrapMap, MethodMap, ClassMap, FieldMap
   , StringMap, VirtualMap, InterfaceMap
   , InterfaceMethodMap
@@ -28,7 +29,6 @@ import Data.Int
 import Data.Functor
 import Data.Word
 import qualified Data.Map as M
-import qualified Data.Bimap as BI
 import qualified Data.ByteString.Lazy as B
 
 import Data.IORef
@@ -96,9 +96,11 @@ data StaticFieldInfo = StaticFieldInfo {
 
 
 
+data CompiledMethod = CompiledMethod {
+  methodEntryPoint :: NativeWord,
+  methodExceptionMap :: ExceptionMap Word32 }
 -- B.ByteString = name of method
--- NativeWord = entrypoint of method
-type MethodMap = M.Map MethodInfo (NativeWord, ExceptionMap Word32)
+type MethodMap = M.Map MethodInfo CompiledMethod
 
 data MethodInfo = MethodInfo {
   methName :: B.ByteString,

@@ -70,5 +70,5 @@ executeMain bclspath cls = do
       entry <- compileBB mi rawmethod mi
       addMethodRef entry mi [bclspath]
       printfInfo "executing `main' now:\n"
-      executeFuncPtr $ fst entry
+      executeFuncPtr $ methodEntryPoint entry
     Nothing -> error "main not found"

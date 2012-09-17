@@ -16,7 +16,7 @@ import Foreign.C.String
 
 import JVM.ClassFile
 
-import Harpy
+import Harpy hiding (ret)
 import Harpy.X86Disassembler
 
 import Mate.BasicBlocks
@@ -43,7 +43,7 @@ getMethodEntry :: MethodInfo -> IO (CPtrdiff, ExceptionMap Word32)
 getMethodEntry mi@(MethodInfo method cm sig) = do
   mmap <- getMethodMap
 
-  (entryaddr, exmap) <- case M.lookup mi mmap of
+  (CompiledMethod entrypoint exmap) <- case M.lookup mi mmap of
     Nothing -> do
       cls <- getClassFile cm
       printfMp $ printf "getMethodEntry: no method \"%s\" found. compile it\n" (show mi)
@@ -54,14 +54,12 @@ getMethodEntry mi@(MethodInfo method cm sig) = do
             if S.member ACC_NATIVE flags
               then do
                 let scm = toString cm; smethod = toString method
+                    ret fp = return $ CompiledMethod (funPtrToAddr fp) M.empty
                 if scm == "jmate/lang/MateRuntime" then
                   case smethod of
-                    "loadLibrary" ->
-                       return (funPtrToAddr loadLibraryAddr, M.empty)
-                    "printGCStats" ->
-                       return (funPtrToAddr printGCStatsAddr, M.empty)
-                    "printMemoryUsage" ->
-                       return (funPtrToAddr printMemoryUsageAddr, M.empty)
+                    "loadLibrary" -> ret loadLibraryAddr
+                    "printGCStats" -> ret printGCStatsAddr
+                    "printMemoryUsage" -> ret printMemoryUsageAddr
                     _ ->
                        error $ "native-call: " ++ smethod ++ " not found."
                 else do
@@ -72,7 +70,7 @@ getMethodEntry mi@(MethodInfo method cm sig) = do
                       symbol = sym1 ++ "__" ++ smethod ++ "__" ++ sym2
                   printfMp $ printf "native-call: symbol: %s\n" symbol
                   nf <- loadNativeFunction symbol
-                  let nf' = (nf, M.empty)
+                  let nf' = CompiledMethod nf M.empty
                   setMethodMap $ M.insert mi nf' mmap
                   return nf'
               else do
@@ -82,7 +80,7 @@ getMethodEntry mi@(MethodInfo method cm sig) = do
                 return entry
         Nothing -> error $ show method ++ " not found. abort"
     Just w32 -> return w32
-  return (fromIntegral entryaddr, exmap)
+  return (fromIntegral entrypoint, exmap)
 
 funPtrToAddr :: Num b => FunPtr a -> b
 funPtrToAddr = fromIntegral . ptrToIntPtr . castFunPtrToPtr
@@ -126,14 +124,14 @@ loadNativeFunction sym = do
 --   mmap2ptr mmap >>= set_mmap
 --   demo_mmap -- access Data.Map from C
 
-addMethodRef :: (NativeWord, ExceptionMap Word32) -> MethodInfo -> [B.ByteString] -> IO ()
+addMethodRef :: CompiledMethod -> MethodInfo -> [B.ByteString] -> IO ()
 addMethodRef entry (MethodInfo mmname _ msig) clsnames = do
   mmap <- getMethodMap
   let newmap = foldr (\i -> M.insert (MethodInfo mmname i msig) entry) M.empty clsnames
   setMethodMap $ mmap `M.union` newmap
 
 
-compileBB :: MethodInfo -> RawMethod -> MethodInfo -> IO (NativeWord, ExceptionMap Word32)
+compileBB :: MethodInfo -> RawMethod -> MethodInfo -> IO CompiledMethod
 compileBB mi rawmethod methodinfo = do
   tmap <- getTrapMap
 
@@ -141,14 +139,14 @@ compileBB mi rawmethod methodinfo = do
   printfJit $ printf "emit code of \"%s\" from \"%s\":\n" (toString $ methName methodinfo) (toString $ methClassName methodinfo)
   let ebb = emitFromBB cls mi rawmethod
   let cgconfig = defaultCodeGenConfig { codeBufferSize = fromIntegral $ rawCodeLength rawmethod * 32 }
-  (jnmap, Right right) <- runCodeGenWithConfig ebb () M.empty cgconfig
+  (_, Right r) <- runCodeGenWithConfig ebb () M.empty cgconfig
 
-  let ((entry, _, new_tmap, exmap), _) = right
+  let ((entry, _, new_tmap, exmap), _) = r
   setTrapMap $ tmap `M.union` new_tmap -- prefers elements in tmap
 
   printfJit $ printf "generated code of \"%s\" from \"%s\":\n" (toString $ methName methodinfo) (toString $ methClassName methodinfo)
   printfJit $ printf "\tstacksize: 0x%04x, locals: 0x%04x\n" (rawStackSize rawmethod) (rawLocals rawmethod)
-  when mateDEBUG $ mapM_ (printfJit . printf "%s\n" . showIntel) (snd right)
+  when mateDEBUG $ mapM_ (printfJit . printf "%s\n" . showIntel) (snd r)
   printfJit $ printf "\n\n"
   -- UNCOMMENT NEXT LINES FOR GDB FUN
   -- if (toString $ methName methodinfo) == "thejavamethodIwant2debug"
@@ -159,7 +157,7 @@ compileBB mi rawmethod methodinfo = do
   -- (2) on getLine, press CTRL+C
   -- (3) `br *0x<addr>'; obtain the address from the disasm above
   -- (4) `cont' and press enter
-  return (fromIntegral $ ptrToIntPtr entry, exmap)
+  return $ CompiledMethod (fromIntegral $ ptrToIntPtr entry) exmap
 
 
 executeFuncPtr :: NativeWord -> IO ()
