@@ -59,14 +59,14 @@ data BBEnd
   deriving Show
 
 type MapBB = M.Map BlockID BasicBlock
-type ExceptionMap = M.Map (Word16, Word16) [(B.ByteString, Word16)]
+type ExceptionMap a = M.Map (a, a) [(B.ByteString, a)]
 
 -- java byte code PC -> native PC
 type JpcNpcMap = BI.Bimap Int Word32
 
 data RawMethod = RawMethod {
   rawMapBB :: MapBB,
-  rawExcpMap :: ExceptionMap,
+  rawExcpMap :: ExceptionMap Word16,
   rawLocals :: Int,
   rawStackSize :: Int,
   rawArgCount :: NativeWord,

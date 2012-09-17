@@ -105,7 +105,7 @@ parseMethod cls methodname sig = do
   let nametype = methodNameType methoddirect
   let argscount = methodGetArgsCount nametype + (if isStatic then 0 else 1)
 
-  let exceptionMap :: ExceptionMap
+  let exceptionMap :: ExceptionMap Word16
       exceptionMap = foldl' f M.empty $ codeExceptions decoded
         where
           f emap ce =
