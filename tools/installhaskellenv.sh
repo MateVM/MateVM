@@ -35,12 +35,12 @@ cabal install split $CABAL_OPT
 cabal install bimap $CABAL_OPT
 
 # cabal install hs-java $CABAL_OPT
-gitinstall git://wien.tomnetworks.com/hs-java.git
+gitinstall git://github.com/MateVM/hs-java.git
 
 cabal install disassembler $CABAL_OPT
 # cabal install harpy $CABAL_OPT
-gitinstall git://wien.tomnetworks.com/harpy.git
+gitinstall git://github.com/MateVM/harpy.git
 
-gitinstallWithCustomSetup git://wien.tomnetworks.com/hs-boehmgc.git 
+gitinstallWithCustomSetup git://github.com/MateVM/hs-boehmgc.git
 
 echo DONE
