@@ -52,14 +52,17 @@ emitFromBB cls miThis method = do
     let keys = M.keys hmap
     llmap <- mapM (newNamedLabel . (++) "bb_" . show) keys
     let lmap = zip keys llmap
+    -- TODO(bernhard): don't jump around in the code... wtf dude!
+    pushExceptionMap <- newNamedLabel "pushExceptionMap"
+    stacksetup <- newNamedLabel "stacksetup"
     ep <- getEntryPoint
     push ebp
     mov ebp esp
-    sub esp (fromIntegral (rawLocals method) * ptrSize :: Word32)
+    sub esp stackalloc
+    jmp pushExceptionMap
+    defineLabel stacksetup
     calls <- M.fromList . catMaybes . concat <$> mapM (efBB lmap) keys
     jpcnpcmap <- getState
-    d <- disassemble
-    end <- getCodeOffset
     -- replace java program counter with native maschine program counter
     let exmap = M.map (map h) $ M.mapKeys f $ rawExcpMap method
           where
@@ -68,9 +71,16 @@ emitFromBB cls miThis method = do
                 key1' = fromIntegral key1
                 key2' = fromIntegral key2
             h = second ((jpcnpcmap M.!) . fromIntegral)
+    sptr_exmap <- liftIO $ do
+      (fromIntegral . ptrToIntPtr . castStablePtrToPtr) <$> newStablePtr exmap
+    pushExceptionMap @@ push (sptr_exmap :: Word32)
+    jmp stacksetup
+    d <- disassemble
+    end <- getCodeOffset
     return ((ep, end, calls, exmap), d)
   where
   hmap = rawMapBB method
+  stackalloc = fromIntegral (rawLocals method) * ptrSize :: Word32
 
   getLabel :: BlockID -> [(BlockID, Label)] -> Label
   getLabel bid [] = error $ "label " ++ show bid ++ " not found"
@@ -231,14 +241,20 @@ emitFromBB cls miThis method = do
     emit' ATHROW = do
       mov eax (Disp 0, esp) -- peek value from stack
       trapaddr <- emitSigIllTrap 2
-      let patcher :: TrapPatcherEaxEsp
-          patcher reax resp reip = do
+      let patcher :: TrapPatcherEaxEbp
+          patcher reax rebp reip = do
             let weax = fromIntegral reax :: Word32
             let weip = fromIntegral reip :: Word32
+            ebpstuff <- liftIO $ do
+              let addr = (fromIntegral rebp) - (stackalloc + 4)
+              peek (intPtrToPtr . fromIntegral $ addr) :: IO Word32
+            liftIO $ printfEx $ printf "read ebp stuff: 0x%08x\n" ebpstuff
             liftIO $ printfEx $ printf "reip: %d\n" weip
             liftIO $ printfEx $ printf "reax: %d\n" weax
             -- get full exception map
-            (_, exmap) <- liftIO $ getMethodEntry miThis
+            -- (_, exmap) <- liftIO $ getMethodEntry miThis
+            let sptr = castPtrToStablePtr $ intPtrToPtr $ fromIntegral ebpstuff
+            exmap <- liftIO $ (deRefStablePtr sptr :: IO (ExceptionMap Word32))
             liftIO $ printfEx $ printf "size: %d\n" (M.size exmap)
             liftIO $ printfEx $ printf "exmap: %s\n" (show $ M.toList exmap)
             let key =

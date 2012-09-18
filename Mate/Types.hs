@@ -7,7 +7,7 @@ module Mate.Types
   , ExceptionMap
   , JpcNpcMap
   , RawMethod(..)
-  , TrapPatcher, TrapPatcherEax, TrapPatcherEaxEsp
+  , TrapPatcher, TrapPatcherEax, TrapPatcherEaxEbp
   , CompiledMethod(..)
   , TrapMap, MethodMap, ClassMap, FieldMap
   , StringMap, VirtualMap, InterfaceMap
@@ -79,13 +79,13 @@ type TrapMap = M.Map NativeWord TrapCause
 
 type TrapPatcher = CPtrdiff -> CodeGen () () CPtrdiff
 type TrapPatcherEax = CPtrdiff -> TrapPatcher
-type TrapPatcherEaxEsp =  CPtrdiff -> TrapPatcherEax
+type TrapPatcherEaxEbp =  CPtrdiff -> TrapPatcherEax
 
 data TrapCause
   = StaticMethod TrapPatcher -- for static calls
   | VirtualCall Bool MethodInfo (IO NativeWord) -- for invoke{interface,virtual}
   | InstanceOf TrapPatcherEax
-  | ThrowException TrapPatcherEaxEsp
+  | ThrowException TrapPatcherEaxEbp
   | NewObject TrapPatcher
   | StaticField StaticFieldInfo
   | ObjectField TrapPatcher
@@ -98,6 +98,7 @@ data StaticFieldInfo = StaticFieldInfo {
 
 data CompiledMethod = CompiledMethod {
   methodEntryPoint :: NativeWord,
+  -- TODO(bernhard): remove exceptionmap?
   methodExceptionMap :: ExceptionMap NativeWord }
 -- B.ByteString = name of method
 type MethodMap = M.Map MethodInfo CompiledMethod
