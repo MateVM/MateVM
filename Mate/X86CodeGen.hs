@@ -267,36 +267,45 @@ emitFromBB cls miThis method = do
                   exmap <- (deRefStablePtr sptr :: IO (ExceptionMap Word32))
                   printfEx $ printf "size: %d\n" (M.size exmap)
                   printfEx $ printf "exmap: %s\n" (show $ M.toList exmap)
-                  case find f $ M.keys exmap of
-                      Just x -> findHandler x exmap
-                      Nothing -> do
-                        printfEx "unwind stack now. good luck(1)\n\n"
+                  let searchHandler :: [(Word32, Word32)] -> IO (CPtrdiff, CPtrdiff, CPtrdiff)
+                      searchHandler [] = do
+                        printfEx "unwind stack now. good luck(x)\n\n"
                         unwindStack rebp resp
+                      searchHandler (r@(x, y):rs) = do
+                        -- is the EIP somewhere in the range?
+                        if weip >= x && weip <= y
+                          then do -- let's see if there's a proper handler in this range
+                            res <- findHandler r exmap
+                            case res of
+                              Just x -> return x
+                              Nothing -> searchHandler rs
+                          else searchHandler rs
+
+                  searchHandler $ M.keys exmap
                     where
-                      -- is the EIP somewhere in the range?
-                      f (x, y) = weip >= x && weip <= y
+                      findHandler :: (Word32, Word32) -> ExceptionMap Word32 -> IO (Maybe (CPtrdiff, CPtrdiff, CPtrdiff))
                       findHandler key exmap = do
                         printfEx $ printf "key is: %s\n" (show key)
                         let handlerObjs = exmap M.! key
                         printfEx $ printf "handlerObjs: %s\n" (show handlerObjs)
 
-                        let myMapM :: (a -> IO (Maybe Word32)) -> [a] -> IO (CPtrdiff, CPtrdiff, CPtrdiff)
-                            myMapM _ [] = do
-                              printfEx "unwind stack now. good luck(1)\n\n"
-                              unwindStack rebp resp
+                        let myMapM :: (a -> IO (Maybe Word32)) -> [a] -> IO (Maybe (CPtrdiff, CPtrdiff, CPtrdiff))
+                            myMapM _ [] = return Nothing
                             myMapM g (x:xs) = do
                               r <- g x
                               case r of
-                                Just y -> return (fromIntegral y, rebp, resp)
+                                Just y -> return $ Just (fromIntegral y, rebp, resp)
                                 Nothing -> myMapM g xs
                         let f :: (B.ByteString, Word32) -> IO (Maybe Word32)
                             f (x, y) = do
                                   printfEx $ printf "looking at @ %s\n" (show x)
+                                  -- on B.empty, it's the "generic handler"
+                                  -- (e.g. finally)
                                   x' <- if x == B.empty then return True else isInstanceOf weax x
                                   return $ if x' then Just y else Nothing
-                        -- by using myMapM, we avoid to look at *every* handler, but abort
-                        -- on the first match (yes, it's rather ugly with IO :/ better
-                        -- solutions are welcome)
+                        -- by using myMapM, we avoid to look at *every* handler,
+                        -- but abort on the first match (yes, it's rather
+                        -- ugly :/ better solutions are welcome)
                         myMapM f handlerObjs
       return $ Just (trapaddr, ThrowException patcher)
 
