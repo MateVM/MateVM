@@ -242,55 +242,68 @@ emitFromBB cls miThis method = do
       mov eax (Disp 0, esp) -- peek value from stack
       trapaddr <- emitSigIllTrap 2
       let patcher :: TrapPatcherEax
-          patcher reax reip rebp resp = do
+          patcher reax reip rebp' resp' = do
             emitSigIllTrap 2
-            let weip = fromIntegral reip :: Word32
-            liftIO $ handleException weip
+            let weip = fromIntegral reip
+            liftIO $ handleException weip rebp' resp'
               where
                 weax = fromIntegral reax :: Word32
-                  -- emit RETURN = do mov esp ebp; pop ebp; pop ebp; ret
-                  -- set esp to (ebp + 8)
-                  -- set ebp to *(esp - 4)
-                handleException weip = do
+                unwindStack :: CPtrdiff -> CPtrdiff -> IO (CPtrdiff, CPtrdiff, CPtrdiff)
+                unwindStack rebp resp = do
+                  let nesp = rebp + 8
+                  -- get ebp of caller
+                  nebp <- peek (intPtrToPtr . fromIntegral $ (nesp - 4))
+                  printfEx $ printf "nebp: 0x%08x\n" (fromIntegral nebp :: Word32)
+                  printfEx $ printf "nesp: 0x%08x\n" (fromIntegral nesp :: Word32)
+                  -- get return addr
+                  neip <- peek (intPtrToPtr . fromIntegral $ (nesp +  0))
+                  printfEx $ printf "neip+0:  0x%08x\n" (neip :: Word32)
+                  handleException neip nebp nesp
+                handleException :: Word32 -> CPtrdiff -> CPtrdiff -> IO (CPtrdiff, CPtrdiff, CPtrdiff)
+                handleException weip rebp resp = do
                   ebpstuff <- peek (intPtrToPtr . fromIntegral $ rebp) :: IO Word32
+                  printfEx $ printf "rebp: 0x%08x\n" (fromIntegral rebp :: Word32)
+                  printfEx $ printf "resp: 0x%08x\n" (fromIntegral resp :: Word32)
                   printfEx $ printf "read ebp stuff: 0x%08x\n" ebpstuff
-                  printfEx $ printf "reip: %d\n" weip
-                  printfEx $ printf "reax: %d\n" weax
+                  printfEx $ printf "reip: 0x%08x\n" weip
+                  printfEx $ printf "reax: 0x%08x\n" weax
                   -- get full exception map
                   -- (_, exmap) <- getMethodEntry miThis
                   let sptr = castPtrToStablePtr $ intPtrToPtr $ fromIntegral ebpstuff
                   exmap <- (deRefStablePtr sptr :: IO (ExceptionMap Word32))
                   printfEx $ printf "size: %d\n" (M.size exmap)
                   printfEx $ printf "exmap: %s\n" (show $ M.toList exmap)
-                  let key =
-                        case find f $ M.keys exmap of
-                          Just x -> x
-                          Nothing -> error "exception: no handler found. (TODO1)"
-                        where
-                          -- is the EIP somewhere in the range?
-                          f (x, y) = weip >= x && weip <= y
-                  printfEx $ printf "key is: %s\n" (show key)
-                  let handlerObjs = exmap M.! key
-                  printfEx $ printf "handlerObjs: %s\n" (show handlerObjs)
+                  case find f $ M.keys exmap of
+                      Just x -> findHandler x exmap
+                      Nothing -> do
+                        printfEx "unwind stack now. good luck\n\n"
+                        unwindStack rebp resp
+                    where
+                      -- is the EIP somewhere in the range?
+                      f (x, y) = weip >= x && weip <= y
+                      findHandler key exmap = do
+                        printfEx $ printf "key is: %s\n" (show key)
+                        let handlerObjs = exmap M.! key
+                        printfEx $ printf "handlerObjs: %s\n" (show handlerObjs)
 
-                  let myMapM :: (a -> IO (Maybe Word32)) -> [a] -> IO Word32
-                      myMapM _ [] = error "exception: no handler found (TODO2)"
-                      myMapM g (x:xs) = do
-                        r <- g x
-                        case r of
-                          Just y -> return y
-                          Nothing -> myMapM g xs
-                  let f :: (B.ByteString, Word32) -> IO (Maybe Word32)
-                      f (x, y) = do
-                            printfEx $ printf "looking at @ %s\n" (show x)
-                            x' <- isInstanceOf weax x
-                            return $ if x' then Just y else Nothing
-                  -- by using myMapM, we avoid to look at *every* handler, but abort
-                  -- on the first match (yes, it's rather ugly with IO :/ better
-                  -- solutions are welcome)
-                  handlerNPC <- myMapM f handlerObjs
-                  printfEx $ printf "handler at: 0x%08x\n" handlerNPC
-                  return $ (fromIntegral handlerNPC, rebp, resp)
+                        let myMapM :: (a -> IO (Maybe Word32)) -> [a] -> IO Word32
+                            myMapM _ [] = error "exception: no handler found (TODO2)"
+                            myMapM g (x:xs) = do
+                              r <- g x
+                              case r of
+                                Just y -> return y
+                                Nothing -> myMapM g xs
+                        let f :: (B.ByteString, Word32) -> IO (Maybe Word32)
+                            f (x, y) = do
+                                  printfEx $ printf "looking at @ %s\n" (show x)
+                                  x' <- isInstanceOf weax x
+                                  return $ if x' then Just y else Nothing
+                        -- by using myMapM, we avoid to look at *every* handler, but abort
+                        -- on the first match (yes, it's rather ugly with IO :/ better
+                        -- solutions are welcome)
+                        handlerNPC <- myMapM f handlerObjs
+                        printfEx $ printf "handler at: 0x%08x\n" handlerNPC
+                        return $ (fromIntegral handlerNPC, rebp, resp)
       return $ Just (trapaddr, ThrowException patcher)
 
     emit' insn = emit insn >> return Nothing
