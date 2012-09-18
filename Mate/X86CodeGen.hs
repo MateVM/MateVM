@@ -251,17 +251,23 @@ emitFromBB cls miThis method = do
             liftIO $ printfEx $ printf "key is: %s\n" (show key)
             let handlerObjs = exmap M.! key
             liftIO $ printfEx $ printf "handlerObjs: %s\n" (show handlerObjs)
-            -- TODO: find some way to avoid checking *every* handler here,
-            --       but abort on first match (fuuu @ IO ...)
-            let f (x, y) = do
+
+            let myMapM :: (a -> IO (Maybe Word32)) -> [a] -> IO Word32
+                myMapM _ [] = error "exception: no handler found (TODO2)"
+                myMapM g (x:xs) = do
+                  r <- g x
+                  case r of
+                    Just y -> return y
+                    Nothing -> myMapM g xs
+            let f :: (B.ByteString, Word32) -> IO (Maybe Word32)
+                f (x, y) = do
                       printfEx $ printf "looking at @ %s\n" (show x)
-                      x' <- isInstanceOf weax x; return (x', y)
-            handlers <- liftIO $ (mapM f handlerObjs :: IO [(Bool, Word32)])
-            liftIO $ printfEx $ printf "handlers: %s\n" (show handlers)
-            let handlerNPC =
-                  case find fst handlers of
-                    Just x -> snd x
-                    Nothing -> error "exception: no handler found (TODO2)"
+                      x' <- isInstanceOf weax x
+                      return $ if x' then Just y else Nothing
+            -- by using myMapM, we avoid to look at *every* handler, but abort
+            -- on the first match (yes, it's rather ugly with IO :/ better
+            -- solutions are welcome)
+            handlerNPC <- liftIO $ myMapM f handlerObjs
             liftIO $ printfEx $ printf "handler at: 0x%08x\n" handlerNPC
             emitSigIllTrap 2
             return $ fromIntegral handlerNPC
