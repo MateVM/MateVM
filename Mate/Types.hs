@@ -7,7 +7,7 @@ module Mate.Types
   , ExceptionMap
   , JpcNpcMap
   , RawMethod(..)
-  , TrapPatcher, TrapPatcherEax, TrapPatcherEaxEbp
+  , TrapPatcher, TrapPatcherEax
   , CompiledMethod(..)
   , TrapMap, MethodMap, ClassMap, FieldMap
   , StringMap, VirtualMap, InterfaceMap
@@ -77,15 +77,14 @@ data RawMethod = RawMethod {
 -- MethodInfo = relevant information about callee
 type TrapMap = M.Map NativeWord TrapCause
 
-type TrapPatcher = CPtrdiff -> CodeGen () () CPtrdiff
+type TrapPatcher = CPtrdiff -> CPtrdiff -> CPtrdiff -> CodeGen () () (CPtrdiff, CPtrdiff, CPtrdiff)
 type TrapPatcherEax = CPtrdiff -> TrapPatcher
-type TrapPatcherEaxEbp =  CPtrdiff -> TrapPatcherEax
 
 data TrapCause
   = StaticMethod TrapPatcher -- for static calls
   | VirtualCall Bool MethodInfo (IO NativeWord) -- for invoke{interface,virtual}
   | InstanceOf TrapPatcherEax
-  | ThrowException TrapPatcherEaxEbp
+  | ThrowException TrapPatcherEax
   | NewObject TrapPatcher
   | StaticField StaticFieldInfo
   | ObjectField TrapPatcher

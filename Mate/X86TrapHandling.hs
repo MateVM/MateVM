@@ -26,71 +26,80 @@ import Harpy.X86Disassembler
 foreign import ccall "register_signal"
   register_signal :: IO ()
 
-foreign export ccall mateHandler :: CPtrdiff -> CPtrdiff -> CPtrdiff -> CPtrdiff -> CPtrdiff -> IO CPtrdiff
-mateHandler :: CPtrdiff -> CPtrdiff -> CPtrdiff -> CPtrdiff -> CPtrdiff -> IO CPtrdiff
-mateHandler reip reax rebx resi rebp = do
+type MateHandlerType = CPtrdiff -> CPtrdiff -> CPtrdiff ->
+                       CPtrdiff -> CPtrdiff -> CPtrdiff ->
+                       CUIntPtr -> IO ()
+foreign export ccall mateHandler :: MateHandlerType
+mateHandler :: MateHandlerType
+mateHandler reip reax rebx resi rebp resp retarr = do
   tmap <- getTrapMap
   let reipw32 = fromIntegral reip
-  (deleteMe, ret_nreip) <- case M.lookup reipw32 tmap of
+  (deleteMe, (ret_eip, ret_ebp, ret_esp)) <- case M.lookup reipw32 tmap of
     (Just (StaticMethod patcher)) ->
-        patchWithHarpy patcher reip >>= delFalse
+        patchWithHarpy patcher reip rebp resp >>= delFalse
     (Just (StaticField _))  ->
-        staticFieldHandler reip >>= delTrue
+        staticFieldHandler reip rebp resp >>= delTrue
     (Just (ObjectField patcher)) ->
-        patchWithHarpy patcher reip >>= delTrue
+        patchWithHarpy patcher reip rebp resp >>= delTrue
     (Just (InstanceOf patcher))  ->
-        patchWithHarpy (patcher reax) reip >>= delFalse
+        patchWithHarpy (patcher reax) reip rebp resp >>= delFalse
     (Just (ThrowException patcher)) ->
-        patchWithHarpy (patcher reax rebp) reip >>= delFalse
+        patchWithHarpy (patcher reax) reip rebp resp >>= delFalse
     (Just (NewObject patcher))   ->
-        patchWithHarpy patcher reip >>= delTrue
+        patchWithHarpy patcher reip rebp resp >>= delTrue
     (Just (VirtualCall False mi io_offset)) ->
-        patchWithHarpy (patchInvoke mi reax reax io_offset) reip
+        patchWithHarpy (patchInvoke mi reax reax io_offset) reip rebp resp
         >>= delFalse
     (Just (VirtualCall True  mi io_offset)) ->
-        patchWithHarpy (patchInvoke mi rebx reax io_offset) reip
+        patchWithHarpy (patchInvoke mi rebx reax io_offset) reip rebp resp
         >>= delFalse
     Nothing -> case resi of
-        0x13371234 -> delFalse (-1)
+        0x13371234 -> delFalse (-1, -1, -1)
         _ -> error $ "getTrapType: abort :-( eip: "
              ++ showHex reip ". " ++ concatMap (`showHex` ", ") (M.keys tmap)
   when deleteMe $ setTrapMap $ M.delete reipw32 tmap
-  return ret_nreip
+  let addr = intPtrToPtr . fromIntegral $ retarr
+  poke (plusPtr addr 0) (fromIntegral ret_eip :: Word32)
+  poke (plusPtr addr 4) (fromIntegral ret_ebp :: Word32)
+  poke (plusPtr addr 8) (fromIntegral ret_esp :: Word32)
+  return ()
     where
       delTrue x = return (True,x)
       delFalse x = return (False,x)
 
 
-patchWithHarpy :: (CPtrdiff -> CodeGen () () CPtrdiff) -> CPtrdiff -> IO CPtrdiff
-patchWithHarpy patcher reip = do
+patchWithHarpy :: TrapPatcher -> CPtrdiff -> CPtrdiff -> CPtrdiff -> IO (CPtrdiff, CPtrdiff, CPtrdiff)
+patchWithHarpy patcher reip rebp resp = do
   -- this is just an upperbound. if the value is to low, patching fails. find
   -- something better?
   let fixme = 1024
   let entry = Just (intPtrToPtr (fromIntegral reip), fixme)
   let cgconfig = defaultCodeGenConfig { customCodeBuffer = entry }
-  (_, Right right) <- runCodeGenWithConfig (withDisasm $ patcher reip) () () cgconfig
+  (_, Right right) <- runCodeGenWithConfig (withDisasm $ patcher reip rebp resp) () () cgconfig
   when mateDEBUG $ mapM_ (printfJit . printf "patched: %s\n" . showIntel) $ snd right
   return $ fst right
 
-withDisasm :: CodeGen e s CPtrdiff -> CodeGen e s (CPtrdiff, [Instruction])
+withDisasm :: CodeGen e s (CPtrdiff, CPtrdiff, CPtrdiff) -> CodeGen e s ((CPtrdiff, CPtrdiff, CPtrdiff), [Instruction])
 withDisasm patcher = do
-  reip <- patcher
+  rval <- patcher
   d <- disassemble
-  return (reip, d)
+  return (rval, d)
 
-staticFieldHandler :: CPtrdiff -> IO CPtrdiff
-staticFieldHandler reip = do
+staticFieldHandler :: CPtrdiff -> CPtrdiff -> CPtrdiff -> IO (CPtrdiff, CPtrdiff, CPtrdiff)
+staticFieldHandler reip rebp resp = do
   -- patch the offset here, first two bytes are part of the insn (opcode + reg)
   let imm_ptr = intPtrToPtr (fromIntegral (reip + 2)) :: Ptr CPtrdiff
   checkMe <- peek imm_ptr
   if checkMe == 0x00000000 then
     do
       getStaticFieldAddr reip >>= poke imm_ptr
-      return reip
+      return (reip, rebp, resp)
     else error "staticFieldHandler: something is wrong here. abort.\n"
 
-patchInvoke :: MethodInfo -> CPtrdiff -> CPtrdiff -> IO NativeWord -> CPtrdiff -> CodeGen e s CPtrdiff
-patchInvoke (MethodInfo methname _ msig)  method_table table2patch io_offset reip = do
+patchInvoke :: MethodInfo -> CPtrdiff -> CPtrdiff -> IO NativeWord ->
+               CPtrdiff -> CPtrdiff -> CPtrdiff ->
+               CodeGen e s (CPtrdiff, CPtrdiff, CPtrdiff)
+patchInvoke (MethodInfo methname _ msig)  method_table table2patch io_offset reip rebp resp = do
   vmap <- liftIO getVirtualMap
   let newmi = MethodInfo methname (vmap M.! fromIntegral method_table) msig
   offset <- liftIO io_offset
@@ -99,4 +108,4 @@ patchInvoke (MethodInfo methname _ msig)  method_table table2patch io_offset rei
   -- patch entry in table
   let call_insn = intPtrToPtr . fromIntegral $ table2patch + fromIntegral offset
   liftIO $ poke call_insn entryAddr
-  return reip
+  return (reip, rebp, resp)

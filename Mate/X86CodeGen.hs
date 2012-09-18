@@ -118,10 +118,10 @@ emitFromBB cls miThis method = do
       newNamedLabel (show l) >>= defineLabel
       -- like: call $0x01234567
       calladdr <- emitSigIllTrap 5
-      let patcher reip = do
+      let patcher reip rebp resp = do
             (entryAddr, _) <- liftIO $ getMethodEntry l
             call (fromIntegral (entryAddr - (reip + 5)) :: NativeWord)
-            return reip
+            return (reip, rebp, resp)
       -- discard arguments on stack
       let argcnt = ((if hasThis then 1 else 0) + methodGetArgsCount (methodNameTypeByIdx cls cpidx)) * ptrSize
       when (argcnt > 0) (add esp argcnt)
@@ -188,22 +188,22 @@ emitFromBB cls miThis method = do
       pop eax -- this pointer
       -- like: 099db064  ff b0 e4 14 00 00 pushl  5348(%eax)
       trapaddr <- emitSigIllTrap 6
-      let patcher reip = do
+      let patcher reip rebp resp = do
             let (cname, fname) = buildFieldOffset cls x
             offset <- liftIO $ fromIntegral <$> getFieldOffset cname fname
             push32RelEax (Disp offset) -- get field
-            return reip
+            return (reip, rebp, resp)
       return $ Just (trapaddr, ObjectField patcher)
     emit' (PUTFIELD x) = do
       pop ebx -- value to write
       pop eax -- this pointer
       -- like: 4581fc6b  89 98 30 7b 00 00 movl   %ebx,31536(%eax)
       trapaddr <- emitSigIllTrap 6
-      let patcher reip = do
+      let patcher reip rebp resp = do
             let (cname, fname) = buildFieldOffset cls x
             offset <- liftIO $ fromIntegral <$> getFieldOffset cname fname
             mov32RelEbxEax (Disp offset) -- set field
-            return reip
+            return (reip, rebp, resp)
       return $ Just (trapaddr, ObjectField patcher)
 
     emit' (INSTANCEOF cpidx) = do
@@ -211,14 +211,14 @@ emitFromBB cls miThis method = do
       -- place something like `mov edx $mtable_of_objref' instead
       trapaddr <- emitSigIllTrap 4
       push (0 :: Word32)
-      let patcher reax reip = do
+      let patcher reax reip rebp resp = do
             emitSigIllTrap 4
             let classname = buildClassID cls cpidx
             check <- liftIO $ isInstanceOf (fromIntegral reax) classname
             if check
               then push (1 :: Word32)
               else push (0 :: Word32)
-            return (reip + 4)
+            return (reip + 4, rebp, resp)
       return $ Just (trapaddr, InstanceOf patcher)
     emit' (NEW objidx) = do
       let objname = buildClassID cls objidx
@@ -228,26 +228,29 @@ emitFromBB cls miThis method = do
       -- 0x13371337 is just a placeholder; will be replaced with mtable ptr
       mov (Disp 0, eax) (0x13371337 :: Word32)
       mov (Disp 4, eax) (0x1337babe :: Word32)
-      let patcher reip = do
+      let patcher reip rebp resp = do
             objsize <- liftIO $ getObjectSize objname
             push32 objsize
             callMalloc
             mtable <- liftIO $ getMethodTable objname
             mov (Disp 0, eax) mtable
             mov (Disp 4, eax) (0x1337babe :: Word32)
-            return reip
+            return (reip, rebp, resp)
       return $ Just (trapaddr, NewObject patcher)
 
     emit' ATHROW = do
       mov eax (Disp 0, esp) -- peek value from stack
       trapaddr <- emitSigIllTrap 2
-      let patcher :: TrapPatcherEaxEbp
-          patcher reax rebp reip = do
+      let patcher :: TrapPatcherEax
+          patcher reax reip rebp resp = do
             emitSigIllTrap 2
             let weip = fromIntegral reip :: Word32
             liftIO $ handleException weip
               where
                 weax = fromIntegral reax :: Word32
+                  -- emit RETURN = do mov esp ebp; pop ebp; pop ebp; ret
+                  -- set esp to (ebp + 8)
+                  -- set ebp to *(esp - 4)
                 handleException weip = do
                   ebpstuff <- peek (intPtrToPtr . fromIntegral $ rebp) :: IO Word32
                   printfEx $ printf "read ebp stuff: 0x%08x\n" ebpstuff
@@ -287,7 +290,7 @@ emitFromBB cls miThis method = do
                   -- solutions are welcome)
                   handlerNPC <- myMapM f handlerObjs
                   printfEx $ printf "handler at: 0x%08x\n" handlerNPC
-                  return $ fromIntegral handlerNPC
+                  return $ (fromIntegral handlerNPC, rebp, resp)
       return $ Just (trapaddr, ThrowException patcher)
 
     emit' insn = emit insn >> return Nothing

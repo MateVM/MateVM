@@ -20,7 +20,7 @@
 
 #include <sys/ucontext.h>
 
-ptrdiff_t mateHandler(ptrdiff_t, ptrdiff_t, ptrdiff_t, ptrdiff_t, ptrdiff_t);
+void mateHandler(ptrdiff_t, ptrdiff_t, ptrdiff_t, ptrdiff_t, ptrdiff_t, ptrdiff_t, ptrdiff_t*);
 
 #ifdef DBG_TRAP
 #define dprintf(args...) do { printf (args); } while (0);
@@ -43,8 +43,10 @@ void chandler(int nSignal, siginfo_t *info, void *ctx)
 			"esp 0x%08x, *esp 0x%08x, *(ebp+8) 0x%08x\n", nSignal, eip,
 			eax, ebx, esp, *(ptrdiff_t*) esp, *(ptrdiff_t *) (ebp + 8));
 
-	ptrdiff_t ret = mateHandler(eip, eax, ebx, esi, ebp);
-	if (ret == -1) {
+
+	ptrdiff_t ret[3] = {0};
+	mateHandler(eip, eax, ebx, esi, ebp, esp, ret);
+	if (ret[0] == -1) {
 		dprintf("regdump @ EIP: 0x%08x\n", regs[REG_EIP]);
 		dprintf("\tEAX: 0x%08lx EBX: 0x%08lx ECX: 0x%08lx EDX: 0x%08lx\n",
 			regs[REG_EAX], regs[REG_EBX], regs[REG_ECX], regs[REG_EDX]);
@@ -52,7 +54,9 @@ void chandler(int nSignal, siginfo_t *info, void *ctx)
 			regs[REG_ESI], regs[REG_EDI], regs[REG_EBP], regs[REG_ESP]);
 		mctx->gregs[REG_EIP] = eip + 6;
 	} else {
-		mctx->gregs[REG_EIP] = ret;
+		mctx->gregs[REG_EIP] = ret[0];
+		mctx->gregs[REG_EBP] = ret[1];
+		mctx->gregs[REG_ESP] = ret[2];
 	}
 }
 
