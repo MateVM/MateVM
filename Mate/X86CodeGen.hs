@@ -249,8 +249,7 @@ emitFromBB cls miThis method = do
                     -- is the EIP somewhere in the range?
                     f (x, y) = weip >= x && weip <= y
             liftIO $ printfEx $ printf "key is: %s\n" (show key)
-            -- reverse list, because matching order is important
-            let handlerObjs = reverse $ exmap M.! key
+            let handlerObjs = exmap M.! key
             liftIO $ printfEx $ printf "handlerObjs: %s\n" (show handlerObjs)
             -- TODO: find some way to avoid checking *every* handler here,
             --       but abort on first match (fuuu @ IO ...)

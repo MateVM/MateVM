@@ -110,7 +110,8 @@ parseMethod cls methodname sig = do
         where
           f emap ce =
             if M.member key emap
-              then M.adjust (value:) key emap
+              -- build list in reverse order, since matching order is important
+              then M.adjust (++ [value]) key emap
               else M.insert key [value] emap
               where
                 key = (&&&) eStartPC eEndPC ce
