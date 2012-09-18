@@ -292,7 +292,7 @@ emitFromBB cls miThis method = do
                         let f :: (B.ByteString, Word32) -> IO (Maybe Word32)
                             f (x, y) = do
                                   printfEx $ printf "looking at @ %s\n" (show x)
-                                  x' <- isInstanceOf weax x
+                                  x' <- if x == B.empty then return True else isInstanceOf weax x
                                   return $ if x' then Just y else Nothing
                         -- by using myMapM, we avoid to look at *every* handler, but abort
                         -- on the first match (yes, it's rather ugly with IO :/ better
