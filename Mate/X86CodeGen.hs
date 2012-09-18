@@ -261,22 +261,16 @@ emitFromBB cls miThis method = do
                   handleException neip nebp nesp
                 handleException :: Word32 -> CPtrdiff -> CPtrdiff -> IO (CPtrdiff, CPtrdiff, CPtrdiff)
                 handleException weip rebp resp = do
-                  ebpstuff <- peek (intPtrToPtr . fromIntegral $ rebp) :: IO Word32
-                  printfEx $ printf "rebp: 0x%08x\n" (fromIntegral rebp :: Word32)
-                  printfEx $ printf "resp: 0x%08x\n" (fromIntegral resp :: Word32)
-                  printfEx $ printf "read ebp stuff: 0x%08x\n" ebpstuff
-                  printfEx $ printf "reip: 0x%08x\n" weip
-                  printfEx $ printf "reax: 0x%08x\n" weax
-                  -- get full exception map
-                  -- (_, exmap) <- getMethodEntry miThis
-                  let sptr = castPtrToStablePtr $ intPtrToPtr $ fromIntegral ebpstuff
+                  -- get full exception map from stack
+                  stblptr <- peek (intPtrToPtr . fromIntegral $ rebp) :: IO Word32
+                  let sptr = castPtrToStablePtr $ intPtrToPtr $ fromIntegral stblptr
                   exmap <- (deRefStablePtr sptr :: IO (ExceptionMap Word32))
                   printfEx $ printf "size: %d\n" (M.size exmap)
                   printfEx $ printf "exmap: %s\n" (show $ M.toList exmap)
                   case find f $ M.keys exmap of
                       Just x -> findHandler x exmap
                       Nothing -> do
-                        printfEx "unwind stack now. good luck\n\n"
+                        printfEx "unwind stack now. good luck(1)\n\n"
                         unwindStack rebp resp
                     where
                       -- is the EIP somewhere in the range?
@@ -286,12 +280,14 @@ emitFromBB cls miThis method = do
                         let handlerObjs = exmap M.! key
                         printfEx $ printf "handlerObjs: %s\n" (show handlerObjs)
 
-                        let myMapM :: (a -> IO (Maybe Word32)) -> [a] -> IO Word32
-                            myMapM _ [] = error "exception: no handler found (TODO2)"
+                        let myMapM :: (a -> IO (Maybe Word32)) -> [a] -> IO (CPtrdiff, CPtrdiff, CPtrdiff)
+                            myMapM _ [] = do
+                              printfEx "unwind stack now. good luck(1)\n\n"
+                              unwindStack rebp resp
                             myMapM g (x:xs) = do
                               r <- g x
                               case r of
-                                Just y -> return y
+                                Just y -> return (fromIntegral y, rebp, resp)
                                 Nothing -> myMapM g xs
                         let f :: (B.ByteString, Word32) -> IO (Maybe Word32)
                             f (x, y) = do
@@ -301,9 +297,7 @@ emitFromBB cls miThis method = do
                         -- by using myMapM, we avoid to look at *every* handler, but abort
                         -- on the first match (yes, it's rather ugly with IO :/ better
                         -- solutions are welcome)
-                        handlerNPC <- myMapM f handlerObjs
-                        printfEx $ printf "handler at: 0x%08x\n" handlerNPC
-                        return $ (fromIntegral handlerNPC, rebp, resp)
+                        myMapM f handlerObjs
       return $ Just (trapaddr, ThrowException patcher)
 
     emit' insn = emit insn >> return Nothing
