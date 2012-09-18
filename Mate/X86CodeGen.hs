@@ -243,49 +243,51 @@ emitFromBB cls miThis method = do
       trapaddr <- emitSigIllTrap 2
       let patcher :: TrapPatcherEaxEbp
           patcher reax rebp reip = do
-            let weax = fromIntegral reax :: Word32
-            let weip = fromIntegral reip :: Word32
-            ebpstuff <- liftIO $ do
-              peek (intPtrToPtr . fromIntegral $ rebp) :: IO Word32
-            liftIO $ printfEx $ printf "read ebp stuff: 0x%08x\n" ebpstuff
-            liftIO $ printfEx $ printf "reip: %d\n" weip
-            liftIO $ printfEx $ printf "reax: %d\n" weax
-            -- get full exception map
-            -- (_, exmap) <- liftIO $ getMethodEntry miThis
-            let sptr = castPtrToStablePtr $ intPtrToPtr $ fromIntegral ebpstuff
-            exmap <- liftIO $ (deRefStablePtr sptr :: IO (ExceptionMap Word32))
-            liftIO $ printfEx $ printf "size: %d\n" (M.size exmap)
-            liftIO $ printfEx $ printf "exmap: %s\n" (show $ M.toList exmap)
-            let key =
-                  case find f $ M.keys exmap of
-                    Just x -> x
-                    Nothing -> error "exception: no handler found. (TODO1)"
-                  where
-                    -- is the EIP somewhere in the range?
-                    f (x, y) = weip >= x && weip <= y
-            liftIO $ printfEx $ printf "key is: %s\n" (show key)
-            let handlerObjs = exmap M.! key
-            liftIO $ printfEx $ printf "handlerObjs: %s\n" (show handlerObjs)
-
-            let myMapM :: (a -> IO (Maybe Word32)) -> [a] -> IO Word32
-                myMapM _ [] = error "exception: no handler found (TODO2)"
-                myMapM g (x:xs) = do
-                  r <- g x
-                  case r of
-                    Just y -> return y
-                    Nothing -> myMapM g xs
-            let f :: (B.ByteString, Word32) -> IO (Maybe Word32)
-                f (x, y) = do
-                      printfEx $ printf "looking at @ %s\n" (show x)
-                      x' <- isInstanceOf weax x
-                      return $ if x' then Just y else Nothing
-            -- by using myMapM, we avoid to look at *every* handler, but abort
-            -- on the first match (yes, it's rather ugly with IO :/ better
-            -- solutions are welcome)
-            handlerNPC <- liftIO $ myMapM f handlerObjs
-            liftIO $ printfEx $ printf "handler at: 0x%08x\n" handlerNPC
             emitSigIllTrap 2
-            return $ fromIntegral handlerNPC
+            let weip = fromIntegral reip :: Word32
+            liftIO $ handleException weip
+              where
+                weax = fromIntegral reax :: Word32
+                handleException weip = do
+                  ebpstuff <- peek (intPtrToPtr . fromIntegral $ rebp) :: IO Word32
+                  printfEx $ printf "read ebp stuff: 0x%08x\n" ebpstuff
+                  printfEx $ printf "reip: %d\n" weip
+                  printfEx $ printf "reax: %d\n" weax
+                  -- get full exception map
+                  -- (_, exmap) <- getMethodEntry miThis
+                  let sptr = castPtrToStablePtr $ intPtrToPtr $ fromIntegral ebpstuff
+                  exmap <- (deRefStablePtr sptr :: IO (ExceptionMap Word32))
+                  printfEx $ printf "size: %d\n" (M.size exmap)
+                  printfEx $ printf "exmap: %s\n" (show $ M.toList exmap)
+                  let key =
+                        case find f $ M.keys exmap of
+                          Just x -> x
+                          Nothing -> error "exception: no handler found. (TODO1)"
+                        where
+                          -- is the EIP somewhere in the range?
+                          f (x, y) = weip >= x && weip <= y
+                  printfEx $ printf "key is: %s\n" (show key)
+                  let handlerObjs = exmap M.! key
+                  printfEx $ printf "handlerObjs: %s\n" (show handlerObjs)
+
+                  let myMapM :: (a -> IO (Maybe Word32)) -> [a] -> IO Word32
+                      myMapM _ [] = error "exception: no handler found (TODO2)"
+                      myMapM g (x:xs) = do
+                        r <- g x
+                        case r of
+                          Just y -> return y
+                          Nothing -> myMapM g xs
+                  let f :: (B.ByteString, Word32) -> IO (Maybe Word32)
+                      f (x, y) = do
+                            printfEx $ printf "looking at @ %s\n" (show x)
+                            x' <- isInstanceOf weax x
+                            return $ if x' then Just y else Nothing
+                  -- by using myMapM, we avoid to look at *every* handler, but abort
+                  -- on the first match (yes, it's rather ugly with IO :/ better
+                  -- solutions are welcome)
+                  handlerNPC <- myMapM f handlerObjs
+                  printfEx $ printf "handler at: 0x%08x\n" handlerNPC
+                  return $ fromIntegral handlerNPC
       return $ Just (trapaddr, ThrowException patcher)
 
     emit' insn = emit insn >> return Nothing
