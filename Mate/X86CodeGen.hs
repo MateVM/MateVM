@@ -57,10 +57,10 @@ emitFromBB cls miThis method = do
     stacksetup <- newNamedLabel "stacksetup"
     ep <- getEntryPoint
     push ebp
-    mov ebp esp
-    sub esp stackalloc
     jmp pushExceptionMap
     defineLabel stacksetup
+    mov ebp esp
+    sub esp stackalloc
     calls <- M.fromList . catMaybes . concat <$> mapM (efBB lmap) keys
     jpcnpcmap <- getState
     -- replace java program counter with native maschine program counter
@@ -246,8 +246,7 @@ emitFromBB cls miThis method = do
             let weax = fromIntegral reax :: Word32
             let weip = fromIntegral reip :: Word32
             ebpstuff <- liftIO $ do
-              let addr = (fromIntegral rebp) - (stackalloc + 4)
-              peek (intPtrToPtr . fromIntegral $ addr) :: IO Word32
+              peek (intPtrToPtr . fromIntegral $ rebp) :: IO Word32
             liftIO $ printfEx $ printf "read ebp stuff: 0x%08x\n" ebpstuff
             liftIO $ printfEx $ printf "reip: %d\n" weip
             liftIO $ printfEx $ printf "reax: %d\n" weax
@@ -408,7 +407,7 @@ emitFromBB cls miThis method = do
       let sid = case successor bb of OneTarget t -> t; _ -> error "bad"
       jmp $ getLabel sid lmap
 
-    emit RETURN = do mov esp ebp; pop ebp; ret
+    emit RETURN = do mov esp ebp; pop ebp; pop ebp; ret
     emit ARETURN = emit IRETURN
     emit IRETURN = do pop eax; emit RETURN
     emit invalid = error $ "insn not implemented yet: " ++ show invalid
@@ -445,7 +444,7 @@ emitFromBB cls miThis method = do
     where
       x' = fromIntegral x
       argcount = rawArgCount method
-      isLocal = if x' >= argcount then (-1) else 1
+      isLocal = if x' >= argcount then (-1) else 2
 
   cArgs_ :: IMM -> Word8
   cArgs_ x = case x of I0 -> 0; I1 -> 1; I2 -> 2; I3 -> 3
