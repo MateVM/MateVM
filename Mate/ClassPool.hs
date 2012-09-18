@@ -271,7 +271,7 @@ loadAndInitClass path = do
   when (path /= "java/lang/Object") (void $ loadAndInitClass $ superClass $ ciFile ci)
 
   -- execute class initializer
-  case lookupMethod "<clinit>" (ciFile ci) of
+  when (not $ ciInitDone ci) $ case lookupMethod "<clinit>" (ciFile ci) of
     Just m -> do
       rawmethod <- parseMethod (ciFile ci) "<clinit>" $ MethodSignature [] ReturnsVoid
       let mi = MethodInfo "<clinit>" path (methodSignature m)
