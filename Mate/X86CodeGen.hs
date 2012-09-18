@@ -229,9 +229,7 @@ emitFromBB cls miThis method = do
       return $ Just (trapaddr, NewObject patcher)
 
     emit' ATHROW = do
-      pop eax
-      push eax
-      mov eax (Disp 0, eax)
+      mov eax (Disp 0, esp) -- peek value from stack
       trapaddr <- emitSigIllTrap 2
       let patcher :: TrapPatcherEaxEsp
           patcher reax resp reip = do
@@ -256,7 +254,7 @@ emitFromBB cls miThis method = do
             liftIO $ printfEx $ printf "handlerObjs: %s\n" (show handlerObjs)
             -- TODO: find some way to avoid checking *every* handler here,
             --       but abort on first match (fuuu @ IO ...)
-            let f (x, y) = do x' <- isInstanceOf' weax x; return (x', y)
+            let f (x, y) = do x' <- isInstanceOf weax x; return (x', y)
             handlers <- liftIO $ (mapM f handlerObjs :: IO [(Bool, Word32)])
             liftIO $ printfEx $ printf "handlers: %s\n" (show handlers)
             let handlerNPC =

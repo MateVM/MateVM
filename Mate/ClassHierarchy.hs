@@ -1,6 +1,5 @@
 module Mate.ClassHierarchy
   ( isInstanceOf
-  , isInstanceOf'
   , addClassEntry
   , addInterfaceEntry
   ) where
@@ -42,9 +41,10 @@ writeClass = writeIORef classHier
 writeInterface :: InterfaceHier -> IO ()
 writeInterface = writeIORef interfaceHier
 
-
-isInstanceOf' :: NativeWord -> B.ByteString -> IO Bool
-isInstanceOf' obj_mtable classname = do
+isInstanceOf :: NativeWord -> B.ByteString -> IO Bool
+isInstanceOf 0 _ = return False
+isInstanceOf obj classname = do
+  obj_mtable <- peek (intPtrToPtr . fromIntegral $ obj)
   ch <- readClass
   ih <- readInterface
   if M.member classname ih
@@ -54,12 +54,6 @@ isInstanceOf' obj_mtable classname = do
     else do -- class check
       class_mtable <- getMethodTable classname
       return $ checkInstance obj_mtable class_mtable ch
-
-isInstanceOf :: NativeWord -> B.ByteString -> IO Bool
-isInstanceOf 0 _ = return False
-isInstanceOf obj classname = do
-  obj_mtable <- peek (intPtrToPtr . fromIntegral $ obj)
-  isInstanceOf' obj_mtable classname
 
 allInterfaces :: NativeWord -> ClassHier -> [B.ByteString]
 allInterfaces obj_mtable ch =
