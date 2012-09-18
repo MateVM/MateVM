@@ -9,10 +9,18 @@ public class InstanceOf3 {
 	static interface i6 extends i3 { };
 	static interface i7 extends i4, i6 { };
 	static interface i8 extends i2, i7 { };
-	static class c1 { };
-	static class c2 extends c1 implements i1 { };
-	static class c3 extends c2 implements i4 { };
-	static class c4 { };
+	static class c1 {
+		static { System.out.printf("loading c1\n"); }
+	};
+	static class c2 extends c1 implements i1 {
+		static { System.out.printf("loading c2\n"); }
+	};
+	static class c3 extends c2 implements i4 {
+		static { System.out.printf("loading c3\n"); }
+	};
+	static class c4 {
+		static { System.out.printf("loading c4\n"); }
+	};
 
 	public static void main(String []args) {
 		Object x = new c3();

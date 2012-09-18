@@ -52,7 +52,7 @@ isInstanceOf obj classname = do
       let ai = allInterfaces obj_mtable ch
       return $ checkInterfaces ai classname ih
     else do -- class check
-      class_mtable <- getMethodTable classname
+      class_mtable <- getMethodTableNoInit classname
       return $ checkInstance obj_mtable class_mtable ch
 
 allInterfaces :: NativeWord -> ClassHier -> [B.ByteString]

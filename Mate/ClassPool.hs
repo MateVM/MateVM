@@ -1,9 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Mate.ClassPool (
   getClassInfo,
+  getClassInfoNoInit,
   classLoaded,
   getClassFile,
   getMethodTable,
+  getMethodTableNoInit,
   getObjectSize,
   getMethodOffset,
   getFieldOffset,
@@ -52,6 +54,13 @@ getClassInfo path = do
     Nothing -> loadAndInitClass path
     Just ci -> return ci
 
+getClassInfoNoInit :: B.ByteString -> IO ClassInfo
+getClassInfoNoInit path = do
+  class_map <- getClassMap
+  case M.lookup path class_map of
+    Nothing -> loadClassNoInit path
+    Just ci -> return ci
+
 classLoaded :: B.ByteString -> IO Bool
 classLoaded path = do
   class_map <- getClassMap
@@ -78,6 +87,11 @@ getMethodOffset path method = do
   ci <- getClassInfo path
   -- (+ ptrSize) one slot for "interface-table-ptr"
   return $ (+ ptrSize) $ fromIntegral $ ciMethodMap ci M.! method
+
+getMethodTableNoInit :: B.ByteString -> IO NativeWord
+getMethodTableNoInit path = do
+  ci <- getClassInfoNoInit path
+  return $ ciMethodBase ci
 
 getMethodTable :: B.ByteString -> IO NativeWord
 getMethodTable path = do
@@ -258,6 +272,20 @@ calculateMethodMap cf superclass = do
     return (methodmap, fromIntegral $ ptrToIntPtr methodbase)
   where zipbase base = zipWith (\x y -> (entry y, x + base)) [0,ptrSize..]
           where entry y = methodName y `B.append` encode (methodSignature y)
+
+
+loadClassNoInit :: B.ByteString -> IO ClassInfo
+loadClassNoInit path = do
+  class_map <- getClassMap
+  ci <- case M.lookup path class_map of
+    Nothing -> readClass path
+    Just x -> return x
+
+  when (path /= "java/lang/Object") (void $ loadClassNoInit $ superClass $ ciFile ci)
+
+  class_map' <- getClassMap
+  setClassMap $ M.insert path ci class_map'
+  return ci
 
 
 loadAndInitClass :: B.ByteString -> IO ClassInfo
