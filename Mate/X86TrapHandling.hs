@@ -68,7 +68,7 @@ mateHandler reip reax rebx resi rebp resp retarr = do
       delFalse x = return (False,x)
 
 
-patchWithHarpy :: TrapPatcher -> CPtrdiff -> CPtrdiff -> CPtrdiff -> IO (CPtrdiff, CPtrdiff, CPtrdiff)
+patchWithHarpy :: TrapPatcher -> CPtrdiff -> CPtrdiff -> CPtrdiff -> IO WriteBackRegs
 patchWithHarpy patcher reip rebp resp = do
   -- this is just an upperbound. if the value is to low, patching fails. find
   -- something better?
@@ -79,13 +79,13 @@ patchWithHarpy patcher reip rebp resp = do
   when mateDEBUG $ mapM_ (printfJit . printf "patched: %s\n" . showIntel) $ snd right
   return $ fst right
 
-withDisasm :: CodeGen e s (CPtrdiff, CPtrdiff, CPtrdiff) -> CodeGen e s ((CPtrdiff, CPtrdiff, CPtrdiff), [Instruction])
+withDisasm :: CodeGen e s WriteBackRegs -> CodeGen e s (WriteBackRegs, [Instruction])
 withDisasm patcher = do
   rval <- patcher
   d <- disassemble
   return (rval, d)
 
-staticFieldHandler :: CPtrdiff -> CPtrdiff -> CPtrdiff -> IO (CPtrdiff, CPtrdiff, CPtrdiff)
+staticFieldHandler :: CPtrdiff -> CPtrdiff -> CPtrdiff -> IO WriteBackRegs
 staticFieldHandler reip rebp resp = do
   -- patch the offset here, first two bytes are part of the insn (opcode + reg)
   let imm_ptr = intPtrToPtr (fromIntegral (reip + 2)) :: Ptr CPtrdiff
@@ -98,7 +98,7 @@ staticFieldHandler reip rebp resp = do
 
 patchInvoke :: MethodInfo -> CPtrdiff -> CPtrdiff -> IO NativeWord ->
                CPtrdiff -> CPtrdiff -> CPtrdiff ->
-               CodeGen e s (CPtrdiff, CPtrdiff, CPtrdiff)
+               CodeGen e s WriteBackRegs
 patchInvoke (MethodInfo methname _ msig)  method_table table2patch io_offset reip rebp resp = do
   vmap <- liftIO getVirtualMap
   let newmi = MethodInfo methname (vmap M.! fromIntegral method_table) msig

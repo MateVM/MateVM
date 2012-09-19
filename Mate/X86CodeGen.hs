@@ -248,7 +248,7 @@ emitFromBB cls method = do
             liftIO $ handleException weip rebp' resp'
               where
                 weax = fromIntegral reax :: Word32
-                unwindStack :: CPtrdiff -> IO (CPtrdiff, CPtrdiff, CPtrdiff)
+                unwindStack :: CPtrdiff -> IO WriteBackRegs
                 unwindStack rebp = do
                   let nesp = rebp + 8
                   -- get ebp of caller
@@ -259,7 +259,7 @@ emitFromBB cls method = do
                   neip <- peek (intPtrToPtr . fromIntegral $ (nesp +  0))
                   printfEx $ printf "neip+0:  0x%08x\n" (neip :: Word32)
                   handleException neip nebp nesp
-                handleException :: Word32 -> CPtrdiff -> CPtrdiff -> IO (CPtrdiff, CPtrdiff, CPtrdiff)
+                handleException :: Word32 -> CPtrdiff -> CPtrdiff -> IO WriteBackRegs
                 handleException weip rebp resp = do
                   -- get full exception map from stack
                   stblptr <- peek (intPtrToPtr . fromIntegral $ rebp) :: IO Word32
@@ -270,7 +270,7 @@ emitFromBB cls method = do
 
                   -- find the handler in a region. if there isn't a proper
                   -- handler, go to the caller method (i.e. unwind the stack)
-                  let searchRegion :: [(Word32, Word32)] -> IO (CPtrdiff, CPtrdiff, CPtrdiff)
+                  let searchRegion :: [(Word32, Word32)] -> IO WriteBackRegs
                       searchRegion [] = do
                         printfEx "unwind stack now. good luck(x)\n\n"
                         unwindStack rebp
@@ -292,13 +292,13 @@ emitFromBB cls method = do
                   -- nested try/catch statements
                   searchRegion . reverse . sortBy ipSorter . matchingIPs . M.keys $ exmap
                     where
-                      findHandler :: (Word32, Word32) -> ExceptionMap Word32 -> IO (Maybe (CPtrdiff, CPtrdiff, CPtrdiff))
+                      findHandler :: (Word32, Word32) -> ExceptionMap Word32 -> IO (Maybe WriteBackRegs)
                       findHandler key exmap = do
                         printfEx $ printf "key is: %s\n" (show key)
                         let handlerObjs = exmap M.! key
                         printfEx $ printf "handlerObjs: %s\n" (show handlerObjs)
 
-                        let myMapM :: (a -> IO (Maybe Word32)) -> [a] -> IO (Maybe (CPtrdiff, CPtrdiff, CPtrdiff))
+                        let myMapM :: (a -> IO (Maybe Word32)) -> [a] -> IO (Maybe WriteBackRegs)
                             myMapM _ [] = return Nothing
                             myMapM g (x:xs) = do
                               r <- g x

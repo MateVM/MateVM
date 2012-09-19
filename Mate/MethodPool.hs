@@ -39,7 +39,7 @@ foreign import ccall "&loadLibrary"
 foreign import ccall "&printGCStats"
   printGCStatsAddr :: FunPtr (IO ())
 
-getMethodEntry :: MethodInfo -> IO (CPtrdiff, ExceptionMap Word32)
+getMethodEntry :: MethodInfo -> IO (CPtrdiff, ExceptionMap NativeWord)
 getMethodEntry mi@(MethodInfo method cm sig) = do
   mmap <- getMethodMap
 

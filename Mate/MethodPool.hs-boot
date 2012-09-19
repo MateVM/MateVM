@@ -4,7 +4,6 @@ module Mate.MethodPool where
 
 import qualified Data.ByteString.Lazy as B
 
-import Data.Word
 import Mate.Types
 import Mate.NativeSizes
 import Foreign.C.Types
@@ -13,4 +12,4 @@ import Foreign.C.Types
 addMethodRef :: CompiledMethod -> MethodInfo -> [B.ByteString] -> IO ()
 compileBB :: RawMethod -> MethodInfo -> IO CompiledMethod
 executeFuncPtr :: NativeWord -> IO ()
-getMethodEntry :: MethodInfo -> IO (CPtrdiff, ExceptionMap Word32)
+getMethodEntry :: MethodInfo -> IO (CPtrdiff, ExceptionMap NativeWord)
