@@ -7,7 +7,7 @@ import Data.Binary
 import Data.BinaryState
 import Data.Int
 import Data.Maybe
-import Data.List (genericLength, find)
+import Data.List (sortBy, genericLength)
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as B
 import Control.Applicative
@@ -267,21 +267,30 @@ emitFromBB cls miThis method = do
                   exmap <- (deRefStablePtr sptr :: IO (ExceptionMap Word32))
                   printfEx $ printf "size: %d\n" (M.size exmap)
                   printfEx $ printf "exmap: %s\n" (show $ M.toList exmap)
-                  let searchHandler :: [(Word32, Word32)] -> IO (CPtrdiff, CPtrdiff, CPtrdiff)
-                      searchHandler [] = do
+
+                  -- find the handler in a region. if there isn't a proper
+                  -- handler, go to the caller method (i.e. unwind the stack)
+                  let searchRegion :: [(Word32, Word32)] -> IO (CPtrdiff, CPtrdiff, CPtrdiff)
+                      searchRegion [] = do
                         printfEx "unwind stack now. good luck(x)\n\n"
                         unwindStack rebp resp
-                      searchHandler (r@(x, y):rs) = do
-                        -- is the EIP somewhere in the range?
-                        if weip >= x && weip <= y
-                          then do -- let's see if there's a proper handler in this range
-                            res <- findHandler r exmap
-                            case res of
-                              Just x -> return x
-                              Nothing -> searchHandler rs
-                          else searchHandler rs
-
-                  searchHandler $ M.keys exmap
+                      searchRegion (r@(x, y):rs) = do
+                        -- let's see if there's a proper handler in this range
+                        res <- findHandler r exmap
+                        case res of
+                          Just x -> return x
+                          Nothing -> searchRegion rs
+                  -- is the EIP somewhere in the range?
+                  let matchingIPs = filter (\(x, y) -> weip >= x && weip <= y)
+                  -- if `fst' is EQ, sort via `snd', but reverse
+                  let ipSorter (x1, y1) (x2, y2) =
+                        case x1 `compare` x2 of
+                          EQ -> case y1 `compare` y2 of
+                                  LT -> GT; GT -> LT; EQ -> EQ
+                          x -> x
+                  -- due to reversing the list, we get the innermost range at
+                  -- nested try/catch statements
+                  searchRegion . reverse . sortBy ipSorter . matchingIPs . M.keys $ exmap
                     where
                       findHandler :: (Word32, Word32) -> ExceptionMap Word32 -> IO (Maybe (CPtrdiff, CPtrdiff, CPtrdiff))
                       findHandler key exmap = do
