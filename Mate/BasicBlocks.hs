@@ -55,7 +55,7 @@ printMapBB hmap = do
       printMapBB' [] _ = return ()
       printMapBB' (i:is) hmap' = case M.lookup i hmap' of
         Just bb -> do
-          printfBb $ "Block " ++ show i ++ ". len: " ++ (show $ bblength bb) ++ "\n"
+          printfBb $ "Block " ++ show i ++ ". len: " ++ show (bblength bb) ++ "\n"
           mapM_ (printfBb . flip (++) "\n" . (++) "\t" . show) $ code bb
           printfBb $ case successor bb of
             Return -> ""
@@ -146,7 +146,7 @@ testCFG c = buildCFG (codeInstructions c) (codeExceptions c)
 parseBasicBlock :: Int -> [OffIns] -> BasicBlock
 parseBasicBlock i insns = emptyBasicBlock
           { code = zip offsets insonly
-          , bblength = lastoff - i + (insnLength lastins)
+          , bblength = lastoff - i + insnLength lastins
           , successor = endblock }
   where
     (lastblock, is) = takeWhilePlusOne validins omitins insns
@@ -177,7 +177,7 @@ calculateInstructionOffset exstarts = cio' 0
       where s16 = fromIntegral w16 :: Int16
 
     cio' :: Int -> [Instruction] -> AnalyseState
-    cio' _ [] = return $ []
+    cio' _ [] = return []
     cio' off (x:xs) = case x of
         IF _ w16 -> twotargets w16
         IF_ICMP _ w16 -> twotargets w16
@@ -197,7 +197,7 @@ calculateInstructionOffset exstarts = cio' 0
       where
         normalins = do
           tailinsns <- next -- eval remaining instructions
-          isNextInsATarget <- (S.member newoffset) <$> get
+          isNextInsATarget <- S.member newoffset <$> get
           let bbtyp = if isNextInsATarget
                 then Just $ FallThrough newoffset
                 else Nothing

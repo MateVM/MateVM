@@ -55,27 +55,27 @@ getMethodEntry mi@(MethodInfo method cm sig) = do
               then do
                 let scm = toString cm; smethod = toString method
                     ret fp = return $ CompiledMethod (funPtrToAddr fp) M.empty
-                if scm == "jmate/lang/MateRuntime" then
-                  case smethod of
+                if scm == "jmate/lang/MateRuntime"
+                  then case smethod of
                     "loadLibrary" -> ret loadLibraryAddr
                     "printGCStats" -> ret printGCStatsAddr
                     "printMemoryUsage" -> ret printMemoryUsageAddr
                     _ ->
                        error $ "native-call: " ++ smethod ++ " not found."
-                else do
-                  -- TODO(bernhard): cleaner please... *do'h*
-                  let sym1 = replace "/" "_" scm
-                      parenth = replace "(" "_" $ replace ")" "_" $ toString $ encode sig
-                      sym2 = replace ";" "_" $ replace "/" "_" parenth
-                      symbol = sym1 ++ "__" ++ smethod ++ "__" ++ sym2
-                  printfMp $ printf "native-call: symbol: %s\n" symbol
-                  nf <- loadNativeFunction symbol
-                  let nf' = CompiledMethod nf M.empty
-                  setMethodMap $ M.insert mi nf' mmap
-                  return nf'
+                  else do
+                    -- TODO(bernhard): cleaner please... *do'h*
+                    let sym1 = replace "/" "_" scm
+                        parenth = replace "(" "_" $ replace ")" "_" $ toString $ encode sig
+                        sym2 = replace ";" "_" $ replace "/" "_" parenth
+                        symbol = sym1 ++ "__" ++ smethod ++ "__" ++ sym2
+                    printfMp $ printf "native-call: symbol: %s\n" symbol
+                    nf <- loadNativeFunction symbol
+                    let nf' = CompiledMethod nf M.empty
+                    setMethodMap $ M.insert mi nf' mmap
+                    return nf'
               else do
                 rawmethod <- parseMethod cls' method sig
-                entry <- compileBB mi rawmethod (MethodInfo method (thisClass cls') sig)
+                entry <- compileBB rawmethod (MethodInfo method (thisClass cls') sig)
                 addMethodRef entry mi clsnames
                 return entry
         Nothing -> error $ show method ++ " not found. abort"
@@ -131,13 +131,13 @@ addMethodRef entry (MethodInfo mmname _ msig) clsnames = do
   setMethodMap $ mmap `M.union` newmap
 
 
-compileBB :: MethodInfo -> RawMethod -> MethodInfo -> IO CompiledMethod
-compileBB mi rawmethod methodinfo = do
+compileBB :: RawMethod -> MethodInfo -> IO CompiledMethod
+compileBB rawmethod methodinfo = do
   tmap <- getTrapMap
 
   cls <- getClassFile (methClassName methodinfo)
   printfJit $ printf "emit code of \"%s\" from \"%s\":\n" (toString $ methName methodinfo) (toString $ methClassName methodinfo)
-  let ebb = emitFromBB cls mi rawmethod
+  let ebb = emitFromBB cls rawmethod
   let cgconfig = defaultCodeGenConfig { codeBufferSize = fromIntegral $ rawCodeLength rawmethod * 32 }
   (_, Right r) <- runCodeGenWithConfig ebb () M.empty cgconfig
 

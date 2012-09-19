@@ -299,12 +299,12 @@ loadAndInitClass path = do
   when (path /= "java/lang/Object") (void $ loadAndInitClass $ superClass $ ciFile ci)
 
   -- execute class initializer
-  when (not $ ciInitDone ci) $ case lookupMethod "<clinit>" (ciFile ci) of
+  unless (ciInitDone ci) $ case lookupMethod "<clinit>" (ciFile ci) of
     Just m -> do
       rawmethod <- parseMethod (ciFile ci) "<clinit>" $ MethodSignature [] ReturnsVoid
       let mi = MethodInfo "<clinit>" path (methodSignature m)
       -- TODO(bernhard): test exception handling in static initalizer
-      entry <- compileBB mi rawmethod mi
+      entry <- compileBB rawmethod mi
       addMethodRef entry mi [path]
       printfCp $ printf "executing static initializer from %s now\n" (toString path)
       executeFuncPtr $ methodEntryPoint entry

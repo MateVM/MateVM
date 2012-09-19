@@ -11,6 +11,6 @@ import Foreign.C.Types
 
 
 addMethodRef :: CompiledMethod -> MethodInfo -> [B.ByteString] -> IO ()
-compileBB :: MethodInfo -> RawMethod -> MethodInfo -> IO CompiledMethod
+compileBB :: RawMethod -> MethodInfo -> IO CompiledMethod
 executeFuncPtr :: NativeWord -> IO ()
 getMethodEntry :: MethodInfo -> IO (CPtrdiff, ExceptionMap Word32)

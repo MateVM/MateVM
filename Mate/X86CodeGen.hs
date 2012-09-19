@@ -47,8 +47,8 @@ type BBStarts = M.Map BlockID Int
 type CompileInfo = (EntryPoint, Int, TrapMap, ExceptionMap Word32)
 
 
-emitFromBB :: Class Direct -> MethodInfo -> RawMethod -> CodeGen e JpcNpcMap (CompileInfo, [Instruction])
-emitFromBB cls miThis method = do
+emitFromBB :: Class Direct -> RawMethod -> CodeGen e JpcNpcMap (CompileInfo, [Instruction])
+emitFromBB cls method = do
     let keys = M.keys hmap
     llmap <- mapM (newNamedLabel . (++) "bb_" . show) keys
     let lmap = zip keys llmap
@@ -71,7 +71,7 @@ emitFromBB cls miThis method = do
                 key1' = fromIntegral key1
                 key2' = fromIntegral key2
             h = second ((jpcnpcmap M.!) . fromIntegral)
-    sptr_exmap <- liftIO $ do
+    sptr_exmap <- liftIO $
       (fromIntegral . ptrToIntPtr . castStablePtrToPtr) <$> newStablePtr exmap
     pushExceptionMap @@ push (sptr_exmap :: Word32)
     jmp stacksetup
@@ -86,14 +86,13 @@ emitFromBB cls miThis method = do
   getLabel bid [] = error $ "label " ++ show bid ++ " not found"
   getLabel i ((x,l):xs) = if i==x then l else getLabel i xs
 
-  efBB :: [(BlockID, Label)] -> BlockID -> CodeGen e JpcNpcMap [(Maybe (Word32, TrapCause))]
+  efBB :: [(BlockID, Label)] -> BlockID -> CodeGen e JpcNpcMap [Maybe (Word32, TrapCause)]
   efBB lmap bid = do
     defineLabel $ getLabel bid lmap
     retval <- mapM emit'' $ code bb
     case successor bb of
-        FallThrough t -> do
-          -- TODO(bernhard): le dirty hax. see java/lang/Integer.toString(int, int)
-          jmp (getLabel t lmap)
+        -- TODO(bernhard): le dirty hax. see java/lang/Integer.toString(int, int)
+        FallThrough t -> jmp (getLabel t lmap)
         _ -> return ()
     return retval
     where
@@ -134,9 +133,10 @@ emitFromBB cls miThis method = do
       let mi@(MethodInfo methodname objname msig@(MethodSignature args _))  = buildMethodID cls cpidx
       newNamedLabel (show mi) >>= defineLabel
       -- get method offset for call @ runtime
-      let offset = if isInterface
-          then getInterfaceMethodOffset objname methodname (encode msig)
-          else getMethodOffset objname (methodname `B.append` encode msig)
+      let offset =
+            if isInterface
+              then getInterfaceMethodOffset objname methodname (encode msig)
+              else getMethodOffset objname (methodname `B.append` encode msig)
       let argsLen = genericLength args
       -- objref lives somewhere on the argument stack
       mov ebx (Disp (argsLen * ptrSize), esp)
@@ -248,8 +248,8 @@ emitFromBB cls miThis method = do
             liftIO $ handleException weip rebp' resp'
               where
                 weax = fromIntegral reax :: Word32
-                unwindStack :: CPtrdiff -> CPtrdiff -> IO (CPtrdiff, CPtrdiff, CPtrdiff)
-                unwindStack rebp resp = do
+                unwindStack :: CPtrdiff -> IO (CPtrdiff, CPtrdiff, CPtrdiff)
+                unwindStack rebp = do
                   let nesp = rebp + 8
                   -- get ebp of caller
                   nebp <- peek (intPtrToPtr . fromIntegral $ (nesp - 4))
@@ -264,7 +264,7 @@ emitFromBB cls miThis method = do
                   -- get full exception map from stack
                   stblptr <- peek (intPtrToPtr . fromIntegral $ rebp) :: IO Word32
                   let sptr = castPtrToStablePtr $ intPtrToPtr $ fromIntegral stblptr
-                  exmap <- (deRefStablePtr sptr :: IO (ExceptionMap Word32))
+                  exmap <- deRefStablePtr sptr :: IO (ExceptionMap Word32)
                   printfEx $ printf "size: %d\n" (M.size exmap)
                   printfEx $ printf "exmap: %s\n" (show $ M.toList exmap)
 
@@ -273,8 +273,8 @@ emitFromBB cls miThis method = do
                   let searchRegion :: [(Word32, Word32)] -> IO (CPtrdiff, CPtrdiff, CPtrdiff)
                       searchRegion [] = do
                         printfEx "unwind stack now. good luck(x)\n\n"
-                        unwindStack rebp resp
-                      searchRegion (r@(x, y):rs) = do
+                        unwindStack rebp
+                      searchRegion (r:rs) = do
                         -- let's see if there's a proper handler in this range
                         res <- findHandler r exmap
                         case res of
