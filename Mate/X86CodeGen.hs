@@ -117,10 +117,10 @@ emitFromBB cls method = do
       newNamedLabel (show l) >>= defineLabel
       -- like: call $0x01234567
       calladdr <- emitSigIllTrap 5
-      let patcher reip rebp resp = do
+      let patcher wbr = do
             (entryAddr, _) <- liftIO $ getMethodEntry l
-            call (fromIntegral (entryAddr - (reip + 5)) :: NativeWord)
-            return (reip, rebp, resp)
+            call (fromIntegral (entryAddr - ((wbEip wbr) + 5)) :: NativeWord)
+            return wbr
       -- discard arguments on stack
       let argcnt = ((if hasThis then 1 else 0) + methodGetArgsCount (methodNameTypeByIdx cls cpidx)) * ptrSize
       when (argcnt > 0) (add esp argcnt)
@@ -188,22 +188,22 @@ emitFromBB cls method = do
       pop eax -- this pointer
       -- like: 099db064  ff b0 e4 14 00 00 pushl  5348(%eax)
       trapaddr <- emitSigIllTrap 6
-      let patcher reip rebp resp = do
+      let patcher wbr = do
             let (cname, fname) = buildFieldOffset cls x
             offset <- liftIO $ fromIntegral <$> getFieldOffset cname fname
             push32RelEax (Disp offset) -- get field
-            return (reip, rebp, resp)
+            return wbr
       return $ Just (trapaddr, ObjectField patcher)
     emit' (PUTFIELD x) = do
       pop ebx -- value to write
       pop eax -- this pointer
       -- like: 4581fc6b  89 98 30 7b 00 00 movl   %ebx,31536(%eax)
       trapaddr <- emitSigIllTrap 6
-      let patcher reip rebp resp = do
+      let patcher wbr = do
             let (cname, fname) = buildFieldOffset cls x
             offset <- liftIO $ fromIntegral <$> getFieldOffset cname fname
             mov32RelEbxEax (Disp offset) -- set field
-            return (reip, rebp, resp)
+            return wbr
       return $ Just (trapaddr, ObjectField patcher)
 
     emit' (INSTANCEOF cpidx) = do
@@ -211,14 +211,14 @@ emitFromBB cls method = do
       -- place something like `mov edx $mtable_of_objref' instead
       trapaddr <- emitSigIllTrap 4
       push (0 :: Word32)
-      let patcher reax reip rebp resp = do
+      let patcher reax wbr = do
             emitSigIllTrap 4
             let classname = buildClassID cls cpidx
             check <- liftIO $ isInstanceOf (fromIntegral reax) classname
             if check
               then push (1 :: Word32)
               else push (0 :: Word32)
-            return (reip + 4, rebp, resp)
+            return $ wbr {wbEip = (wbEip wbr) + 4}
       return $ Just (trapaddr, InstanceOf patcher)
     emit' (NEW objidx) = do
       let objname = buildClassID cls objidx
@@ -228,24 +228,24 @@ emitFromBB cls method = do
       -- 0x13371337 is just a placeholder; will be replaced with mtable ptr
       mov (Disp 0, eax) (0x13371337 :: Word32)
       mov (Disp 4, eax) (0x1337babe :: Word32)
-      let patcher reip rebp resp = do
+      let patcher wbr = do
             objsize <- liftIO $ getObjectSize objname
             push32 objsize
             callMalloc
             mtable <- liftIO $ getMethodTable objname
             mov (Disp 0, eax) mtable
             mov (Disp 4, eax) (0x1337babe :: Word32)
-            return (reip, rebp, resp)
+            return wbr
       return $ Just (trapaddr, NewObject patcher)
 
     emit' ATHROW = do
       mov eax (Disp 0, esp) -- peek value from stack
       trapaddr <- emitSigIllTrap 2
       let patcher :: TrapPatcherEax
-          patcher reax reip rebp' resp' = do
+          patcher reax wbr = do
             emitSigIllTrap 2
-            let weip = fromIntegral reip
-            liftIO $ handleException weip rebp' resp'
+            let weip = fromIntegral $ wbEip wbr
+            liftIO $ handleException weip (wbEbp wbr) (wbEsp wbr)
               where
                 weax = fromIntegral reax :: Word32
                 unwindStack :: CPtrdiff -> IO WriteBackRegs
@@ -303,7 +303,10 @@ emitFromBB cls method = do
                             myMapM g (x:xs) = do
                               r <- g x
                               case r of
-                                Just y -> return $ Just (fromIntegral y, rebp, resp)
+                                Just y -> return $ Just $ WriteBackRegs
+                                            { wbEip = fromIntegral y
+                                            , wbEbp = rebp
+                                            , wbEsp = resp }
                                 Nothing -> myMapM g xs
                         let f :: (B.ByteString, Word32) -> IO (Maybe Word32)
                             f (x, y) = do
