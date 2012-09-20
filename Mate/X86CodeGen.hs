@@ -105,12 +105,6 @@ emitFromBB cls method = do
       mov esi (Addr 0)
       pop esi
 
-    getCurrentOffset :: CodeGen e s Word32
-    getCurrentOffset = do
-      ep <- (fromIntegral . ptrToIntPtr) <$> getEntryPoint
-      offset <- fromIntegral <$> getCodeOffset
-      return $ ep + offset
-
     emitInvoke :: Word16 -> Bool -> CodeGen e s (Maybe (Word32, TrapCause))
     emitInvoke cpidx hasThis = do
       let l = buildMethodID cls cpidx
@@ -241,85 +235,7 @@ emitFromBB cls method = do
     emit' ATHROW = do
       mov eax (Disp 0, esp) -- peek value from stack
       trapaddr <- emitSigIllTrap 2
-      let patcher :: TrapPatcherEax
-          patcher reax wbr = do
-            emitSigIllTrap 2
-            let weip = fromIntegral $ wbEip wbr
-            liftIO $ handleException weip (wbEbp wbr) (wbEsp wbr)
-              where
-                weax = fromIntegral reax :: Word32
-                unwindStack :: CPtrdiff -> IO WriteBackRegs
-                unwindStack rebp = do
-                  let nesp = rebp + 8
-                  -- get ebp of caller
-                  nebp <- peek (intPtrToPtr . fromIntegral $ (nesp - 4))
-                  printfEx $ printf "nebp: 0x%08x\n" (fromIntegral nebp :: Word32)
-                  printfEx $ printf "nesp: 0x%08x\n" (fromIntegral nesp :: Word32)
-                  -- get return addr
-                  neip <- peek (intPtrToPtr . fromIntegral $ (nesp +  0))
-                  printfEx $ printf "neip+0:  0x%08x\n" (neip :: Word32)
-                  handleException neip nebp nesp
-                handleException :: Word32 -> CPtrdiff -> CPtrdiff -> IO WriteBackRegs
-                handleException weip rebp resp = do
-                  -- get full exception map from stack
-                  stblptr <- peek (intPtrToPtr . fromIntegral $ rebp) :: IO Word32
-                  let sptr = castPtrToStablePtr $ intPtrToPtr $ fromIntegral stblptr
-                  exmap <- deRefStablePtr sptr :: IO (ExceptionMap Word32)
-                  printfEx $ printf "size: %d\n" (M.size exmap)
-                  printfEx $ printf "exmap: %s\n" (show $ M.toList exmap)
-
-                  -- find the handler in a region. if there isn't a proper
-                  -- handler, go to the caller method (i.e. unwind the stack)
-                  let searchRegion :: [(Word32, Word32)] -> IO WriteBackRegs
-                      searchRegion [] = do
-                        printfEx "unwind stack now. good luck(x)\n\n"
-                        unwindStack rebp
-                      searchRegion (r:rs) = do
-                        -- let's see if there's a proper handler in this range
-                        res <- findHandler r exmap
-                        case res of
-                          Just x -> return x
-                          Nothing -> searchRegion rs
-                  -- is the EIP somewhere in the range?
-                  let matchingIPs = filter (\(x, y) -> weip >= x && weip <= y)
-                  -- if `fst' is EQ, sort via `snd', but reverse
-                  let ipSorter (x1, y1) (x2, y2) =
-                        case x1 `compare` x2 of
-                          EQ -> case y1 `compare` y2 of
-                                  LT -> GT; GT -> LT; EQ -> EQ
-                          x -> x
-                  -- due to reversing the list, we get the innermost range at
-                  -- nested try/catch statements
-                  searchRegion . reverse . sortBy ipSorter . matchingIPs . M.keys $ exmap
-                    where
-                      findHandler :: (Word32, Word32) -> ExceptionMap Word32 -> IO (Maybe WriteBackRegs)
-                      findHandler key exmap = do
-                        printfEx $ printf "key is: %s\n" (show key)
-                        let handlerObjs = exmap M.! key
-                        printfEx $ printf "handlerObjs: %s\n" (show handlerObjs)
-
-                        let myMapM :: (a -> IO (Maybe Word32)) -> [a] -> IO (Maybe WriteBackRegs)
-                            myMapM _ [] = return Nothing
-                            myMapM g (x:xs) = do
-                              r <- g x
-                              case r of
-                                Just y -> return $ Just $ WriteBackRegs
-                                            { wbEip = fromIntegral y
-                                            , wbEbp = rebp
-                                            , wbEsp = resp }
-                                Nothing -> myMapM g xs
-                        let f :: (B.ByteString, Word32) -> IO (Maybe Word32)
-                            f (x, y) = do
-                                  printfEx $ printf "looking at @ %s\n" (show x)
-                                  -- on B.empty, it's the "generic handler"
-                                  -- (e.g. finally)
-                                  x' <- if x == B.empty then return True else isInstanceOf weax x
-                                  return $ if x' then Just y else Nothing
-                        -- by using myMapM, we avoid to look at *every* handler,
-                        -- but abort on the first match (yes, it's rather
-                        -- ugly :/ better solutions are welcome)
-                        myMapM f handlerObjs
-      return $ Just (trapaddr, ThrowException patcher)
+      return $ Just (trapaddr, ThrowException handleExceptionPatcher)
 
     emit' insn = emit insn >> return Nothing
 
@@ -460,16 +376,6 @@ emitFromBB cls method = do
         --  (it didn't work for gnu/classpath/SystemProperties.java)
         jmp l2
 
-    emitSigIllTrap :: Int -> CodeGen e s NativeWord
-    emitSigIllTrap traplen = do
-      when (traplen < 2) (error "emitSigIllTrap: trap len too short")
-      trapaddr <- getCurrentOffset
-      -- 0xffff causes SIGILL
-      emit8 (0xff :: Word8); emit8 (0xff :: Word8)
-      -- fill rest up with NOPs
-      sequence_ [nop | _ <- [1 .. (traplen - 2)]]
-      return trapaddr
-
 
   -- for locals we use a different storage
   cArgs :: Word8 -> Word32
@@ -515,3 +421,98 @@ push32RelEax (Disp disp32) = emit8 0xff >> emit8 0xb0 >> emit32 disp32
 -- mov %ebx, disp32(%eax)
 mov32RelEbxEax :: Disp -> CodeGen e s ()
 mov32RelEbxEax (Disp disp32) = emit8 0x89 >> emit8 0x98 >> emit32 disp32
+
+emitSigIllTrap :: Int -> CodeGen e s NativeWord
+emitSigIllTrap traplen = do
+  when (traplen < 2) (error "emitSigIllTrap: trap len too short")
+  trapaddr <- getCurrentOffset
+  -- 0xffff causes SIGILL
+  emit8 (0xff :: Word8); emit8 (0xff :: Word8)
+  -- fill rest up with NOPs
+  sequence_ [nop | _ <- [1 .. (traplen - 2)]]
+  return trapaddr
+
+getCurrentOffset :: CodeGen e s Word32
+getCurrentOffset = do
+  ep <- (fromIntegral . ptrToIntPtr) <$> getEntryPoint
+  offset <- fromIntegral <$> getCodeOffset
+  return $ ep + offset
+
+handleExceptionPatcher :: TrapPatcherEax
+handleExceptionPatcher reax wbr = do
+  emitSigIllTrap 2
+  let weip = fromIntegral $ wbEip wbr
+  liftIO $ handleException weip (wbEbp wbr) (wbEsp wbr)
+    where
+      weax = fromIntegral reax :: Word32
+      unwindStack :: CPtrdiff -> IO WriteBackRegs
+      unwindStack rebp = do
+        let nesp = rebp + 8
+        -- get ebp of caller
+        nebp <- peek (intPtrToPtr . fromIntegral $ (nesp - 4))
+        printfEx $ printf "nebp: 0x%08x\n" (fromIntegral nebp :: Word32)
+        printfEx $ printf "nesp: 0x%08x\n" (fromIntegral nesp :: Word32)
+        -- get return addr
+        neip <- peek (intPtrToPtr . fromIntegral $ (nesp +  0))
+        printfEx $ printf "neip+0:  0x%08x\n" (neip :: Word32)
+        handleException neip nebp nesp
+      handleException :: Word32 -> CPtrdiff -> CPtrdiff -> IO WriteBackRegs
+      handleException weip rebp resp = do
+        -- get full exception map from stack
+        stblptr <- peek (intPtrToPtr . fromIntegral $ rebp) :: IO Word32
+        let sptr = castPtrToStablePtr $ intPtrToPtr $ fromIntegral stblptr
+        exmap <- deRefStablePtr sptr :: IO (ExceptionMap Word32)
+        printfEx $ printf "size: %d\n" (M.size exmap)
+        printfEx $ printf "exmap: %s\n" (show $ M.toList exmap)
+
+        -- find the handler in a region. if there isn't a proper
+        -- handler, go to the caller method (i.e. unwind the stack)
+        let searchRegion :: [(Word32, Word32)] -> IO WriteBackRegs
+            searchRegion [] = do
+              printfEx "unwind stack now. good luck(x)\n\n"
+              unwindStack rebp
+            searchRegion (r:rs) = do
+              -- let's see if there's a proper handler in this range
+              res <- findHandler r exmap
+              case res of
+                Just x -> return x
+                Nothing -> searchRegion rs
+        -- is the EIP somewhere in the range?
+        let matchingIPs = filter (\(x, y) -> weip >= x && weip <= y)
+        -- if `fst' is EQ, sort via `snd', but reverse
+        let ipSorter (x1, y1) (x2, y2) =
+              case x1 `compare` x2 of
+                EQ -> case y1 `compare` y2 of
+                        LT -> GT; GT -> LT; EQ -> EQ
+                x -> x
+        -- due to reversing the list, we get the innermost range at
+        -- nested try/catch statements
+        searchRegion . reverse . sortBy ipSorter . matchingIPs . M.keys $ exmap
+          where
+            findHandler :: (Word32, Word32) -> ExceptionMap Word32 -> IO (Maybe WriteBackRegs)
+            findHandler key exmap = do
+              printfEx $ printf "key is: %s\n" (show key)
+              let handlerObjs = exmap M.! key
+              printfEx $ printf "handlerObjs: %s\n" (show handlerObjs)
+
+              let myMapM :: (a -> IO (Maybe Word32)) -> [a] -> IO (Maybe WriteBackRegs)
+                  myMapM _ [] = return Nothing
+                  myMapM g (x:xs) = do
+                    r <- g x
+                    case r of
+                      Just y -> return $ Just $ WriteBackRegs
+                                  { wbEip = fromIntegral y
+                                  , wbEbp = rebp
+                                  , wbEsp = resp }
+                      Nothing -> myMapM g xs
+              let f :: (B.ByteString, Word32) -> IO (Maybe Word32)
+                  f (x, y) = do
+                        printfEx $ printf "looking at @ %s\n" (show x)
+                        -- on B.empty, it's the "generic handler"
+                        -- (e.g. finally)
+                        x' <- if x == B.empty then return True else isInstanceOf weax x
+                        return $ if x' then Just y else Nothing
+              -- by using myMapM, we avoid to look at *every* handler,
+              -- but abort on the first match (yes, it's rather
+              -- ugly :/ better solutions are welcome)
+              myMapM f handlerObjs
