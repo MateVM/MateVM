@@ -4,6 +4,8 @@ libaries, namly [Harpy](http://hackage.haskell.org/package/harpy) and
 
 MateVM is i686 (i.e. 32-Bit) only at the moment.
 
+Visit us at `#MateVM` on [OFTC](http://www.oftc.net/oftc/)!
+
 We use `hs-java` to parse Java Classfiles in order to get a Java Bytecode
 representation. Afterwards we perform a basic-block analysis and generate a
 control-flow-graph (CFG). We apply several program-analyses, transformations
