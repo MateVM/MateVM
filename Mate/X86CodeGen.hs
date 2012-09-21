@@ -225,6 +225,9 @@ emitFromBB cls method = do
             return wbr
       return $ Just (trapaddr, NewObject patcher)
 
+    emit' IDIV = emitDiv eax
+    emit' IREM = emitDiv edx
+
     emit' ATHROW = do
       mov eax (Disp 0, esp) -- peek value from stack
       trapaddr <- emitSigIllTrap 2
@@ -326,8 +329,6 @@ emitFromBB cls method = do
     emit IADD = do pop ebx; pop eax; add eax ebx; push eax
     emit ISUB = do pop ebx; pop eax; sub eax ebx; push eax
     emit IMUL = do pop ebx; pop eax; mul ebx; push eax
-    emit IDIV = do pop ebx; pop eax; xor edx edx; div ebx; push eax
-    emit IREM = do pop ebx; pop eax; xor edx edx; div ebx; push edx
     emit IXOR = do pop ebx; pop eax; xor eax ebx; push eax
     emit IUSHR = do pop ecx; pop eax; sar eax cl; push eax
     emit INEG = do pop eax; neg eax; push eax
@@ -371,6 +372,29 @@ emitFromBB cls method = do
         -- TODO(bernhard): ugly workaround, to get broken emitBB working
         --  (it didn't work for gnu/classpath/SystemProperties.java)
         jmp l2
+
+    emitDiv resreg = do
+      pop ebx
+      pop eax
+
+      lokay <- newNamedLabel "lokay"
+      cmp ebx (0 :: Word32)
+      jne lokay
+      -- if null, then create stuff
+      trapaddr <- emitSigIllTrap 2
+      let patcher wbr = do
+            emitSigIllTrap 2
+            liftIO $ do
+              ex <- allocAndInitObject "java/lang/ArithmeticException"
+              -- push exception ref on the stack
+              let lesp = (wbEsp wbr) - 4
+              poke (intPtrToPtr . fromIntegral $ lesp) ex
+              res <- handleExceptionPatcher (wbr { wbEax = ex, wbEsp = lesp})
+              return res
+      lokay @@ xor edx edx
+      div ebx
+      push resreg
+      return $ Just (trapaddr, ThrowException patcher)
 
 
   -- for locals we use a different storage
