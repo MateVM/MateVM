@@ -5,9 +5,7 @@ module Mate.X86TrapHandling (
   register_signal
   ) where
 
-import Numeric
 import qualified Data.Map as M
-import Control.Applicative
 import Control.Monad
 
 import Foreign
@@ -16,6 +14,7 @@ import Foreign.C.Types
 import Harpy hiding (fst)
 
 import Mate.Types
+import Mate.JavaObjects
 import Mate.NativeSizes
 import {-# SOURCE #-} Mate.MethodPool
 import Mate.ClassPool
@@ -54,9 +53,10 @@ mateHandler reip reax rebx resi rebp resp retarr = do
     (Just (VirtualCall True  mi io_offset)) ->
         patchWithHarpy (patchInvoke mi rebx reax io_offset) wbr >>= delFalse
     Nothing -> do
-      ex <- executeException "java/lang/NullPointerException"
+      -- TODO(bernhard) check if it was segfault
+      ex <- allocAndInitObject "java/lang/NullPointerException"
       -- push exception ref on the stack
-      let lesp = (wbEsp wbr) - 4
+      let lesp = wbEsp wbr - 4
       poke (intPtrToPtr . fromIntegral $ lesp) ex
       handleExceptionPatcher (wbr { wbEax = ex, wbEsp = lesp}) >>= delFalse
       {-
@@ -95,7 +95,7 @@ withDisasm patcher = do
 staticFieldHandler :: WriteBackRegs -> IO WriteBackRegs
 staticFieldHandler wbr = do
   -- patch the offset here, first two bytes are part of the insn (opcode + reg)
-  let imm_ptr = intPtrToPtr (fromIntegral ((wbEip wbr) + 2)) :: Ptr CPtrdiff
+  let imm_ptr = intPtrToPtr (fromIntegral (wbEip wbr + 2)) :: Ptr CPtrdiff
   checkMe <- peek imm_ptr
   if checkMe == 0x00000000 then
     do

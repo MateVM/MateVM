@@ -1,12 +1,15 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Mate.Strings (
-  getUniqueStringAddr
+{-# LANGUAGE ForeignFunctionInterface #-}
+module Mate.JavaObjects
+  ( getUniqueStringAddr
+  , allocAndInitObject
   ) where
 
 import Data.Word
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as B
 import qualified Data.ByteString.Internal as BI
+import Control.Applicative
 
 import JVM.ClassFile
 
@@ -18,6 +21,7 @@ import Mate.NativeSizes
 import Mate.ClassPool
 import Mate.Debug
 import Mate.GarbageAlloc
+import {-# SOURCE #-} Mate.MethodPool
 
 
 getUniqueStringAddr :: B.ByteString -> IO NativeWord
@@ -81,3 +85,20 @@ allocateJavaString str = do
   poke (plusPtr ptr 0x14) (0 :: CPtrdiff)
 
   return $ fromIntegral tblptr
+
+
+foreign import ccall "dynamic"
+   code_ref :: FunPtr (CPtrdiff -> IO ()) -> CPtrdiff -> IO ()
+
+allocAndInitObject :: B.ByteString -> IO CPtrdiff
+allocAndInitObject p = do
+  let mi = MethodInfo "<init>" p $ MethodSignature [] ReturnsVoid
+  obj <- fromIntegral <$> getObjectSize p >>= mallocObjectGC
+  let objptr = intPtrToPtr (fromIntegral obj)
+  mtable <- getMethodTable p
+  poke (plusPtr objptr 0) mtable
+  poke (plusPtr objptr 4) (0x1337babe :: CPtrdiff)
+  (entry, _) <- getMethodEntry mi
+  let fptr = (castPtrToFunPtr . intPtrToPtr . fromIntegral $ entry) :: FunPtr (CPtrdiff -> IO ())
+  code_ref fptr obj
+  return obj

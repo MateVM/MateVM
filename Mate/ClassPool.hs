@@ -299,7 +299,7 @@ loadAndInitClass path = do
 
   -- execute class initializer
   unless (ciInitDone ci) $ case lookupMethod "<clinit>" (ciFile ci) of
-    Just m -> do
+    Just _ -> do
       let mi = MethodInfo "<clinit>" path $ MethodSignature [] ReturnsVoid
       (entry, _) <- getMethodEntry mi
       -- TODO(bernhard): test exception handling in static initalizer

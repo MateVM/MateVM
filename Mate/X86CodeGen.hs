@@ -31,7 +31,7 @@ import Mate.Utilities
 import Mate.ClassPool
 import Mate.ClassHierarchy
 import {-# SOURCE #-} Mate.MethodPool
-import Mate.Strings
+import Mate.JavaObjects
 import Mate.Debug
 
 
@@ -106,7 +106,7 @@ emitFromBB cls method = do
       calladdr <- emitSigIllTrap 5
       let patcher wbr = do
             (entryAddr, _) <- liftIO $ getMethodEntry l
-            call (fromIntegral (entryAddr - ((wbEip wbr) + 5)) :: NativeWord)
+            call (fromIntegral (entryAddr - (wbEip wbr + 5)) :: NativeWord)
             return wbr
       -- discard arguments on stack
       let argcnt = ((if hasThis then 1 else 0) + methodGetArgsCount (methodNameTypeByIdx cls cpidx)) * ptrSize
@@ -205,7 +205,7 @@ emitFromBB cls method = do
             if check
               then push (1 :: Word32)
               else push (0 :: Word32)
-            return $ wbr {wbEip = (wbEip wbr) + 4}
+            return $ wbr {wbEip = wbEip wbr + 4}
       return $ Just (trapaddr, InstanceOf patcher)
     emit' (NEW objidx) = do
       let objname = buildClassID cls objidx
@@ -387,10 +387,9 @@ emitFromBB cls method = do
             liftIO $ do
               ex <- allocAndInitObject "java/lang/ArithmeticException"
               -- push exception ref on the stack
-              let lesp = (wbEsp wbr) - 4
+              let lesp = wbEsp wbr - 4
               poke (intPtrToPtr . fromIntegral $ lesp) ex
-              res <- handleExceptionPatcher (wbr { wbEax = ex, wbEsp = lesp})
-              return res
+              handleExceptionPatcher (wbr { wbEax = ex, wbEsp = lesp})
       lokay @@ xor edx edx
       div ebx
       push resreg
@@ -520,7 +519,7 @@ handleExceptionPatcher wbr = do
                   myMapM g (x:xs) = do
                     r <- g x
                     case r of
-                      Just y -> return $ Just $ WriteBackRegs
+                      Just y -> return $ Just WriteBackRegs
                                   { wbEip = fromIntegral y
                                   , wbEbp = rebp
                                   , wbEsp = resp

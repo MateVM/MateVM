@@ -8,7 +8,6 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.ByteString.Lazy as B
 import System.Plugins
-import Control.Applicative
 import Control.Monad
 
 import Foreign
@@ -23,7 +22,6 @@ import Harpy.X86Disassembler
 import Mate.BasicBlocks
 import Mate.Types
 import Mate.NativeMachine
-import Mate.GarbageAlloc
 import Mate.ClassPool
 import Mate.Debug
 import Mate.Utilities
@@ -31,9 +29,6 @@ import Mate.Rts()
 
 foreign import ccall "dynamic"
    code_void :: FunPtr (IO ()) -> IO ()
-
-foreign import ccall "dynamic"
-   code_ref :: FunPtr (CPtrdiff -> IO ()) -> (CPtrdiff -> IO ())
 
 foreign import ccall "&printMemoryUsage"
   printMemoryUsageAddr :: FunPtr (IO ())
@@ -163,19 +158,6 @@ compileBB rawmethod methodinfo = do
   -- (3) `br *0x<addr>'; obtain the address from the disasm above
   -- (4) `cont' and press enter
   return $ CompiledMethod (fromIntegral $ ptrToIntPtr entry) exmap
-
-executeException :: B.ByteString -> IO CPtrdiff
-executeException p = do
-  let mi = MethodInfo "<init>" p $ MethodSignature [] ReturnsVoid
-  obj <- fromIntegral <$> getObjectSize p >>= mallocObjectGC
-  let objptr = intPtrToPtr (fromIntegral obj)
-  mtable <- getMethodTable p
-  poke (plusPtr objptr 0) mtable
-  poke (plusPtr objptr 4) (0x1337babe :: CPtrdiff)
-  (entry, _) <- getMethodEntry mi
-  let fptr = (castPtrToFunPtr . intPtrToPtr . fromIntegral $ entry) :: FunPtr (CPtrdiff -> IO ())
-  code_ref fptr $ obj
-  return obj
 
 executeFuncPtr :: NativeWord -> IO ()
 executeFuncPtr entry =
