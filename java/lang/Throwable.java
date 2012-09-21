@@ -1,13 +1,17 @@
 package java.lang;
 
 public class Throwable {
-	public String name;
+	public String msg;
 
 	public Throwable () {
-		this.name = "asdf";
+		this.msg = "I'm a Throwable";
 	}
 
-	public Throwable(String name) {
-		this.name = name;
+	public Throwable(String msg) {
+		this.msg = msg;
+	}
+
+	public String toString() {
+		return "java.lang.Throwable";
 	}
 }

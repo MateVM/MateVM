@@ -7,6 +7,7 @@ module Mate.X86TrapHandling (
 
 import Numeric
 import qualified Data.Map as M
+import Control.Applicative
 import Control.Monad
 
 import Foreign
@@ -34,7 +35,7 @@ mateHandler :: MateHandlerType
 mateHandler reip reax rebx resi rebp resp retarr = do
   tmap <- getTrapMap
   let reipw32 = fromIntegral reip
-  let wbr = WriteBackRegs { wbEip = reip, wbEbp = rebp, wbEsp = resp }
+  let wbr = WriteBackRegs { wbEip = reip, wbEbp = rebp, wbEsp = resp, wbEax = reax }
   (deleteMe, ret_wbr) <- case M.lookup reipw32 tmap of
     (Just (StaticMethod patcher)) ->
         patchWithHarpy patcher wbr >>= delFalse
@@ -43,23 +44,30 @@ mateHandler reip reax rebx resi rebp resp retarr = do
     (Just (ObjectField patcher)) ->
         patchWithHarpy patcher wbr >>= delTrue
     (Just (InstanceOf patcher)) ->
-        patchWithHarpy (patcher reax) wbr >>= delFalse
+        patchWithHarpy patcher wbr >>= delFalse
     (Just (ThrowException patcher)) ->
-        patchWithHarpy (patcher reax) wbr >>= delFalse
+        patchWithHarpy patcher wbr >>= delFalse
     (Just (NewObject patcher)) ->
         patchWithHarpy patcher wbr >>= delTrue
     (Just (VirtualCall False mi io_offset)) ->
         patchWithHarpy (patchInvoke mi reax reax io_offset) wbr >>= delFalse
     (Just (VirtualCall True  mi io_offset)) ->
         patchWithHarpy (patchInvoke mi rebx reax io_offset) wbr >>= delFalse
-    Nothing -> case resi of
-        0x13371234 -> delFalse $ WriteBackRegs (-1) (-1) (-1)
-        _ -> error $ "getTrapType: abort :-( eip: "
-             ++ showHex reip ". " ++ concatMap (`showHex` ", ") (M.keys tmap)
+    Nothing -> do
+      ex <- executeException "java/lang/NullPointerException"
+      -- push exception ref on the stack
+      let lesp = (wbEsp wbr) - 4
+      poke (intPtrToPtr . fromIntegral $ lesp) ex
+      handleExceptionPatcher (wbr { wbEax = ex, wbEsp = lesp}) >>= delFalse
+      {-
+      _ -> error $ "getTrapType: abort :-( eip: "
+           ++ showHex reip ". " ++ concatMap (`showHex` ", ") (M.keys tmap)
+      -}
   when deleteMe $ setTrapMap $ M.delete reipw32 tmap
-  pokeReg 0 wbEip ret_wbr
-  pokeReg 4 wbEbp ret_wbr
-  pokeReg 8 wbEsp ret_wbr
+  pokeReg 0x0 wbEip ret_wbr
+  pokeReg 0x4 wbEbp ret_wbr
+  pokeReg 0x8 wbEsp ret_wbr
+  pokeReg 0xc wbEax ret_wbr
     where
       delTrue x = return (True,x)
       delFalse x = return (False,x)

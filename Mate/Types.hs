@@ -8,6 +8,7 @@ module Mate.Types
   , JpcNpcMap
   , RawMethod(..)
   , TrapPatcher, TrapPatcherEax
+  , ExceptionHandler
   , WriteBackRegs(..)
   , CompiledMethod(..)
   , TrapMap, MethodMap, ClassMap, FieldMap
@@ -78,12 +79,14 @@ data RawMethod = RawMethod {
 -- MethodInfo = relevant information about callee
 type TrapMap = M.Map NativeWord TrapCause
 
-data WriteBackRegs = WriteBackRegs {
-  wbEip :: CPtrdiff,
-  wbEbp :: CPtrdiff,
-  wbEsp :: CPtrdiff }
+data WriteBackRegs = WriteBackRegs
+  { wbEip :: CPtrdiff
+  , wbEbp :: CPtrdiff
+  , wbEsp :: CPtrdiff
+  , wbEax :: CPtrdiff }
 type TrapPatcher = WriteBackRegs -> CodeGen () () WriteBackRegs
-type TrapPatcherEax = CPtrdiff -> TrapPatcher
+type TrapPatcherEax = TrapPatcher
+type ExceptionHandler = WriteBackRegs -> IO WriteBackRegs
 
 data TrapCause
   = StaticMethod TrapPatcher -- for static calls

@@ -98,13 +98,6 @@ emitFromBB cls method = do
     where
     bb = hmap M.! bid
 
-    forceRegDump :: CodeGen e s ()
-    forceRegDump = do
-      push esi
-      mov esi (0x13371234 :: Word32)
-      mov esi (Addr 0)
-      pop esi
-
     emitInvoke :: Word16 -> Bool -> CodeGen e s (Maybe (Word32, TrapCause))
     emitInvoke cpidx hasThis = do
       let l = buildMethodID cls cpidx
@@ -205,10 +198,10 @@ emitFromBB cls method = do
       -- place something like `mov edx $mtable_of_objref' instead
       trapaddr <- emitSigIllTrap 4
       push (0 :: Word32)
-      let patcher reax wbr = do
+      let patcher wbr = do
             emitSigIllTrap 4
             let classname = buildClassID cls cpidx
-            check <- liftIO $ isInstanceOf (fromIntegral reax) classname
+            check <- liftIO $ isInstanceOf (fromIntegral $ wbEax wbr) classname
             if check
               then push (1 :: Word32)
               else push (0 :: Word32)
@@ -235,7 +228,10 @@ emitFromBB cls method = do
     emit' ATHROW = do
       mov eax (Disp 0, esp) -- peek value from stack
       trapaddr <- emitSigIllTrap 2
-      return $ Just (trapaddr, ThrowException handleExceptionPatcher)
+      let patcher wbr = do
+            emitSigIllTrap 2
+            liftIO $ handleExceptionPatcher wbr
+      return $ Just (trapaddr, ThrowException patcher)
 
     emit' insn = emit insn >> return Nothing
 
@@ -438,13 +434,13 @@ getCurrentOffset = do
   offset <- fromIntegral <$> getCodeOffset
   return $ ep + offset
 
-handleExceptionPatcher :: TrapPatcherEax
-handleExceptionPatcher reax wbr = do
-  emitSigIllTrap 2
+handleExceptionPatcher :: ExceptionHandler
+handleExceptionPatcher wbr = do
   let weip = fromIntegral $ wbEip wbr
-  liftIO $ handleException weip (wbEbp wbr) (wbEsp wbr)
+  printfEx $ printf "eip of throw: 0x%08x %d\n" weip weip
+  handleException weip (wbEbp wbr) (wbEsp wbr)
     where
-      weax = fromIntegral reax :: Word32
+      weax = fromIntegral (wbEax wbr) :: Word32
       unwindStack :: CPtrdiff -> IO WriteBackRegs
       unwindStack rebp = do
         let nesp = rebp + 8
@@ -453,8 +449,8 @@ handleExceptionPatcher reax wbr = do
         printfEx $ printf "nebp: 0x%08x\n" (fromIntegral nebp :: Word32)
         printfEx $ printf "nesp: 0x%08x\n" (fromIntegral nesp :: Word32)
         -- get return addr
-        neip <- peek (intPtrToPtr . fromIntegral $ (nesp +  0))
-        printfEx $ printf "neip+0:  0x%08x\n" (neip :: Word32)
+        neip <- peek . intPtrToPtr . fromIntegral $ nesp
+        printfEx $ printf "neip: 0x%08x\n" (neip :: Word32)
         handleException neip nebp nesp
       handleException :: Word32 -> CPtrdiff -> CPtrdiff -> IO WriteBackRegs
       handleException weip rebp resp = do
@@ -503,7 +499,8 @@ handleExceptionPatcher reax wbr = do
                       Just y -> return $ Just $ WriteBackRegs
                                   { wbEip = fromIntegral y
                                   , wbEbp = rebp
-                                  , wbEsp = resp }
+                                  , wbEsp = resp
+                                  , wbEax = fromIntegral weax }
                       Nothing -> myMapM g xs
               let f :: (B.ByteString, Word32) -> IO (Maybe Word32)
                   f (x, y) = do
