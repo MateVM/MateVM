@@ -39,7 +39,6 @@ import JVM.Converter
 import Java.ClassPath hiding (Directory)
 import Java.JAR
 
-import Mate.BasicBlocks
 import {-# SOURCE #-} Mate.MethodPool
 import Mate.Types
 import Mate.Debug
@@ -301,13 +300,11 @@ loadAndInitClass path = do
   -- execute class initializer
   unless (ciInitDone ci) $ case lookupMethod "<clinit>" (ciFile ci) of
     Just m -> do
-      rawmethod <- parseMethod (ciFile ci) "<clinit>" $ MethodSignature [] ReturnsVoid
-      let mi = MethodInfo "<clinit>" path (methodSignature m)
+      let mi = MethodInfo "<clinit>" path $ MethodSignature [] ReturnsVoid
+      (entry, _) <- getMethodEntry mi
       -- TODO(bernhard): test exception handling in static initalizer
-      entry <- compileBB rawmethod mi
-      addMethodRef entry mi [path]
       printfCp $ printf "executing static initializer from %s now\n" (toString path)
-      executeFuncPtr $ methodEntryPoint entry
+      executeFuncPtr (fromIntegral entry)
       printfCp $ printf "static initializer from %s done\n" (toString path)
     Nothing -> return ()
 
