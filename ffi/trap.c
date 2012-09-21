@@ -44,7 +44,7 @@ void chandler(int nSignal, siginfo_t *info, void *ctx)
 			eax, ebx, esp, *(ptrdiff_t*) esp, *(ptrdiff_t *) (ebp + 8));
 
 
-	ptrdiff_t ret[3] = {0};
+	ptrdiff_t ret[4] = {0};
 	mateHandler(eip, eax, ebx, esi, ebp, esp, ret);
 	if (ret[0] == -1) {
 		dprintf("regdump @ EIP: 0x%08x\n", regs[REG_EIP]);
@@ -57,6 +57,7 @@ void chandler(int nSignal, siginfo_t *info, void *ctx)
 		mctx->gregs[REG_EIP] = ret[0];
 		mctx->gregs[REG_EBP] = ret[1];
 		mctx->gregs[REG_ESP] = ret[2];
+		mctx->gregs[REG_EAX] = ret[3];
 	}
 }
 
