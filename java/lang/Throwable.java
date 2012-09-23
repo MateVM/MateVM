@@ -11,6 +11,10 @@ public class Throwable {
 		this.msg = msg;
 	}
 
+	public String getMessage() {
+		return this.msg;
+	}
+
 	public String toString() {
 		return "java.lang.Throwable";
 	}

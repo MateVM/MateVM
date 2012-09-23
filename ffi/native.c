@@ -127,3 +127,9 @@ void java_lang_VMSystem__arraycopy___Ljava_lang_Object_ILjava_lang_Object_II_V(
 	hexdump(dest, len + 4);
 #endif
 }
+
+void
+java_lang_VMThrowable__fillInStackTrace___Ljava_lang_Throwable__Ljava_lang_VMThrowable_()
+{
+	printf("fillInStackTrace: TODO\n");
+}
