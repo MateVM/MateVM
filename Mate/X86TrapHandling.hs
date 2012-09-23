@@ -107,6 +107,7 @@ patchInvoke :: MethodInfo -> CPtrdiff -> CPtrdiff -> IO NativeWord ->
                WriteBackRegs -> CodeGen e s WriteBackRegs
 patchInvoke (MethodInfo methname _ msig)  method_table table2patch io_offset wbr = do
   vmap <- liftIO getVirtualMap
+  liftIO $ printfJit $ printf "patched virtual call: issued from 0x%08x\n" (fromIntegral (wbEip wbr) :: Word32)
   let newmi = MethodInfo methname (vmap M.! fromIntegral method_table) msig
   offset <- liftIO io_offset
   (entryAddr, _) <- liftIO $ getMethodEntry newmi
@@ -114,4 +115,5 @@ patchInvoke (MethodInfo methname _ msig)  method_table table2patch io_offset wbr
   -- patch entry in table
   let call_insn = intPtrToPtr . fromIntegral $ table2patch + fromIntegral offset
   liftIO $ poke call_insn entryAddr
+  liftIO $ printfJit $ printf "patched virtual call: 0x%08x\n" (fromIntegral entryAddr :: Word32)
   return wbr

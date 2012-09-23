@@ -144,7 +144,7 @@ compileBB rawmethod methodinfo = do
   let ((entry, _, new_tmap, exmap), _) = r
   setTrapMap $ tmap `M.union` new_tmap -- prefers elements in tmap
 
-  printfJit $ printf "generated code of \"%s\" from \"%s\":\n" (toString $ methName methodinfo) (toString $ methClassName methodinfo)
+  printfJit $ printf "generated code of \"%s\" @ \"%s\" from \"%s\":\n" (toString $ methName methodinfo) (show $ methSignature methodinfo) (toString $ methClassName methodinfo)
   printfJit $ printf "\tstacksize: 0x%04x, locals: 0x%04x\n" (rawStackSize rawmethod) (rawLocals rawmethod)
   when mateDEBUG $ mapM_ (printfJit . printf "%s\n" . showIntel) (snd r)
   printfJit $ printf "\n\n"
