@@ -332,7 +332,9 @@ emitFromBB cls method = do
     emit ISUB = do pop ebx; pop eax; sub eax ebx; push eax
     emit IMUL = do pop ebx; pop eax; mul ebx; push eax
     emit IXOR = do pop ebx; pop eax; xor eax ebx; push eax
-    emit IUSHR = do pop ecx; pop eax; sar eax cl; push eax
+    emit IUSHR = do pop ecx; pop eax; shr eax cl; push eax
+    emit ISHR = do pop ecx; pop eax; sar eax cl; push eax
+    emit ISHL = do pop ecx; pop eax; sal eax cl; push eax
     emit INEG = do pop eax; neg eax; push eax
     emit (IINC x imm) =
       add (Disp (cArgs x), ebp) (s8_w32 imm)
