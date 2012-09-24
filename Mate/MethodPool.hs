@@ -26,6 +26,7 @@ import Mate.ClassPool
 import Mate.Debug
 import Mate.Utilities
 import Mate.Rts()
+import Mate.JavaObjects()
 
 foreign import ccall "dynamic"
    code_void :: FunPtr (IO ()) -> IO ()
@@ -38,6 +39,9 @@ foreign import ccall "&loadLibrary"
 
 foreign import ccall "&printGCStats"
   printGCStatsAddr :: FunPtr (IO ())
+
+foreign import ccall "&cloneObject"
+  cloneObjectAddr :: FunPtr (CPtrdiff -> IO CPtrdiff)
 
 getMethodEntry :: MethodInfo -> IO (CPtrdiff, ExceptionMap NativeWord)
 getMethodEntry mi@(MethodInfo method cm sig) = do
@@ -55,14 +59,18 @@ getMethodEntry mi@(MethodInfo method cm sig) = do
               then do
                 let scm = toString cm; smethod = toString method
                     ret fp = return $ CompiledMethod (funPtrToAddr fp) M.empty
-                if scm == "jmate/lang/MateRuntime"
-                  then case smethod of
-                    "loadLibrary" -> ret loadLibraryAddr
-                    "printGCStats" -> ret printGCStatsAddr
-                    "printMemoryUsage" -> ret printMemoryUsageAddr
-                    _ ->
-                       error $ "native-call: " ++ smethod ++ " not found."
-                  else do
+                case scm of
+                  "jmate/lang/MateRuntime" ->
+                    case smethod of
+                      "loadLibrary" -> ret loadLibraryAddr
+                      "printGCStats" -> ret printGCStatsAddr
+                      "printMemoryUsage" -> ret printMemoryUsageAddr
+                      _ -> error $ "native-call: " ++ smethod ++ " @ " ++ scm ++ " not found."
+                  "java/lang/VMObject" ->
+                    case smethod of
+                      "clone" -> ret cloneObjectAddr
+                      _ -> error $ "native-call: " ++ smethod ++ " @ " ++ scm ++ " not found."
+                  _ -> do
                     -- TODO(bernhard): cleaner please... *do'h*
                     let sym1 = replace "/" "_" scm
                         parenth = replace "(" "_" $ replace ")" "_" $ toString $ encode sig

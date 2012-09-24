@@ -6,6 +6,7 @@ module Mate.ClassPool (
   getClassFile,
   getMethodTable,
   getMethodTableNoInit,
+  getMethodTableReverse,
   getObjectSize,
   getMethodOffset,
   getFieldOffset,
@@ -96,6 +97,14 @@ getMethodTable :: B.ByteString -> IO NativeWord
 getMethodTable path = do
   ci <- getClassInfo path
   return $ ciMethodBase ci
+
+getMethodTableReverse :: NativeWord -> IO B.ByteString
+getMethodTableReverse mtable = do
+  class_map <- getClassMap
+  let f x = ciMethodBase x == mtable
+  case find f (M.elems class_map) of
+    Just x -> return $ ciName x
+    Nothing -> error "getMethodTableReverse: nothing found"
 
 getObjectSize :: B.ByteString -> IO NativeWord
 getObjectSize path = do

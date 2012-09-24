@@ -3,6 +3,7 @@
 module Mate.JavaObjects
   ( getUniqueStringAddr
   , allocAndInitObject
+  , cloneObject
   ) where
 
 import Data.Word
@@ -101,4 +102,15 @@ allocAndInitObject p = do
   (entry, _) <- getMethodEntry mi
   let fptr = (castPtrToFunPtr . intPtrToPtr . fromIntegral $ entry) :: FunPtr (CPtrdiff -> IO ())
   code_ref fptr obj
+  return obj
+
+foreign export ccall cloneObject :: CPtrdiff -> IO CPtrdiff
+cloneObject :: CPtrdiff -> IO CPtrdiff
+cloneObject obj_to_clone = do
+  let ptr = intPtrToPtr $ fromIntegral obj_to_clone :: Ptr NativeWord
+  mtable <- peek ptr
+  size <- getMethodTableReverse mtable >>= getObjectSize
+  obj <- mallocObjectGC (fromIntegral size)
+  let objptr = intPtrToPtr (fromIntegral obj)
+  copyBytes objptr ptr (fromIntegral size)
   return obj
