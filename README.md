@@ -26,3 +26,27 @@ the script `./tools/installhaskellenv.sh`.
 
 **PLEASE NOTE**: it deletes your `~/.cabal` and `~/.ghc directory` first in
 order to get a fresh cabal install!
+
+## Try it
+Build the `mate` executable with
+
+    $ make
+
+it also builds a simple base library for the Java Runtime, so be sure `javac` is
+in your `$PATH`.
+There are some working examples in `./tests/`, you can execute
+one with the given Makefile; assume you want to execute `./tests/Fib.java`:
+
+    $ make tests/Fib
+
+you can compare the output with your Java JVM (`java` in your `$PATH`) with:
+
+    $ make tests/Fib.test
+
+we also have a [build bot](http://wien.tomnetworks.com:8080/job/MateVM/) which
+checks for broken cabal dependencies every night, and it also checks the build
+with `make tests`.
+
+Unfortunately, we can't use
+[GNU Classpath](http://www.gnu.org/software/classpath/)
+yet, but we're working on it, so stay tuned!
