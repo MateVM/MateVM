@@ -1,27 +1,6 @@
-(l) proper java native interface (JNI)
-	-> atm just hackish solution.
-	-> also, arguments are passed in the wrong order
-	-> estimated effort: 3-4 days
-
-(l) exceptions
-	-> for gnu classpath absolutely necessary
-	-> estimated effort: unknown
-
-(l) replace signals with "nice traps"?
-	pro -> don't rely on operating system anymore
-	pro -> maybe better ghci behaviour?
-	cons -> at some point, signals are useful for debugging?
-	cons -> better "template" tricks are needed, as we cannot insert more
-	instructions or want to place nop's at production code path
-
-(l) gnu classpath integration
-	-> would be awwwesome
-	-> depends on: exceptions, jni (?)
-	-> estimated effort: unknown
-
-(m) hoopl
-	-> for "frontEnd analysis"
-	-> transition to MIR (Mate IR)?
+(h) introduce intermediate language
+	-> easier code generation *and* better code generation would be nice
+    -> better support for types: float, long, double...
 
 (h) switch statement (basically lookupswitch insn)
 
@@ -30,46 +9,53 @@
 	   high-level test. we need something
 	-> estimated effort: for infrastructure, 2-3 days
 
-(l) instanceof, checkcast
-	-> typechecking at runtime. with displays or something
-	-> depends on: exceptions (not absolutely necessary, but preferable)
-	-> estimated effort: 1 day
+(m) check different types (byte, long, ...)
+
+(m) hoopl
+	-> for "frontEnd analysis"
+	-> transition to MIR (Mate IR)?
+
+(l) proper java native interface (JNI)
+	-> atm just hackish solution.
+	-> also, arguments are passed in the wrong order
+	-> estimated effort: 3-4 days
+
+(l) classloader
+	-> needed for classpath
+
+(m) exceptions
+	-> generic handler for `main'
+	-> fill stacktrace... (classpath)
+
+(l) gnu classpath integration
+	-> would be awwwesome
+	-> depends on: classloader, jni (nio and friends?)
+	-> estimated effort: unknown
+
+(l) improve instanceof/checkcast
+	-> build something at compile-time, for faster checks at runtime
 
 (h) bug (?): can there be a namespace clash with static and non-static methods?
 	-> the signature doesn't contain the static modifier
 	-> estimated effort: some hours (if a fix is needed)
 
-(h) global map hack:
+(l) global map hack:
 	-> it's an stupid and ugly hack. we don't want that.
 	-> estimated effort: unknown. research for a solution is needed
 
 (l) cabal file
 
-(h) so much cleanup...
-	-> define constant for native size stuff
-	-> and much more
-
-(m) enable easy recompiliation of a method
+(l) enable easy recompiliation of a method
 	-> we need a map where all callers are stored
 	   in order to patch those to the new address
 	-> free old code region. maybe replace it with
 	   some magic values, e.g. which produce a signal
 	   in order to enable easier debugging
 
-(h) get rid of trap.c
+(l) get rid of trap.c
 	-> it's C. we don't want that.
 	-> at the moment System.Posix.Signal isn't powerful enough
 	-> wait for: http://hackage.haskell.org/trac/ghc/ticket/2451
-
-(l) check different types (byte, long, ...)
-
-(l) floating point support
-
-(h) better code generation
-	-> at least peephole optimazation would be nice (e.g. kill `push eax; pop
-	eax')
-	-> but we want more!!11 ;-)
-	-> estimated effort: 2-3 weeks
 
 (m) benchmark for presentation
 
