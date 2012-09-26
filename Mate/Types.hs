@@ -5,6 +5,7 @@ module Mate.Types
   , BBEnd(..)
   , MapBB
   , ExceptionMap
+  , RuntimeStackInfo(..)
   , JpcNpcMap
   , RawMethod(..)
   , TrapPatcher, TrapPatcherEax
@@ -62,6 +63,9 @@ data BBEnd
 
 type MapBB = M.Map BlockID BasicBlock
 type ExceptionMap a = M.Map (a, a) [(B.ByteString, a)]
+data RuntimeStackInfo = RuntimeStackInfo {
+  rsiMethodname :: B.ByteString,
+  rsiExceptionMap :: ExceptionMap NativeWord }
 
 -- java byte code PC -> native PC
 type JpcNpcMap = M.Map Int Word32
@@ -72,6 +76,7 @@ data RawMethod = RawMethod {
   rawLocals :: Int,
   rawStackSize :: Int,
   rawArgCount :: NativeWord,
+  rawMethodName :: B.ByteString,
   rawCodeLength :: NativeWord }
 
 

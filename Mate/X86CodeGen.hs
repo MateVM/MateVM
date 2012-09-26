@@ -64,16 +64,19 @@ emitFromBB cls method = do
     calls <- M.fromList . catMaybes . concat <$> mapM (efBB lmap) keys
     jpcnpcmap <- getState
     -- replace java program counter with native maschine program counter
-    let exmap = M.map (map h) $ M.mapKeys f $ rawExcpMap method
+    let exmap :: ExceptionMap Word32
+        exmap = M.map (map h) $ M.mapKeys f $ rawExcpMap method
           where
             f (key1, key2) = (&&&) (M.! key1') (M.! key2') jpcnpcmap
               where
                 key1' = fromIntegral key1
                 key2' = fromIntegral key2
             h = second ((jpcnpcmap M.!) . fromIntegral)
-    sptr_exmap <- liftIO $
-      (fromIntegral . ptrToIntPtr . castStablePtrToPtr) <$> newStablePtr exmap
-    pushExceptionMap @@ push (sptr_exmap :: Word32)
+    let rsi = RuntimeStackInfo (rawMethodName method) exmap
+    sptr_rsi <- liftIO $
+      (fromIntegral . ptrToIntPtr . castStablePtrToPtr) <$> newStablePtr rsi
+    liftIO $ printfStr $ printf "sptr: 0x%08x\n" sptr_rsi
+    pushExceptionMap @@ push (sptr_rsi :: Word32)
     jmp stacksetup
     d <- disassemble
     end <- getCodeOffset
@@ -484,7 +487,9 @@ handleExceptionPatcher wbr = do
         -- get full exception map from stack
         stblptr <- peek (intPtrToPtr . fromIntegral $ rebp) :: IO Word32
         let sptr = castPtrToStablePtr $ intPtrToPtr $ fromIntegral stblptr
-        exmap <- deRefStablePtr sptr :: IO (ExceptionMap Word32)
+        stackinfo <- deRefStablePtr sptr :: IO RuntimeStackInfo
+        let exmap = rsiExceptionMap stackinfo
+        printfEx $ printf "methodname: %s\n" (toString $ rsiMethodname stackinfo)
         printfEx $ printf "size: %d\n" (M.size exmap)
         printfEx $ printf "exmap: %s\n" (show $ M.toList exmap)
 

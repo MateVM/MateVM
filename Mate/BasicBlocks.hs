@@ -122,9 +122,10 @@ parseMethod cls methodname sig = do
                         x -> buildClassID cls x
 
   let msig = methodSignature method
-  printfBb $ printf "BB: analysing \"%s\"\n" $ toString (methodname `B.append` ": " `B.append` encode msig)
+  let methodwithsig = methodname `B.append` ": " `B.append` encode msig
+  printfBb $ printf "BB: analysing \"%s\"\n" $ toString methodwithsig
   printMapBB mapbb
-  return $ RawMethod mapbb exceptionMap locals stacks argscount codelen
+  return $ RawMethod mapbb exceptionMap locals stacks argscount methodwithsig codelen
 
 
 testCFG :: Code -> MapBB
