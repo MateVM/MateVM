@@ -35,8 +35,8 @@ import Mate.JavaObjects
 import Mate.Debug
 
 
-foreign import ccall "&mallocObjectGC"
-  mallocObjectAddr :: FunPtr (Int -> IO CPtrdiff)
+foreign import ccall "&mallocObjectGC_stackstrace"
+  mallocObjectAddr :: FunPtr (CPtrdiff -> Int -> IO CPtrdiff)
 
 type EntryPoint = Ptr Word8
 type EntryPointOffset = Int
@@ -424,8 +424,9 @@ emitFromBB cls method = do
 
 callMalloc :: CodeGen e s ()
 callMalloc = do
+  push ebp
   call mallocObjectAddr
-  add esp (ptrSize :: Word32)
+  add esp ((2 * ptrSize) :: Word32)
   push eax
 
 

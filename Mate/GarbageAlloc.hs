@@ -3,6 +3,7 @@ module Mate.GarbageAlloc(
     mallocClassData,
     mallocStringGC,
     mallocObjectGC,
+    mallocObjectGC_stackstrace,
     getHeapMemory,
     printMemoryUsage,
     printGCStats,
@@ -14,7 +15,10 @@ import Foreign.C
 
 import qualified Data.ByteString.Internal as BI
 
+import JVM.ClassFile
+
 import Mate.GC.Boehm
+import Mate.Types
 
 import Mate.Debug
 
@@ -42,6 +46,19 @@ mallocObjectGC size = do
   ptr <- mallocBytesGC size
   BI.memset (castPtr ptr) 0 (fromIntegral size)
   printfStr $ printf "mallocObject: %d\n" size
+  return $ fromIntegral $ ptrToIntPtr ptr
+
+foreign export ccall mallocObjectGC_stackstrace :: CPtrdiff -> Int -> IO CPtrdiff
+mallocObjectGC_stackstrace :: CPtrdiff -> Int -> IO CPtrdiff
+mallocObjectGC_stackstrace rebp size = do
+  printfStr $ printf "mallocObject: %d\n" size
+  printfStr $ printf "ebp @ malloc: 0x%08x\n" (fromIntegral rebp :: Word32)
+  stblptr <- peek (intPtrToPtr . fromIntegral $ rebp) :: IO Word32
+  let sptr = castPtrToStablePtr $ intPtrToPtr $ fromIntegral stblptr
+  stackinfo <- deRefStablePtr sptr :: IO RuntimeStackInfo
+  printfStr $ printf "stacktrace @ malloc: %s\n" (toString $ rsiMethodname stackinfo)
+  ptr <- mallocBytesGC size
+  BI.memset (castPtr ptr) 0 (fromIntegral size)
   return $ fromIntegral $ ptrToIntPtr ptr
 
 mallocObjectUnmanaged :: Int -> IO CPtrdiff
