@@ -35,9 +35,15 @@ printString prefix str = do
   when mateDEBUG $ hPutStr logHandle . (++) prefix $ str
   hFlush logHandle
 
--- TODO(bernhard): inline
+{-# INLINE printfJit #-}
+{-# INLINE printfBb #-}
+{-# INLINE printfMp #-}
+{-# INLINE printfCp #-}
+{-# INLINE printfStr #-}
+{-# INLINE printfInfo #-}
+{-# INLINE printfEx #-}
 printfJit, printfBb, printfMp, printfCp,
-  printfStr, printfInfo, printfEx  :: String -> IO ()
+  printfStr, printfInfo, printfEx :: String -> IO ()
 {-
 -- TODO(bernhard):
 -- http://stackoverflow.com/questions/12123082/function-composition-with-text-printf-printf
