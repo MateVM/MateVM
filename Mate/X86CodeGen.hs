@@ -357,19 +357,28 @@ emitFromBB cls method = do
       emitIF cond
 
     emit (GOTO _ ) = do
-      let sid = case successor bb of OneTarget t -> t; _ -> error "bad"
+      let sid = case successor bb of OneTarget t -> t; _ -> error "GOTO: bad"
       jmp $ getLabel sid lmap
 
     emit RETURN = do mov esp ebp; pop ebp; pop ebp; ret
     emit ARETURN = emit IRETURN
     emit IRETURN = do pop eax; emit RETURN
+    emit (TABLESWITCH _ _ _ _ _) = do
+      -- | SwitchTarget [(Maybe Word32, BlockID)]
+      let smap = case successor bb of SwitchTarget x -> x; _ -> error "tableswitch: bad"
+      pop eax -- value to compare
+      let f (Just val, label) = do cmp eax val; je label
+          f (Nothing, label) = jmp label
+      mapM_ f $ map (\(x,y) -> (x, getLabel y lmap)) smap
+
     emit invalid = error $ "insn not implemented yet: " ++ show invalid
+
 
     emitIF :: CMP -> CodeGen e s ()
     emitIF cond = let
-      sid = case successor bb of TwoTarget _ t -> t; _ -> error "bad"
+      sid = case successor bb of TwoTarget _ t -> t; _ -> error "emitIF: bad1"
       l = getLabel sid lmap
-      sid2 = case successor bb of TwoTarget t _ -> t; _ -> error "bad"
+      sid2 = case successor bb of TwoTarget t _ -> t; _ -> error "emitIF: bad2"
       l2 = getLabel sid2 lmap
       in do
         case cond of

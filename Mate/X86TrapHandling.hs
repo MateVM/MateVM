@@ -108,6 +108,7 @@ patchInvoke :: MethodInfo -> CPtrdiff -> CPtrdiff -> IO NativeWord ->
 patchInvoke (MethodInfo methname _ msig)  method_table table2patch io_offset wbr = do
   vmap <- liftIO getVirtualMap
   liftIO $ printfJit $ printf "patched virtual call: issued from 0x%08x\n" (fromIntegral (wbEip wbr) :: Word32)
+  when (method_table == 0) $ error "patchInvoke: method_table is null.  abort."
   let newmi = MethodInfo methname (vmap M.! fromIntegral method_table) msig
   offset <- liftIO io_offset
   (entryAddr, _) <- liftIO $ getMethodEntry newmi

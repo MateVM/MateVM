@@ -59,6 +59,7 @@ data BBEnd
   | FallThrough BlockID
   | OneTarget BlockID
   | TwoTarget BlockID BlockID
+  | SwitchTarget [(Maybe Word32, BlockID)]
   deriving Show
 
 type MapBB = M.Map BlockID BasicBlock

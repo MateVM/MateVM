@@ -62,6 +62,7 @@ printMapBB hmap = do
             FallThrough t1 -> "Sucessor: " ++ show t1 ++ "\n"
             OneTarget t1 -> "Sucessor: " ++ show t1 ++ "\n"
             TwoTarget t1 t2 -> "Sucessor: " ++ show t1 ++ ", " ++ show t2 ++ "\n"
+            SwitchTarget list -> "Sucessor(switch): " ++ show list ++ "\n"
           printMapBB' is hmap
         Nothing -> error $ "BlockID " ++ show i ++ " not found."
 
@@ -180,6 +181,7 @@ calculateInstructionOffset exstarts = cio' 0
     cio' :: Int -> [Instruction] -> AnalyseState
     cio' _ [] = return []
     cio' off (x:xs) = case x of
+        TABLESWITCH _ def low high offs -> switchtarget def low high offs
         IF _ w16 -> twotargets w16
         IF_ICMP _ w16 -> twotargets w16
         IF_ACMP _ w16 -> twotargets w16
@@ -214,11 +216,31 @@ calculateInstructionOffset exstarts = cio' 0
           let jump = off `addW16Signed` w16
           modify (S.insert jump)
           ((off, Just $ TwoTarget nojump jump, x):) <$> next
+        switchtarget def low high offs = do
+          let fioff = fromIntegral off
+          let switch :: [(Maybe Word32, BlockID)]
+              switch = [ (Just v, offset)
+                       | (v, o) <- zip [low..high] offs
+                       , let offset = fromIntegral $ o + fioff
+                       ] ++ [(Nothing, fromIntegral $ def + fioff)]
+          let targets = map (fromIntegral . snd) switch
+          modify (S.union (S.fromList targets))
+          ((off, Just $ SwitchTarget switch, x):) <$> next
         next = cio' newoffset xs
         newoffset = off + insLen
         insLen = insnLength x
 
 -- TODO(bernhard): does GHC memomize results? i.e. does it calculate the size
 --                 of `NOP' only once?
-insnLength :: Num a => Instruction -> a
-insnLength = fromIntegral . B.length . encodeInstructions . (:[])
+insnLength :: Integral a => Instruction -> a
+insnLength x = case x of
+  (TABLESWITCH padding _ _ _ xs) ->
+    fromIntegral $ 1 {- opcode -}
+                 + (fromIntegral padding)
+                 + (3 * 4) {- def, low, high -}
+                 + 4 * length xs {- entries -}
+  (LOOKUPSWITCH _ _ _ _) ->
+    error "lookupswitch @ insnLength"
+  _ -> len
+  where
+    len = fromIntegral . B.length . encodeInstructions . (:[]) $ x
