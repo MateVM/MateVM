@@ -1,12 +1,13 @@
 #!/bin/bash -x
 
 CABAL_OPT="--enable-shared -p"
+CABAL_OPT_NEW="--enable-shared -p -j"
 
 function gitinstall {
 	url=$1
 	git clone $url tmprepo
 	cd tmprepo
-	cabal install $CABAL_OPT
+	cabal install $CABAL_OPT_NEW
 	cd ..
 	rm -rf tmprepo
 }
@@ -28,16 +29,11 @@ cabal update
 cabal install cabal-install $CABAL_OPT
 export PATH=~/.cabal/bin:$PATH
 cabal update
-cabal install missingh $CABAL_OPT
-cabal install heap $CABAL_OPT
-cabal install plugins $CABAL_OPT
-cabal install split $CABAL_OPT
-cabal install bimap $CABAL_OPT
+cabal install missingh heap plugins split bimap disassembler $CABAL_OPT_NEW
 
-# cabal install hs-java $CABAL_OPT
+# cabal install hs-java $CABAL_OPT_NEW
 gitinstall git://github.com/MateVM/hs-java.git
 
-cabal install disassembler $CABAL_OPT
 # cabal install harpy $CABAL_OPT
 gitinstall git://github.com/MateVM/harpy.git
 
