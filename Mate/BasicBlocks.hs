@@ -181,6 +181,7 @@ calculateInstructionOffset exstarts = cio' 0
     cio' :: Int -> [Instruction] -> AnalyseState
     cio' _ [] = return []
     cio' off (x:xs) = case x of
+        LOOKUPSWITCH _ def _ switch -> lookuptarget def switch
         TABLESWITCH _ def low high offs -> switchtarget def low high offs
         IF _ w16 -> twotargets w16
         IF_ICMP _ w16 -> twotargets w16
@@ -216,6 +217,16 @@ calculateInstructionOffset exstarts = cio' 0
           let jump = off `addW16Signed` w16
           modify (S.insert jump)
           ((off, Just $ TwoTarget nojump jump, x):) <$> next
+        lookuptarget def switch' = do
+          let fioff = fromIntegral off
+          let switch :: [(Maybe Word32, BlockID)]
+              switch = [ (Just v, offset)
+                       | (v, o) <- switch'
+                       , let offset = fromIntegral $ o + fioff
+                       ] ++ [(Nothing, fromIntegral $ def + fioff)]
+          let targets = map (fromIntegral . snd) switch
+          modify (S.union (S.fromList targets))
+          ((off, Just $ SwitchTarget switch, x):) <$> next
         switchtarget def low high offs = do
           let fioff = fromIntegral off
           let switch :: [(Maybe Word32, BlockID)]
@@ -239,8 +250,11 @@ insnLength x = case x of
                  + (fromIntegral padding)
                  + (3 * 4) {- def, low, high -}
                  + 4 * length xs {- entries -}
-  (LOOKUPSWITCH _ _ _ _) ->
-    error "lookupswitch @ insnLength"
+  (LOOKUPSWITCH padding _ _ xs) ->
+    fromIntegral $ 1 {- opcode -}
+                 + (fromIntegral padding)
+                 + (2 * 4) {- def, n -}
+                 + 8 * length xs {- pairs -}
   _ -> len
   where
     len = fromIntegral . B.length . encodeInstructions . (:[]) $ x

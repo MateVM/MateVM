@@ -370,6 +370,7 @@ emitFromBB cls method = do
       let f (Just val, label) = do cmp eax val; je label
           f (Nothing, label) = jmp label
       mapM_ f $ map (\(x,y) -> (x, getLabel y lmap)) smap
+    emit (LOOKUPSWITCH _ _ _ _) = emit (TABLESWITCH 0 0 0 0 [])
 
     emit invalid = error $ "insn not implemented yet: " ++ show invalid
 
