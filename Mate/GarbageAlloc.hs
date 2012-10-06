@@ -12,11 +12,13 @@ module Mate.GarbageAlloc(
 
 import Foreign
 import Foreign.C
+import Foreign.Ptr
 
 import qualified Data.ByteString.Internal as BI
 import Data.String.Utils
 import Control.Monad
 import Debug.Trace
+import Data.List
 
 import JVM.ClassFile
 
@@ -51,40 +53,61 @@ mallocObjectGC size = do
   printfStr $ printf "mallocObject: %d\n" size
   return $ fromIntegral $ ptrToIntPtr ptr
 
-foreign export ccall mallocObjectGC_stackstrace :: CPtrdiff -> Int -> IO CPtrdiff
-mallocObjectGC_stackstrace :: CPtrdiff -> Int -> IO CPtrdiff
-mallocObjectGC_stackstrace rebp size = do
+foreign export ccall mallocObjectGC_stackstrace :: CPtrdiff -> CPtrdiff -> Int -> IO CPtrdiff
+mallocObjectGC_stackstrace :: CPtrdiff -> CPtrdiff -> Int -> IO CPtrdiff
+mallocObjectGC_stackstrace sptr rebp size = do
   printfStr $ printf "mallocObject: %d\n" size
   printfStr $ printf "ebp @ malloc: 0x%08x\n" (fromIntegral rebp :: Word32)
   --printStackTrace 0 rebp TODO: compare performance of printStackTrace and printStackTrace'?
-  printStackTrace' rebp
+  printStackTrace' sptr rebp
   ptr <- mallocBytesGC size
   BI.memset (castPtr ptr) 0 (fromIntegral size)
   return $ fromIntegral $ ptrToIntPtr ptr
 
-type StackDescription = (CPtrdiff, RuntimeStackInfo)
+data StackDescription = StackDescription { base :: CPtrdiff, end :: CPtrdiff, 
+                                           stackinfo :: RuntimeStackInfo }
 
 cPtrToIntPtr :: CPtrdiff -> Ptr a 
 cPtrToIntPtr = intPtrToPtr . fromIntegral
 
 -- accumulator (tailrecursive) stackframes stream (may be written as predefined function?)
-stackFrames :: [StackDescription] -> CPtrdiff -> IO [StackDescription]
-stackFrames accum rebp = do 
+stackFrames :: [StackDescription] -> CPtrdiff -> CPtrdiff -> IO [StackDescription]
+stackFrames accum prevRbp rebp = do 
     stblptr <- peek (cPtrToIntPtr rebp) :: IO Word32
     let sptr = castPtrToStablePtr $ intPtrToPtr $ fromIntegral stblptr
     stackinfo <- deRefStablePtr sptr :: IO RuntimeStackInfo
-    let accum' = (rebp,stackinfo) : accum
+    let accum' = StackDescription { base = rebp, end = prevRbp, stackinfo = stackinfo } : accum
     if bottomOfStack stackinfo 
      then return accum -- done here. bottomOfStack claims that there are no frames left
      else -- otherwise grab the next frame, put current frame into list and continue
-          peek (cPtrToIntPtr (rebp + 4)) >>= stackFrames accum'
+          peek (cPtrToIntPtr (rebp + 4)) >>= stackFrames accum' rebp
 
-printStackTrace' :: CPtrdiff -> IO ()
-printStackTrace' ptr = do 
+printStackTrace' :: CPtrdiff -> CPtrdiff -> IO ()
+printStackTrace' stackPtr ptr = do 
   printfStr "Stacktrace:\n\n"
-  frames <- stackFrames [] ptr -- build with cps toget rid of reverse?
-  forM_ (reverse frames) (printfStr . printf "---> %s\n" . toString . rsiMethodname . snd)  
-  printfStr "End of Stack\n\n"         
+  frames <- stackFrames [] stackPtr ptr -- build with cps toget rid of reverse?
+  forM_ (reverse frames) (printfStr . printf "---> %s\n" . toString . rsiMethodname . stackinfo)  
+  printfStr "End of Stack\n"        
+  printStackFramesPrecise frames
+
+printStackFramesPrecise :: [StackDescription] -> IO ()
+printStackFramesPrecise = mapM_ printPrecise
+  where printPrecise f = do
+          let refs = possibleRefs f
+          printfStr $ printf "Method: %s, Begin: 0x%08x, End: 0x%08x\n"
+                         (name f) (base' f) (end' f)
+          printfStr $ refsToString refs
+        name = toString . rsiMethodname . stackinfo
+        base' = fromIntegral . base :: StackDescription -> Int
+        end' = fromIntegral . end :: StackDescription -> Int
+
+possibleRefs :: StackDescription -> [IntPtr]
+possibleRefs f = [fromIntegral $ end f .. fromIntegral $ base f]
+
+refsToString :: [IntPtr] -> String
+refsToString ptrs = printf "Reference Candidates: %s\n" (ptrStr ptrs)
+  where ptrStr = concat . intersperse "," . map printElement
+        printElement ptr = printf "0x%08x" (fromIntegral ptr :: Word32)
 
 bottomOfStack :: RuntimeStackInfo -> Bool
 bottomOfStack = mainOrInit . toString . rsiMethodname

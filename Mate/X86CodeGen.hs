@@ -36,7 +36,7 @@ import Mate.Debug
 
 
 foreign import ccall "&mallocObjectGC_stackstrace"
-  mallocObjectAddr :: FunPtr (CPtrdiff -> Int -> IO CPtrdiff)
+  mallocObjectAddr :: FunPtr (CPtrdiff -> CPtrdiff -> Int -> IO CPtrdiff)
 
 type EntryPoint = Ptr Word8
 type EntryPointOffset = Int
@@ -435,8 +435,9 @@ emitFromBB cls method = do
 callMalloc :: CodeGen e s ()
 callMalloc = do
   push ebp
+  push esp
   call mallocObjectAddr
-  add esp ((2 * ptrSize) :: Word32)
+  add esp ((3 * ptrSize) :: Word32)
   push eax
 
 
