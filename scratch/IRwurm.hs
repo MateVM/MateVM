@@ -2,6 +2,7 @@
 module Main where
 
 import qualified Data.List as L
+import qualified Data.Map as M
 import Data.Int
 import Data.Word
 -- import Data.Foldable
@@ -14,6 +15,7 @@ import Debug.Trace
 import Text.Printf
 
 -- TODO: translation: JVMInstruction -> BasicBlock JVMInstruction
+-- TODO: rewrite with state info
 
 
 -- source IR (jvm bytecode)
@@ -79,10 +81,11 @@ type Visited = [BlockID]
 type FoldState m = Monoid m => State Visited m
 
 bbFold :: Monoid m => (BasicBlock a -> m) -> BasicBlock a -> m
-bbFold f' bb' = evalState (bbFoldState f' bb') []
+bbFold f bb' = evalState (bbFoldState bb') []
   where
-    bbFoldState :: Monoid m => (BasicBlock a -> m) -> BasicBlock a -> FoldState m
-    bbFoldState f bb@(BasicBlock bid _ next) = do
+    -- TODO: type signature?!
+    -- bbFoldState :: Monoid m => BasicBlock a -> FoldState m
+    bbFoldState bb@(BasicBlock bid _ next) = do
       visited <- get
       if bid `L.elem` visited
         then return mempty
@@ -92,26 +95,58 @@ bbFold f' bb' = evalState (bbFoldState f' bb') []
           case next of
             Return -> return b
             Jump ref -> do
-              r1 <- brVisit f ref
+              r1 <- brVisit ref
               return $ b `mappend` r1
             TwoJumps ref1 ref2 -> do
-              r1 <- brVisit f ref1
-              r2 <- brVisit f ref2
+              r1 <- brVisit ref1
+              r2 <- brVisit ref2
               return $ b `mappend` r1 `mappend` r2
             Switch _ -> error "impl. switch stuff"
-    brVisit :: (BasicBlock a -> m) -> BlockRef a -> FoldState m
-    brVisit _ Self = return mempty
-    brVisit f (Ref bb) = bbFoldState f bb
+    -- brVisit :: BlockRef a -> FoldState m
+    brVisit Self = return mempty
+    brVisit (Ref bb) = bbFoldState bb
 {- /traverse -}
 
+{- rewrite basicblock: maintain structure, but transform instructions of
+   basicblock -}
+type BasicBlockMap a = M.Map BlockID (BasicBlock a)
+type RewriteState a = State Visited (BasicBlockMap a)
+
+-- TODO: refactor as state monad.  how?!
+bbRewrite :: (BasicBlock a -> BasicBlock b) -> BasicBlock a -> BasicBlock b
+bbRewrite f bb' = let (start, _) = bbRewrite' M.empty bb' in start
+  where
+    bbRewrite' visitmap bb@(BasicBlock bid _ next)
+      | bid `M.member` visitmap = (visitmap M.! bid, visitmap)
+      | otherwise = (x, newvmap)
+          where
+            x = (f bb) { nextBlock = newnext }
+            visitmap' = M.insert bid x visitmap
+            (newnext, newvmap) = case next of
+              Return -> (Return, visitmap')
+              Jump ref ->
+                  let (r, m) = brVisit visitmap' ref
+                  in (Jump r, m)
+              TwoJumps ref1 ref2 ->
+                  let (r1, m1) = brVisit visitmap' ref1
+                      (r2, m2) = brVisit m1 ref2
+                  in (TwoJumps r1 r2, m2)
+              Switch _ -> error "impl. switch stuff (rewrite)"
+    brVisit vmap Self = (Self, vmap)
+    brVisit vmap (Ref bb) = (Ref r, m)
+      where (r, m) = bbRewrite' vmap bb
+{- /rewrite-}
+
+
+dummy = 0x1337 -- jumpoffset will be eliminated after basicblock analysis
 
 ex0 :: BasicBlock JVMInstruction
 ex0 = BasicBlock 1 [ICONST_0, ISTORE 0] $ Jump (Ref bb2)
   where
     bb2 = BasicBlock 2 [ILOAD 0, ICONST_1, IADD, ISTORE 0
-                       , ILOAD 0, IPUSH 10, IFEQ_ICMP 0x1337]
+                       , ILOAD 0, IPUSH 10, IFEQ_ICMP dummy]
                        $ TwoJumps Self (Ref bb3)
-    bb3 = BasicBlock 3 [ILOAD 0, IPUSH 20, IFEQ_ICMP 0x1337]
+    bb3 = BasicBlock 3 [ILOAD 0, IPUSH 20, IFEQ_ICMP dummy]
                        $ TwoJumps (Ref bb2) (Ref bb4)
     bb4 = BasicBlock 4 [RETURN] Return
 
@@ -130,3 +165,7 @@ main = do
   putStrLn $ "getlabels: ex1: " ++ (show $ bbFold extractbid ex1)
   putStrLn "\n\n"
   bbFold print ex0
+  putStrLn "\n\n-- REWRITING (id) --\n\n"
+  bbFold print $ bbRewrite id ex0
+  putStrLn "\n\n-- REWRITING (dup code segment [indeed, it's pointless]) --\n\n"
+  bbFold print $ bbRewrite (\bb -> bb { code = code bb ++ code bb }) ex0
