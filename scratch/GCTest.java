@@ -4,8 +4,19 @@ import jmate.lang.MateRuntime;
 
 public class GCTest
 {
+        public static void gabber()
+        {
+           Object x = new Object();
+        }
+
+        public static void blubber()
+        {
+          gabber();
+        }
+
 	public static void main(String[] args)
 	{
+          blubber();
 		List myList = new List(3,
 			new List(5,
 				new List(6,

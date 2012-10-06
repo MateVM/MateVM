@@ -14,6 +14,9 @@ import Foreign
 import Foreign.C
 
 import qualified Data.ByteString.Internal as BI
+import Data.String.Utils
+import Control.Monad
+import Debug.Trace
 
 import JVM.ClassFile
 
@@ -53,13 +56,65 @@ mallocObjectGC_stackstrace :: CPtrdiff -> Int -> IO CPtrdiff
 mallocObjectGC_stackstrace rebp size = do
   printfStr $ printf "mallocObject: %d\n" size
   printfStr $ printf "ebp @ malloc: 0x%08x\n" (fromIntegral rebp :: Word32)
-  stblptr <- peek (intPtrToPtr . fromIntegral $ rebp) :: IO Word32
-  let sptr = castPtrToStablePtr $ intPtrToPtr $ fromIntegral stblptr
-  stackinfo <- deRefStablePtr sptr :: IO RuntimeStackInfo
-  printfStr $ printf "stacktrace @ malloc: %s\n" (toString $ rsiMethodname stackinfo)
+  --printStackTrace 0 rebp TODO: compare performance of printStackTrace and printStackTrace'?
+  printStackTrace' rebp
   ptr <- mallocBytesGC size
   BI.memset (castPtr ptr) 0 (fromIntegral size)
   return $ fromIntegral $ ptrToIntPtr ptr
+
+type StackDescription = (CPtrdiff, RuntimeStackInfo)
+
+cPtrToIntPtr :: CPtrdiff -> Ptr a 
+cPtrToIntPtr = intPtrToPtr . fromIntegral
+
+-- accumulator (tailrecursive) stackframes stream (may be written as predefined function?)
+stackFrames :: [StackDescription] -> CPtrdiff -> IO [StackDescription]
+stackFrames accum rebp = do 
+    stblptr <- peek (cPtrToIntPtr rebp) :: IO Word32
+    let sptr = castPtrToStablePtr $ intPtrToPtr $ fromIntegral stblptr
+    stackinfo <- deRefStablePtr sptr :: IO RuntimeStackInfo
+    let accum' = (rebp,stackinfo) : accum
+    if bottomOfStack stackinfo 
+     then return accum -- done here. bottomOfStack claims that there are no frames left
+     else -- otherwise grab the next frame, put current frame into list and continue
+          peek (cPtrToIntPtr (rebp + 4)) >>= stackFrames accum'
+
+printStackTrace' :: CPtrdiff -> IO ()
+printStackTrace' ptr = do 
+  printfStr "Stacktrace:\n\n"
+  frames <- stackFrames [] ptr -- build with cps toget rid of reverse?
+  forM_ (reverse frames) (printfStr . printf "---> %s\n" . toString . rsiMethodname . snd)  
+  printfStr "End of Stack\n\n"         
+
+bottomOfStack :: RuntimeStackInfo -> Bool
+bottomOfStack = mainOrInit . toString . rsiMethodname
+
+-- | Determines wheter a method signature (as found in RuntimeStackInfos) is bottom of stack
+mainOrInit :: String -> Bool
+mainOrInit sig | startswith "main" sig    = True
+               | startswith "<clinit>" sig = True
+               | otherwise = False
+
+-- | Prints stacktrace until bottom of stack is reached (or native code transition or trap [TODO]
+-- The Int argument describes current stack depth (for pretty printing)
+printStackTrace :: Int -> CPtrdiff -> IO ()
+printStackTrace depth rebp = do 
+    stblptr <- peek (intPtrToPtr . fromIntegral $ rebp) :: IO Word32
+    let sptr = castPtrToStablePtr $ intPtrToPtr $ fromIntegral stblptr
+    stackinfo <- deRefStablePtr sptr :: IO RuntimeStackInfo
+    bottomOfStack <- printFrame depth mainOrInit stackinfo
+    unless bottomOfStack continue
+  where continue = peek (intPtrToPtr . fromIntegral $ (rebp + 4)) >>= printStackTrace (depth+1)
+
+-- | Prints stackframe to printStr. Returns True if bottom of the stack (i.e. main)
+-- is reached.
+printFrame :: Int -> (String -> Bool) -> RuntimeStackInfo -> IO Bool
+printFrame d bottomCheck = print . toString . rsiMethodname
+  where print sig  | bottomCheck sig 
+                      = (printfStr $ printf "reached bottom of stack [%d]\n" d) >> return True
+                   | otherwise 
+                      = (printfStr $ printf "stacktrace @ malloc: %s [%d]\n" sig d) >> return False
+
 
 mallocObjectUnmanaged :: Int -> IO CPtrdiff
 mallocObjectUnmanaged size = do
