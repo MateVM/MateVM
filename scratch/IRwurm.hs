@@ -1,6 +1,6 @@
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverlappingInstances #-}
+{-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE GADTs #-}
 module Main where
 
@@ -27,10 +27,15 @@ import Text.Printf
 data JVMInstruction
   = ICONST_0
   | ICONST_1
+  | FCONST_0
+  | FCONST_1
   | IPUSH Word32
-  | ILOAD Word8  -- stoarge offset
-  | ISTORE Word8 -- stoarge offset
+  | ILOAD Word8  -- storage offset
+  | FLOAD Word8  -- storage offset
+  | ISTORE Word8 -- storage offset
+  | FSTORE Word8 -- storage offset
   | IADD
+  | FADD
   | IFEQ_ICMP Int16 -- signed relative offset
   | GOTO Int16
   | DUP
@@ -41,30 +46,45 @@ data JVMInstruction
 
 -- type Label = String
 
-data GeneralIR e x where
-  IRLabel :: Label -> GeneralIR C O
-  IRMov :: Var -> Var -> GeneralIR O O {- dest, src -}
+-- java types
+data JInt
+data JFloat
+
+data GeneralIR where
+  IRLabel :: Label -> GeneralIR
+  IRMov :: Var t -> Var t -> GeneralIR {- dest, src -}
   -- OpInt :: OpType -> Var t -> Var t -> Var t -> GeneralIR O O
-  IRAdd :: Var -> Var -> Var -> GeneralIR O O
-  IRJump :: Label -> GeneralIR O C
-  IRIfElse :: Var -> Label {- True -} -> Label {- False -} -> GeneralIR O C
-  IRReturn :: Bool -> GeneralIR O C
+  IRAdd :: Var t -> Var t -> Var t -> GeneralIR {- dest, src1, src2 -}
+  IRJump :: GeneralIR
+  IRIfElse :: Var JInt -> Var JInt -> GeneralIR
+  IRReturn :: Bool -> GeneralIR
+  IRInvoke :: Word8 -> GeneralIR -- just a single return
+  IRNop :: GeneralIR
 
-data Var
-  = Reg Int
-  | Const Word32
-{-
-data OpType
-  = Add
-  | Sub
-  | Mul -- TODO ..
+instance Show (GeneralIR) where
+  show (IRLabel l) = printf "label \"%s\"" (show l)
+  show (IRMov v1 v2) = printf "\tmov %s, %s\n" (show v1) (show v2)
+  show (IRAdd vr v1 v2) = printf "\tadd %s,  %s, %s\n" (show vr) (show v1) (show v2)
+  show (IRInvoke x) = printf "\tinvoke %s\n" (show x)
+  show IRJump = printf "\tjump\n"
+  show (IRIfElse v1 v2) = printf "\tif (%s == %s)\n" (show v1) (show v2)
+  show (IRReturn b) = printf "\treturn (%s)\n" (show b)
+  show IRNop = printf "\tnop\n"
 
-data VarType
-  = JInt
-  | JLong
-  | JFloat
-  | JDouble -- TODO ...
--}
+type Addr = Word32 -- arch-dependend
+
+data Var t where
+  IReg :: Int -> Var JInt
+  IConstant :: Word32 -> Var JInt
+  FReg :: Int -> Var JFloat
+  FConstant :: Float -> Var JFloat
+  -- TODO: mem stuff?
+
+instance Show (Var t) where
+  show (IReg n) = printf "i(%02d)" n
+  show (IConstant val) = printf "0x%08x" val
+  show (FReg n) = printf "f(%02d)" n
+  show (FConstant val) = printf "%2.2ff" val
 
 
 {- generic basicblock datastructure -}
@@ -150,20 +170,23 @@ type BasicBlockMap a = M.Map BlockID (BasicBlock a)
 type RewriteState a = State Visited (BasicBlockMap a)
 
 bbRewrite :: (BasicBlock a -> BasicBlock b) -> BasicBlock a -> BasicBlock b
-bbRewrite f bb' = bbRewriteWith (return . f) () bb'
+bbRewrite f bb' = bbRewriteWith f' () bb'
+  where f' x _ = return $ f x
 {- /rewrite-}
 
 {- rewrite with state -}
 -- TODO: refactor as state monad.  how?!
-bbRewriteWith :: (BasicBlock a -> State s (BasicBlock b)) -> s -> BasicBlock a -> BasicBlock b
+type Transformer a b s = (BasicBlock a -> NextBlock b -> State s (BasicBlock b))
+
+bbRewriteWith :: Transformer a b s -> s -> BasicBlock a -> BasicBlock b
 bbRewriteWith f state' bb' = let (res, _, _) = bbRewrite' state' M.empty bb' in res
   where
     bbRewrite' state visitmap bb@(BasicBlock bid _ next)
       | bid `M.member` visitmap = (visitmap M.! bid, visitmap, state)
       | otherwise = (x, newvmap, allstate)
           where
-            (x', newstate) = runState (f bb) state
-            x = x' { nextBlock = newnext }
+            (x, newstate) = runState (f bb newnext) state
+            -- x = x' { nextBlock = newnext }
             visitmap' = M.insert bid x visitmap
             (newnext, newvmap, allstate) = case next of
               Return -> (Return, visitmap', newstate)
@@ -180,6 +203,73 @@ bbRewriteWith f state' bb' = let (res, _, _) = bbRewrite' state' M.empty bb' in 
       where (r, m, newstate) = bbRewrite' state vmap bb
 {- /rewrite with -}
 
+data SimStack = SimStack
+  { istack :: [Var JInt]
+  , fstack :: [Var JFloat]
+  , iregcnt :: Int
+  , fregcnt :: Int }
+
+transformJ2IR :: BasicBlock [JVMInstruction]
+                 -> NextBlock [GeneralIR]
+                 -> State SimStack (BasicBlock [GeneralIR])
+transformJ2IR jvmbb next = do
+  res <- filter noNop <$> mapM tir (code jvmbb)
+  return (BasicBlock (bbID jvmbb) res next)
+  where
+    noNop IRNop = False; noNop _ = True
+
+    tir :: JVMInstruction -> State SimStack GeneralIR
+    tir ICONST_0 = tir (IPUSH 0)
+    tir ICONST_1 = tir (IPUSH 1)
+    tir (IPUSH x) = do ipush (IConstant x); return IRNop
+    tir FCONST_0 = do fpush (FConstant 0); return IRNop
+    tir FCONST_1 = do fpush (FConstant 1); return IRNop
+    tir (ILOAD x) = do ipush $ IReg (fromIntegral x); return IRNop
+    tir (ISTORE y) = do
+      x <- ipop
+      return $ IRMov (IReg $ fromIntegral y) x
+    tir (FSTORE y) = do
+      x <- fpop
+      return $ IRMov (FReg $ fromIntegral y) x
+    tir IADD = do
+      x <- ipop; y <- ipop; newvar <- newivar
+      ipush newvar
+      return $ IRAdd newvar x y
+    tir FADD = do
+      x <- fpop; y <- fpop; newvar <- newfvar
+      fpush newvar
+      return $ IRAdd newvar x y
+    tir (IFEQ_ICMP _) = do
+      x <- ipop; y <- ipop
+      return $ IRIfElse x y
+    tir RETURN = return $ IRReturn False
+    tir x = error $ "tir: " ++ show x
+
+    -- helper
+    newivar = do
+      sims <- get
+      put $ sims { iregcnt = (iregcnt sims) + 1 }
+      return $ IReg $ iregcnt sims
+    newfvar = do
+      sims <- get
+      put $ sims { fregcnt = (fregcnt sims) + 1 }
+      return $ FReg $ fregcnt sims
+    ipush x = do
+      sims <- get
+      put $ sims { istack = (x:istack sims) }
+    fpush x = do
+      sims <- get
+      put $ sims { fstack = (x:fstack sims) }
+    ipop :: State SimStack (Var JInt)
+    ipop = do
+      sims <- get
+      put $ sims { istack = tail $ istack sims }
+      return $ head $ istack sims
+    fpop :: State SimStack (Var JFloat)
+    fpop = do
+      sims <- get
+      put $ sims { fstack = tail $ fstack sims }
+      return $ head $ fstack sims
 
 dummy = 0x1337 -- jumpoffset will be eliminated after basicblock analysis
 
@@ -191,7 +281,7 @@ ex0 = BasicBlock 1 [ICONST_0, ISTORE 0] $ Jump (Ref bb2)
                        $ TwoJumps Self (Ref bb3)
     bb3 = BasicBlock 3 [ILOAD 0, IPUSH 20, IFEQ_ICMP dummy]
                        $ TwoJumps (Ref bb2) (Ref bb4)
-    bb4 = BasicBlock 4 [RETURN] Return
+    bb4 = BasicBlock 4 [FCONST_0, FCONST_1, FADD, FSTORE 1, RETURN] Return
 
 ex1 :: BasicBlock [JVMInstruction]
 ex1 = BasicBlock 1 [RETURN] Return
@@ -202,18 +292,23 @@ instance Monoid (IO ()) where { mempty = pure mempty; mappend = (*>) }
 
 main :: IO ()
 main = do
+  putStrLn "\n-- PRINT ex0 --\n\n"
+  bbFold print ex0
+  putStrLn "\n-- PRINT ex0 as GeneralIR --\n\n"
+  bbFold print $ bbRewriteWith transformJ2IR (SimStack [] [] 50000 60000) ex0
+
+oldmain :: IO ()
+oldmain = do
   let extractbid = \(BasicBlock bid _ _) -> [bid]
   putStrLn $ "woot: " ++ (show $ GOTO 12)
   putStrLn $ "getlabels: ex0: " ++ (show $ bbFold extractbid ex0)
   putStrLn $ "getlabels: ex1: " ++ (show $ bbFold extractbid ex1)
-  putStrLn "\n\n"
-  bbFold print ex0
   putStrLn "\n\n-- REWRITING (id) --\n\n"
   bbFold print $ bbRewrite id ex0
   putStrLn "\n\n-- REWRITING (dup code segment [indeed, it's pointless]) --\n\n"
   bbFold print $ bbRewrite (\bb -> bb { code = code bb ++ code bb }) ex0
   putStrLn "\n\n-- REWRITING WITH STATE --\n\n"
-  let rewrite1 bb = do
+  let rewrite1 bb _ = do
         modify (+1)
         mul <- get
         return $ bb { code = concat $ take mul $ repeat (code bb) }
