@@ -1,4 +1,6 @@
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverlappingInstances #-}
 {-# LANGUAGE GADTs #-}
 module Main where
 
@@ -69,7 +71,7 @@ data VarType
 type BlockID = Int
 data BasicBlock a = BasicBlock
   { bbID :: BlockID
-  , code :: [a]
+  , code :: a
   , nextBlock :: (NextBlock a)
   }
 
@@ -90,8 +92,12 @@ instance Show a => Show (BasicBlock a) where
   show (BasicBlock bid insns end) = sbb ++ send
     where
       sbb = printf "BasicBlock%03d:\n" bid
-            ++ concatMap (\x -> printf "\t%s\n" (show x)) insns
+            ++ show insns
+            -- ++ concatMap (\x -> printf "\t%s\n" (show x)) insns
       send = show end
+
+instance Show [JVMInstruction] where
+  show insns = concatMap (\x -> printf "\t%s\n" (show x)) insns
 
 instance Show (NextBlock a) where
   show x = case x of
@@ -177,7 +183,7 @@ bbRewriteWith f state' bb' = let (res, _, _) = bbRewrite' state' M.empty bb' in 
 
 dummy = 0x1337 -- jumpoffset will be eliminated after basicblock analysis
 
-ex0 :: BasicBlock JVMInstruction
+ex0 :: BasicBlock [JVMInstruction]
 ex0 = BasicBlock 1 [ICONST_0, ISTORE 0] $ Jump (Ref bb2)
   where
     bb2 = BasicBlock 2 [ILOAD 0, ICONST_1, IADD, ISTORE 0
@@ -187,7 +193,7 @@ ex0 = BasicBlock 1 [ICONST_0, ISTORE 0] $ Jump (Ref bb2)
                        $ TwoJumps (Ref bb2) (Ref bb4)
     bb4 = BasicBlock 4 [RETURN] Return
 
-ex1 :: BasicBlock JVMInstruction
+ex1 :: BasicBlock [JVMInstruction]
 ex1 = BasicBlock 1 [RETURN] Return
 
 
