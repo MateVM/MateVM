@@ -137,6 +137,30 @@ bbRewrite f bb' = let (start, _) = bbRewrite' M.empty bb' in start
       where (r, m) = bbRewrite' vmap bb
 {- /rewrite-}
 
+bbRewriteWith :: (BasicBlock a -> State s (BasicBlock b)) -> s -> BasicBlock a -> BasicBlock b
+bbRewriteWith f state' bb' = let (res, _, _) = bbRewrite' state' M.empty bb' in res
+  where
+    bbRewrite' state visitmap bb@(BasicBlock bid _ next)
+      | bid `M.member` visitmap = (visitmap M.! bid, visitmap, state)
+      | otherwise = (x, newvmap, allstate)
+          where
+            (x', newstate) = runState (f bb) state
+            x = x' { nextBlock = newnext }
+            visitmap' = M.insert bid x visitmap
+            (newnext, newvmap, allstate) = case next of
+              Return -> (Return, visitmap', newstate)
+              Jump ref ->
+                  let (r, m, s1) = brVisit newstate visitmap' ref
+                  in (Jump r, m, s1)
+              TwoJumps ref1 ref2 ->
+                  let (r1, m1, s1) = brVisit newstate visitmap' ref1
+                      (r2, m2, s2) = brVisit s1 m1 ref2
+                  in (TwoJumps r1 r2, m2, s2)
+              Switch _ -> error "impl. switch stuff (rewrite)"
+    brVisit state vmap Self = (Self, vmap, state)
+    brVisit state vmap (Ref bb) = (Ref r, m, newstate)
+      where (r, m, newstate) = bbRewrite' state vmap bb
+
 
 dummy = 0x1337 -- jumpoffset will be eliminated after basicblock analysis
 
@@ -169,3 +193,9 @@ main = do
   bbFold print $ bbRewrite id ex0
   putStrLn "\n\n-- REWRITING (dup code segment [indeed, it's pointless]) --\n\n"
   bbFold print $ bbRewrite (\bb -> bb { code = code bb ++ code bb }) ex0
+  putStrLn "\n\n-- REWRITING WITH STATE --\n\n"
+  let rewrite1 bb = do
+        modify (+1)
+        mul <- get
+        return $ bb { code = concat $ take mul $ repeat (code bb) }
+  bbFold print $ bbRewriteWith rewrite1 0 ex0
