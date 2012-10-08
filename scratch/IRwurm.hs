@@ -112,31 +112,12 @@ bbFold f bb' = evalState (bbFoldState bb') []
 type BasicBlockMap a = M.Map BlockID (BasicBlock a)
 type RewriteState a = State Visited (BasicBlockMap a)
 
--- TODO: refactor as state monad.  how?!
 bbRewrite :: (BasicBlock a -> BasicBlock b) -> BasicBlock a -> BasicBlock b
-bbRewrite f bb' = let (start, _) = bbRewrite' M.empty bb' in start
-  where
-    bbRewrite' visitmap bb@(BasicBlock bid _ next)
-      | bid `M.member` visitmap = (visitmap M.! bid, visitmap)
-      | otherwise = (x, newvmap)
-          where
-            x = (f bb) { nextBlock = newnext }
-            visitmap' = M.insert bid x visitmap
-            (newnext, newvmap) = case next of
-              Return -> (Return, visitmap')
-              Jump ref ->
-                  let (r, m) = brVisit visitmap' ref
-                  in (Jump r, m)
-              TwoJumps ref1 ref2 ->
-                  let (r1, m1) = brVisit visitmap' ref1
-                      (r2, m2) = brVisit m1 ref2
-                  in (TwoJumps r1 r2, m2)
-              Switch _ -> error "impl. switch stuff (rewrite)"
-    brVisit vmap Self = (Self, vmap)
-    brVisit vmap (Ref bb) = (Ref r, m)
-      where (r, m) = bbRewrite' vmap bb
+bbRewrite f bb' = bbRewriteWith (return . f) () bb'
 {- /rewrite-}
 
+{- rewrite with state -}
+-- TODO: refactor as state monad.  how?!
 bbRewriteWith :: (BasicBlock a -> State s (BasicBlock b)) -> s -> BasicBlock a -> BasicBlock b
 bbRewriteWith f state' bb' = let (res, _, _) = bbRewrite' state' M.empty bb' in res
   where
@@ -160,6 +141,7 @@ bbRewriteWith f state' bb' = let (res, _, _) = bbRewrite' state' M.empty bb' in 
     brVisit state vmap Self = (Self, vmap, state)
     brVisit state vmap (Ref bb) = (Ref r, m, newstate)
       where (r, m, newstate) = bbRewrite' state vmap bb
+{- /rewrite with -}
 
 
 dummy = 0x1337 -- jumpoffset will be eliminated after basicblock analysis
