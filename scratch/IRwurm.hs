@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs #-}
 module Main where
 
 import qualified Data.List as L
@@ -8,6 +9,8 @@ import Data.Word
 -- import Data.Foldable
 import Control.Applicative
 import Data.Monoid
+
+import Compiler.Hoopl
 
 import Control.Monad.State
 
@@ -33,6 +36,34 @@ data JVMInstruction
   | INVOKE Word8 -- amount of arguments
   | RETURN
   deriving Show
+
+-- type Label = String
+
+data GeneralIR e x where
+  IRLabel :: Label -> GeneralIR C O
+  IRMov :: Var -> Var -> GeneralIR O O {- dest, src -}
+  -- OpInt :: OpType -> Var t -> Var t -> Var t -> GeneralIR O O
+  IRAdd :: Var -> Var -> Var -> GeneralIR O O
+  IRJump :: Label -> GeneralIR O C
+  IRIfElse :: Var -> Label {- True -} -> Label {- False -} -> GeneralIR O C
+  IRReturn :: Bool -> GeneralIR O C
+
+data Var
+  = Reg Int
+  | Const Word32
+{-
+data OpType
+  = Add
+  | Sub
+  | Mul -- TODO ..
+
+data VarType
+  = JInt
+  | JLong
+  | JFloat
+  | JDouble -- TODO ...
+-}
+
 
 {- generic basicblock datastructure -}
 type BlockID = Int
