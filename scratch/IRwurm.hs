@@ -154,7 +154,7 @@ type Visited = [BlockID]
 type FoldState m = Monoid m => State Visited m
 
 -- TODO: this is a hack, is this defined somewhere?
-instance Monoid (IO ()) where { mempty = pure mempty; mappend = (*>) }
+instance Monoid (IO ()) where { mempty = return mempty; mappend = (>>) }
 
 bbFold :: Monoid m => (BasicBlock a -> m) -> BasicBlock a -> m
 bbFold f bb' = evalState (bbFoldState bb') []
