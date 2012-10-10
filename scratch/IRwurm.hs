@@ -1,18 +1,14 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverlappingInstances #-}
-{-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 module Main where
 
 import qualified Data.List as L
 import qualified Data.Map as M
-import Data.Maybe
 import Data.Int
 import Data.Word
 import Data.Typeable
--- import Data.Foldable
 import Control.Applicative
 import Data.Monoid
 
@@ -20,11 +16,12 @@ import Compiler.Hoopl
 
 import Control.Monad.State
 
-import Debug.Trace
+-- import Debug.Trace
 import Text.Printf
 
+
 -- TODO: translation: JVMInstruction -> BasicBlock JVMInstruction
--- TODO: rewrite with state info
+-- TODO: bbFold with state
 
 
 -- source IR (jvm bytecode)
@@ -39,6 +36,8 @@ data JVMInstruction
   | ISTORE Word8 -- storage offset
   | FSTORE Word8 -- storage offset
   | IADD
+  | ISUB
+  | IMUL
   | FADD
   | IFEQ_ICMP Int16 -- signed relative offset
   | GOTO Int16
@@ -57,25 +56,18 @@ data JFloat = JFloat Float deriving Typeable
 data GeneralIR where
   IRLabel :: Label -> GeneralIR
   IRMov :: Var t -> Var t -> GeneralIR {- dest, src -}
-  -- OpInt :: OpType -> Var t -> Var t -> Var t -> GeneralIR O O
-  IRAdd :: Var t -> Var t -> Var t -> GeneralIR {- dest, src1, src2 -}
+  IROp :: OpType -> Var t -> Var t -> Var t -> GeneralIR {- dest, src1, src2 -}
   IRJump :: GeneralIR
   IRIfElse :: Var JInt -> Var JInt -> GeneralIR
   IRReturn :: Bool -> GeneralIR
-  IRInvoke :: Word8 -> GeneralIR -- just a single return
+  IRInvoke :: Word8 -> GeneralIR -- just a single returnvalue
   IRNop :: GeneralIR
 
-instance Show (GeneralIR) where
-  show (IRLabel l) = printf "label \"%s\"" (show l)
-  show (IRMov v1 v2) = printf "\tmov %s, %s\n" (show v1) (show v2)
-  show (IRAdd vr v1 v2) = printf "\tadd %s,  %s, %s\n" (show vr) (show v1) (show v2)
-  show (IRInvoke x) = printf "\tinvoke %s\n" (show x)
-  show IRJump = printf "\tjump\n"
-  show (IRIfElse v1 v2) = printf "\tif (%s == %s)\n" (show v1) (show v2)
-  show (IRReturn b) = printf "\treturn (%s)\n" (show b)
-  show IRNop = printf "\tnop\n"
-
-type Addr = Word32 -- arch-dependend
+data OpType
+  = Add
+  | Sub
+  | Mul
+  deriving Show
 
 class Typeable t => Variable t where
   reg :: Int -> Var t
@@ -96,12 +88,6 @@ data Var t where
   FConstant :: JFloat -> Var JFloat
   -- TODO: mem stuff?
   deriving Typeable
-
-instance Show (Var t) where
-  show (IReg n) = printf "i(%02d)" n
-  show (IConstant (JInt val)) = printf "0x%08x" val
-  show (FReg n) = printf "f(%02d)" n
-  show (FConstant (JFloat val)) = printf "%2.2ff" val
 
 
 {- generic basicblock datastructure -}
@@ -126,15 +112,8 @@ data BlockRef a
 
 {- pretty printing stuff. -}
 instance Show a => Show (BasicBlock a) where
-  show (BasicBlock bid insns end) = sbb ++ send
-    where
-      sbb = printf "BasicBlock%03d:\n" bid
-            ++ show insns
-            -- ++ concatMap (\x -> printf "\t%s\n" (show x)) insns
-      send = show end
-
-instance Show [JVMInstruction] where
-  show insns = concatMap (\x -> printf "\t%s\n" (show x)) insns
+  show (BasicBlock bid insns end) =
+       printf "BasicBlock%03d:\n" bid ++ show insns ++ show end
 
 instance Show (NextBlock a) where
   show x = case x of
@@ -146,13 +125,35 @@ instance Show (NextBlock a) where
 instance Show (BlockRef a) where
   show Self = "self"
   show (Ref bb) = printf "BasicBlock%03d" (bbID bb)
+
+instance Show [JVMInstruction] where
+  show insns = concatMap (\x -> printf "\t%s\n" (show x)) insns
+
+instance Show (GeneralIR) where
+  show (IRLabel l) = printf "label \"%s\"" (show l)
+  show (IRMov v1 v2) = printf "\tmov %s, %s\n" (show v1) (show v2)
+  show (IROp op vr v1 v2) = printf "\t%s %s,  %s, %s\n" (show op) (show vr) (show v1) (show v2)
+  show (IRInvoke x) = printf "\tinvoke %s\n" (show x)
+  show IRJump = printf "\tjump\n"
+  show (IRIfElse v1 v2) = printf "\tif (%s == %s)\n" (show v1) (show v2)
+  show (IRReturn b) = printf "\treturn (%s)\n" (show b)
+  show IRNop = printf "\tnop\n"
+
+instance Show (Var t) where
+  show (IReg n) = printf "i(%02d)" n
+  show (IConstant (JInt val)) = printf "0x%08x" val
+  show (FReg n) = printf "f(%02d)" n
+  show (FConstant (JFloat val)) = printf "%2.2ff" val
 {- /show -}
 
 
 
-{- traverse the basiblock datastructure -}
+{- traverse the basicblock datastructure -}
 type Visited = [BlockID]
 type FoldState m = Monoid m => State Visited m
+
+-- TODO: this is a hack, is this defined somewhere?
+instance Monoid (IO ()) where { mempty = pure mempty; mappend = (*>) }
 
 bbFold :: Monoid m => (BasicBlock a -> m) -> BasicBlock a -> m
 bbFold f bb' = evalState (bbFoldState bb') []
@@ -192,18 +193,18 @@ bbRewrite f bb' = bbRewriteWith f' () bb'
 {- /rewrite-}
 
 {- rewrite with state -}
--- TODO: refactor as state monad.  how?!
 type Transformer a b s = (BasicBlock a -> NextBlock b -> State s (BasicBlock b))
 
+-- TODO: refactor as state monad.  how?!
+--      "tying the knot" not possible with state monad?
 bbRewriteWith :: Transformer a b s -> s -> BasicBlock a -> BasicBlock b
 bbRewriteWith f state' bb' = let (res, _, _) = bbRewrite' state' M.empty bb' in res
   where
-    bbRewrite' state visitmap bb@(BasicBlock bid _ next)
-      | bid `M.member` visitmap = (visitmap M.! bid, visitmap, state)
+    bbRewrite' st visitmap bb@(BasicBlock bid _ next)
+      | bid `M.member` visitmap = (visitmap M.! bid, visitmap, st)
       | otherwise = (x, newvmap, allstate)
           where
-            (x, newstate) = runState (f bb newnext) state
-            -- x = x' { nextBlock = newnext }
+            (x, newstate) = runState (f bb newnext) st
             visitmap' = M.insert bid x visitmap
             (newnext, newvmap, allstate) = case next of
               Return -> (Return, visitmap', newstate)
@@ -215,11 +216,12 @@ bbRewriteWith f state' bb' = let (res, _, _) = bbRewrite' state' M.empty bb' in 
                       (r2, m2, s2) = brVisit s1 m1 ref2
                   in (TwoJumps r1 r2, m2, s2)
               Switch _ -> error "impl. switch stuff (rewrite)"
-    brVisit state vmap Self = (Self, vmap, state)
-    brVisit state vmap (Ref bb) = (Ref r, m, newstate)
-      where (r, m, newstate) = bbRewrite' state vmap bb
+    brVisit st vmap Self = (Self, vmap, st)
+    brVisit st vmap (Ref bb) = (Ref r, m, newstate)
+      where (r, m, newstate) = bbRewrite' st vmap bb
 {- /rewrite with -}
 
+{- JVMInstruction -> GeneralIR -}
 data SimStack = SimStack
   { stack :: [StackElem]
   , iregcnt :: Int
@@ -250,19 +252,23 @@ transformJ2IR jvmbb next = do
     tir (FSTORE y) = do
       x <- pop
       return $ IRMov (FReg $ fromIntegral y) x
-    tir IADD = do
-      x <- pop; y <- pop; newvar <- newivar
-      push newvar
-      return $ IRAdd newvar x y
+    tir IADD = tirOpInt Add
+    tir ISUB = tirOpInt Sub
+    tir IMUL = tirOpInt Mul
     tir FADD = do
       x <- pop; y <- pop; newvar <- newfvar
       push newvar
-      return $ IRAdd newvar x y
+      return $ IROp Add newvar x y
     tir (IFEQ_ICMP _) = do
       x <- pop; y <- pop
       return $ IRIfElse x y
     tir RETURN = return $ IRReturn False
     tir x = error $ "tir: " ++ show x
+
+    tirOpInt op = do
+      x <- pop; y <- pop
+      newvar <- newivar; push newvar
+      return $ IROp op newvar x y
 
     -- helper
     newivar = do
@@ -284,7 +290,10 @@ transformJ2IR jvmbb next = do
                 StackElem x -> case cast x of
                         Just x' -> x'
                         Nothing -> error "abstract intrp.: invalid bytecode?"
+{- /JVMInstruction -> GeneralIR -}
 
+
+{- application -}
 dummy = 0x1337 -- jumpoffset will be eliminated after basicblock analysis
 
 ex0 :: BasicBlock [JVMInstruction]
@@ -295,14 +304,12 @@ ex0 = BasicBlock 1 [ICONST_0, ISTORE 0] $ Jump (Ref bb2)
                        $ TwoJumps Self (Ref bb3)
     bb3 = BasicBlock 3 [ILOAD 0, IPUSH 20, IFEQ_ICMP dummy]
                        $ TwoJumps (Ref bb2) (Ref bb4)
-    bb4 = BasicBlock 4 [FCONST_0, FCONST_1, FADD, FSTORE 1, RETURN] Return
+    bb4 = BasicBlock 4 [FCONST_0, FCONST_1, FADD, FSTORE 1, IPUSH 20
+                       , IPUSH 1, IMUL, ISTORE 2, RETURN] Return
 
 ex1 :: BasicBlock [JVMInstruction]
 ex1 = BasicBlock 1 [RETURN] Return
 
-
--- TODO: this is a hack, is this defined somewhere?
-instance Monoid (IO ()) where { mempty = pure mempty; mappend = (*>) }
 
 main :: IO ()
 main = do
@@ -327,3 +334,4 @@ oldmain = do
         mul <- get
         return $ bb { code = concat $ take mul $ repeat (code bb) }
   bbFold print $ bbRewriteWith rewrite1 0 ex0
+{- /application -}
