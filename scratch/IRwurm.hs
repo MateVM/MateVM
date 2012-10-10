@@ -13,7 +13,10 @@ import Data.Typeable
 import Control.Applicative
 import Data.Monoid
 
-import Compiler.Hoopl
+import Harpy
+import Harpy.X86Disassembler
+
+import Compiler.Hoopl hiding (Label)
 
 import Control.Monad.State
 
@@ -55,7 +58,6 @@ data JInt = JInt Int32 deriving Typeable
 data JFloat = JFloat Float deriving Typeable
 
 data GeneralIR where
-  IRLabel :: Label -> GeneralIR
   IRMov :: Var t -> Var t -> GeneralIR {- dest, src -}
   IROp :: OpType -> Var t -> Var t -> Var t -> GeneralIR {- dest, src1, src2 -}
   IRJump :: GeneralIR
@@ -71,7 +73,7 @@ data OpType
   deriving Show
 
 class Typeable t => Variable t where
-  reg :: Int -> Var t
+  reg :: Word8 -> Var t
   constant :: t -> Var t -- TODO: dafuq
 
 instance Variable JInt where
@@ -83,9 +85,9 @@ instance Variable JFloat where
   constant = FConstant
 
 data Var t where
-  IReg :: Int -> Var JInt
+  IReg :: Word8 -> Var JInt
   IConstant :: JInt -> Var JInt
-  FReg :: Int -> Var JFloat
+  FReg :: Word8 -> Var JFloat
   FConstant :: JFloat -> Var JFloat
   -- TODO: mem stuff?
   deriving Typeable
@@ -131,7 +133,6 @@ instance Show [JVMInstruction] where
   show insns = concatMap (\x -> printf "\t%s\n" (show x)) insns
 
 instance Show (GeneralIR) where
-  show (IRLabel l) = printf "label \"%s\"" (show l)
   show (IRMov v1 v2) = printf "\tmov %s, %s\n" (show v1) (show v2)
   show (IROp op vr v1 v2) = printf "\t%s %s,  %s, %s\n" (show op) (show vr) (show v1) (show v2)
   show (IRInvoke x) = printf "\tinvoke %s\n" (show x)
@@ -155,6 +156,7 @@ type FoldState m = Monoid m => State Visited m
 
 -- TODO: this is a hack, is this defined somewhere?
 instance Monoid (IO ()) where { mempty = return mempty; mappend = (>>) }
+instance Monoid (CodeGen e s ()) where { mempty = return mempty; mappend = (>>) }
 
 bbFold :: Monoid m => (BasicBlock a -> m) -> BasicBlock a -> m
 bbFold f bb' = evalState (bbFoldState bb') []
@@ -225,8 +227,8 @@ bbRewriteWith f state' bb' = let (res, _, _) = bbRewrite' state' M.empty bb' in 
 {- JVMInstruction -> GeneralIR -}
 data SimStack = SimStack
   { stack :: [StackElem]
-  , iregcnt :: Int
-  , fregcnt :: Int }
+  , iregcnt :: Word8
+  , fregcnt :: Word8 }
 
 data StackElem where
   StackElem :: (Variable t, Typeable t) => Var t -> StackElem
@@ -243,32 +245,32 @@ transformJ2IR jvmbb next = do
     tir :: JVMInstruction -> State SimStack GeneralIR
     tir ICONST_0 = tir (IPUSH 0)
     tir ICONST_1 = tir (IPUSH 1)
-    tir (IPUSH x) = do push (IConstant $ JInt x); return IRNop
-    tir FCONST_0 = do push (FConstant $ JFloat 0); return IRNop
-    tir FCONST_1 = do push (FConstant $ JFloat 1); return IRNop
-    tir (ILOAD x) = do push $ IReg (fromIntegral x); return IRNop
+    tir (IPUSH x) = do apush (IConstant $ JInt x); return IRNop
+    tir FCONST_0 = do apush (FConstant $ JFloat 0); return IRNop
+    tir FCONST_1 = do apush (FConstant $ JFloat 1); return IRNop
+    tir (ILOAD x) = do apush $ IReg (fromIntegral x); return IRNop
     tir (ISTORE y) = do
-      x <- pop
+      x <- apop
       return $ IRMov (IReg $ fromIntegral y) x
     tir (FSTORE y) = do
-      x <- pop
+      x <- apop
       return $ IRMov (FReg $ fromIntegral y) x
     tir IADD = tirOpInt Add
     tir ISUB = tirOpInt Sub
     tir IMUL = tirOpInt Mul
     tir FADD = do
-      x <- pop; y <- pop; newvar <- newfvar
-      push newvar
+      x <- apop; y <- apop; newvar <- newfvar
+      apush newvar
       return $ IROp Add newvar x y
     tir (IFEQ_ICMP _) = do
-      x <- pop; y <- pop
+      x <- apop; y <- apop
       return $ IRIfElse x y
     tir RETURN = return $ IRReturn False
     tir x = error $ "tir: " ++ show x
 
     tirOpInt op = do
-      x <- pop; y <- pop
-      newvar <- newivar; push newvar
+      x <- apop; y <- apop
+      newvar <- newivar; apush newvar
       return $ IROp op newvar x y
 
     -- helper
@@ -280,11 +282,11 @@ transformJ2IR jvmbb next = do
       sims <- get
       put $ sims { fregcnt = (fregcnt sims) + 1 }
       return $ FReg $ fregcnt sims
-    push x = do
+    apush x = do
       sims <- get
       put $ sims { stack = ((StackElem x):stack sims) }
-    pop :: Typeable t => State SimStack (Var t)
-    pop = do
+    apop :: Typeable t => State SimStack (Var t)
+    apop = do
       sims <- get
       put $ sims { stack = tail $ stack sims }
       return $ case head $ stack sims of
@@ -292,6 +294,19 @@ transformJ2IR jvmbb next = do
                         Just x' -> x'
                         Nothing -> error "abstract intrp.: invalid bytecode?"
 {- /JVMInstruction -> GeneralIR -}
+
+{- codegen test -}
+girEmit :: GeneralIR -> CodeGen e s ()
+girEmit (IROp Add (IReg dst) (IReg src1) (IReg src2)) = do
+  let [d, s1, s2] = map Reg32 [dst, src1, src2]
+  mov d s1
+  add d s2
+girEmit (IROp Add (IReg dst) (IConstant (JInt c1)) (IConstant (JInt c2))) = do
+  let d = Reg32 dst
+  mov d (fromIntegral $ c1 + c2 :: Word32)
+girEmit (IRReturn _) = ret
+girEmit x = error $ "girEmit: insn not implemented: " ++ show x
+{- /codegen -}
 
 
 {- application -}
@@ -311,6 +326,9 @@ ex0 = BasicBlock 1 [ICONST_0, ISTORE 0] $ Jump (Ref bb2)
 ex1 :: BasicBlock [JVMInstruction]
 ex1 = BasicBlock 1 [RETURN] Return
 
+ex2 :: BasicBlock [JVMInstruction]
+ex2 = BasicBlock 1 [IPUSH 0x20, IPUSH 0x30, IADD, RETURN] Return
+
 
 main :: IO ()
 main = do
@@ -318,6 +336,21 @@ main = do
   bbFold print ex0
   putStrLn "\n-- PRINT ex0 as GeneralIR --\n\n"
   bbFold print $ bbRewriteWith transformJ2IR (SimStack [] 50000 60000) ex0
+  putStrLn "\n-- PRINT ex2 --\n\n"
+  bbFold print ex2
+  putStrLn "\n-- PRINT ex2 as GeneralIR --\n\n"
+  let bbgir = bbRewriteWith transformJ2IR (SimStack [] 4 10) ex2
+  bbFold print bbgir
+  putStrLn "\n-- DISASM ex2 --\n\n"
+  (_, Right d) <- runCodeGen (compile bbgir) () ()
+  mapM_ (printf "%s\n" . showIntel) d
+
+compile bbgir = do
+  bbFold (\bb -> mapM_ girEmit $ code bb) bbgir
+  d <- disassemble
+  return d
+
+
 
 oldmain :: IO ()
 oldmain = do
@@ -332,7 +365,7 @@ oldmain = do
   putStrLn "\n\n-- REWRITING WITH STATE --\n\n"
   let rewrite1 bb _ = do
         modify (+1)
-        mul <- get
-        return $ bb { code = concat $ take mul $ repeat (code bb) }
+        factor <- get
+        return $ bb { code = concat $ take factor $ repeat (code bb) }
   bbFold print $ bbRewriteWith rewrite1 0 ex0
 {- /application -}
