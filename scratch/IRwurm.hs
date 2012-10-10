@@ -2,12 +2,16 @@
 {-# LANGUAGE OverlappingInstances #-}
 {-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 module Main where
 
 import qualified Data.List as L
 import qualified Data.Map as M
+import Data.Maybe
 import Data.Int
 import Data.Word
+import Data.Typeable
 -- import Data.Foldable
 import Control.Applicative
 import Data.Monoid
@@ -29,7 +33,7 @@ data JVMInstruction
   | ICONST_1
   | FCONST_0
   | FCONST_1
-  | IPUSH Word32
+  | IPUSH Int32
   | ILOAD Word8  -- storage offset
   | FLOAD Word8  -- storage offset
   | ISTORE Word8 -- storage offset
@@ -47,8 +51,8 @@ data JVMInstruction
 -- type Label = String
 
 -- java types
-data JInt
-data JFloat
+data JInt = JInt Int32 deriving Typeable
+data JFloat = JFloat Float deriving Typeable
 
 data GeneralIR where
   IRLabel :: Label -> GeneralIR
@@ -73,18 +77,31 @@ instance Show (GeneralIR) where
 
 type Addr = Word32 -- arch-dependend
 
+class Typeable t => Variable t where
+  reg :: Int -> Var t
+  constant :: t -> Var t -- TODO: dafuq
+
+instance Variable JInt where
+  reg = IReg
+  constant = IConstant
+
+instance Variable JFloat where
+  reg = FReg
+  constant = FConstant
+
 data Var t where
   IReg :: Int -> Var JInt
-  IConstant :: Word32 -> Var JInt
+  IConstant :: JInt -> Var JInt
   FReg :: Int -> Var JFloat
-  FConstant :: Float -> Var JFloat
+  FConstant :: JFloat -> Var JFloat
   -- TODO: mem stuff?
+  deriving Typeable
 
 instance Show (Var t) where
   show (IReg n) = printf "i(%02d)" n
-  show (IConstant val) = printf "0x%08x" val
+  show (IConstant (JInt val)) = printf "0x%08x" val
   show (FReg n) = printf "f(%02d)" n
-  show (FConstant val) = printf "%2.2ff" val
+  show (FConstant (JFloat val)) = printf "%2.2ff" val
 
 
 {- generic basicblock datastructure -}
@@ -204,10 +221,12 @@ bbRewriteWith f state' bb' = let (res, _, _) = bbRewrite' state' M.empty bb' in 
 {- /rewrite with -}
 
 data SimStack = SimStack
-  { istack :: [Var JInt]
-  , fstack :: [Var JFloat]
+  { stack :: [StackElem]
   , iregcnt :: Int
   , fregcnt :: Int }
+
+data StackElem where
+  StackElem :: (Variable t, Typeable t) => Var t -> StackElem
 
 transformJ2IR :: BasicBlock [JVMInstruction]
                  -> NextBlock [GeneralIR]
@@ -221,26 +240,26 @@ transformJ2IR jvmbb next = do
     tir :: JVMInstruction -> State SimStack GeneralIR
     tir ICONST_0 = tir (IPUSH 0)
     tir ICONST_1 = tir (IPUSH 1)
-    tir (IPUSH x) = do ipush (IConstant x); return IRNop
-    tir FCONST_0 = do fpush (FConstant 0); return IRNop
-    tir FCONST_1 = do fpush (FConstant 1); return IRNop
-    tir (ILOAD x) = do ipush $ IReg (fromIntegral x); return IRNop
+    tir (IPUSH x) = do push (IConstant $ JInt x); return IRNop
+    tir FCONST_0 = do push (FConstant $ JFloat 0); return IRNop
+    tir FCONST_1 = do push (FConstant $ JFloat 1); return IRNop
+    tir (ILOAD x) = do push $ IReg (fromIntegral x); return IRNop
     tir (ISTORE y) = do
-      x <- ipop
+      x <- pop
       return $ IRMov (IReg $ fromIntegral y) x
     tir (FSTORE y) = do
-      x <- fpop
+      x <- pop
       return $ IRMov (FReg $ fromIntegral y) x
     tir IADD = do
-      x <- ipop; y <- ipop; newvar <- newivar
-      ipush newvar
+      x <- pop; y <- pop; newvar <- newivar
+      push newvar
       return $ IRAdd newvar x y
     tir FADD = do
-      x <- fpop; y <- fpop; newvar <- newfvar
-      fpush newvar
+      x <- pop; y <- pop; newvar <- newfvar
+      push newvar
       return $ IRAdd newvar x y
     tir (IFEQ_ICMP _) = do
-      x <- ipop; y <- ipop
+      x <- pop; y <- pop
       return $ IRIfElse x y
     tir RETURN = return $ IRReturn False
     tir x = error $ "tir: " ++ show x
@@ -254,22 +273,17 @@ transformJ2IR jvmbb next = do
       sims <- get
       put $ sims { fregcnt = (fregcnt sims) + 1 }
       return $ FReg $ fregcnt sims
-    ipush x = do
+    push x = do
       sims <- get
-      put $ sims { istack = (x:istack sims) }
-    fpush x = do
+      put $ sims { stack = ((StackElem x):stack sims) }
+    pop :: Typeable t => State SimStack (Var t)
+    pop = do
       sims <- get
-      put $ sims { fstack = (x:fstack sims) }
-    ipop :: State SimStack (Var JInt)
-    ipop = do
-      sims <- get
-      put $ sims { istack = tail $ istack sims }
-      return $ head $ istack sims
-    fpop :: State SimStack (Var JFloat)
-    fpop = do
-      sims <- get
-      put $ sims { fstack = tail $ fstack sims }
-      return $ head $ fstack sims
+      put $ sims { stack = tail $ stack sims }
+      return $ case head $ stack sims of
+                StackElem x -> case cast x of
+                        Just x' -> x'
+                        Nothing -> error "abstract intrp.: invalid bytecode?"
 
 dummy = 0x1337 -- jumpoffset will be eliminated after basicblock analysis
 
@@ -295,7 +309,7 @@ main = do
   putStrLn "\n-- PRINT ex0 --\n\n"
   bbFold print ex0
   putStrLn "\n-- PRINT ex0 as GeneralIR --\n\n"
-  bbFold print $ bbRewriteWith transformJ2IR (SimStack [] [] 50000 60000) ex0
+  bbFold print $ bbRewriteWith transformJ2IR (SimStack [] 50000 60000) ex0
 
 oldmain :: IO ()
 oldmain = do
