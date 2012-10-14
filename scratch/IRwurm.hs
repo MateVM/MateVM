@@ -7,6 +7,7 @@ module Main where
 
 import qualified Data.List as L
 import qualified Data.Map as M
+import qualified Data.Set as S
 import Data.Maybe
 import Data.Int
 import Data.Word
@@ -27,40 +28,32 @@ import Text.Printf
 
 -- source IR (jvm bytecode)
 data JVMInstruction
-  = ICONST_0
-  | ICONST_1
-  | FCONST_0
-  | FCONST_1
+  = ICONST_0 | ICONST_1
+  | FCONST_0 | FCONST_1
   | IPUSH Int32
   | ILOAD Word8  -- storage offset
   | FLOAD Word8  -- storage offset
   | ISTORE Word8 -- storage offset
   | FSTORE Word8 -- storage offset
-  | IADD
-  | ISUB
-  | IMUL
-  | FADD
+  | IADD | ISUB | IMUL | FADD
   | IFEQ_ICMP Int16 -- signed relative offset
   | GOTO Int16
-  | DUP
-  | SWAP
+  | DUP | SWAP
   | INVOKE Word8 -- amount of arguments
   | RETURN
   deriving Show
-
--- type Label = String
 
 -- java types
 data JInt = JInt Int32 deriving Typeable
 data JFloat = JFloat Float deriving Typeable
 
-data GeneralIR where
-  IROp :: (Show t, Typeable t) => OpType -> t -> t -> t -> GeneralIR
-  IRJump :: GeneralIR
-  IRIfElse :: (Show t, Typeable t) => t -> t -> GeneralIR
-  IRReturn :: Bool -> GeneralIR
-  IRInvoke :: Word8 -> GeneralIR
-  IRNop :: GeneralIR
+data MateIR where
+  IROp :: (Show t, Typeable t) => OpType -> t -> t -> t -> MateIR
+  IRJump :: MateIR
+  IRIfElse :: (Show t, Typeable t) => t -> t -> MateIR
+  IRReturn :: Bool -> MateIR
+  IRInvoke :: Word8 -> MateIR
+  IRNop :: MateIR
 
 data OpType
   = Add
@@ -89,7 +82,7 @@ data Var
 type BlockID = Int
 data BasicBlock a = BasicBlock
   { bbID :: BlockID
-  , code :: a
+  , code :: [a]
   , nextBlock :: (NextBlock a) }
 
 data NextBlock a
@@ -106,8 +99,9 @@ data BlockRef a
 
 {- pretty printing stuff. -}
 instance Show a => Show (BasicBlock a) where
-  show (BasicBlock bid insns end) =
-       printf "BasicBlock%03d:\n" bid ++ show insns ++ show end
+  show (BasicBlock bid insns end) = printf "BasicBlock%03d:\n" bid ++ scode ++ show end
+    where scode = concatMap (printf "\t%s\n" . show) insns
+
 
 instance Show (NextBlock a) where
   show x = case x of
@@ -120,24 +114,21 @@ instance Show (BlockRef a) where
   show Self = "self"
   show (Ref bb) = printf "BasicBlock%03d" (bbID bb)
 
-instance Show [JVMInstruction] where
-  show insns = concatMap (\x -> printf "\t%s\n" (show x)) insns
-
-instance Show GeneralIR where
-  show (IROp op vr v1 v2) = printf "\t%s %s,  %s, %s\n" (show op) (show vr) (show v1) (show v2)
-  show (IRInvoke x) = printf "\tinvoke %s\n" (show x)
-  show IRJump = printf "\tjump\n"
-  show (IRIfElse v1 v2) = printf "\tif (%s == %s)\n" (show v1) (show v2)
-  show (IRReturn b) = printf "\treturn (%s)\n" (show b)
-  show IRNop = printf "\tnop\n"
+instance Show MateIR where
+  show (IROp op vr v1 v2) = printf "%s %s,  %s, %s" (show op) (show vr) (show v1) (show v2)
+  show (IRInvoke x) = printf "invoke %s" (show x)
+  show IRJump = printf "jump"
+  show (IRIfElse v1 v2) = printf "if (%s == %s)" (show v1) (show v2)
+  show (IRReturn b) = printf "return (%s)" (show b)
+  show IRNop = printf "nop"
 
 instance Show HVar where
   show (HIReg r32) = printf "%s" (show r32)
   show (HIConstant (JInt val)) = printf "0x%08x" val
-  show (SpillIReg (Disp d)) = printf "0x%02x(esp[i])" d
+  show (SpillIReg (Disp d)) = printf "0x%02x(ebp[i])" d
   show (HFReg xmm) = printf "%s" (show xmm)
   show (HFConstant (JFloat val)) = printf "%2.2ff" val
-  show (SpillFReg (Disp d)) = printf "0x%02x(esp[f])" d
+  show (SpillFReg (Disp d)) = printf "0x%02x(ebp[f])" d
 
 instance Show Var where
   show (IReg n) = printf "i(%02d)" n
@@ -222,7 +213,7 @@ bbRewriteWith f state' bb' = let (res, _, _) = bbRewrite' state' M.empty bb' in 
       where (r, m, newstate) = bbRewrite' st vmap bb
 {- /rewrite with -}
 
-{- JVMInstruction -> GeneralIR -}
+{- JVMInstruction -> MateIR -}
 data SimStack = SimStack
   { stack :: [StackElem]
   , iregcnt :: Word8
@@ -231,16 +222,16 @@ data SimStack = SimStack
 data StackElem where
   StackElem :: Var -> StackElem
 
-transformJ2IR :: BasicBlock [JVMInstruction]
-                 -> NextBlock [GeneralIR]
-                 -> State SimStack (BasicBlock [GeneralIR])
+transformJ2IR :: BasicBlock JVMInstruction
+                 -> NextBlock MateIR
+                 -> State SimStack (BasicBlock MateIR)
 transformJ2IR jvmbb next = do
   res <- filter noNop <$> mapM tir (code jvmbb)
   return (BasicBlock (bbID jvmbb) res next)
   where
     noNop IRNop = False; noNop _ = True
 
-    tir :: JVMInstruction -> State SimStack GeneralIR
+    tir :: JVMInstruction -> State SimStack MateIR
     tir ICONST_0 = tir (IPUSH 0)
     tir ICONST_1 = tir (IPUSH 1)
     tir (IPUSH x) = do apush (IConstant $ JInt x); return IRNop
@@ -290,13 +281,7 @@ transformJ2IR jvmbb next = do
       put $ sims { stack = tail $ stack sims }
       case head . stack $ sims of
                StackElem x -> do return x
-      {-
-      return $ case head $ stack sims of
-                StackElem x -> case cast x of
-                        Just x' -> x'
-                        Nothing -> error "abstract intrp.: invalid bytecode?"
-      -}
-{- /JVMInstruction -> GeneralIR -}
+{- /JVMInstruction -> MateIR -}
 
 {- regalloc -}
 data MappedRegs = MappedRegs
@@ -309,15 +294,15 @@ emptyRegs = MappedRegs M.empty M.empty 0
 allIntRegs = [eax, ecx, edx, ebx, ebp, esi, edi] :: [Reg32]
 allFloatRegs = [xmm0, xmm1, xmm2, xmm3, xmm4, xmm5, xmm6, xmm7] :: [XMMReg]
 
-stupidRegAlloc :: BasicBlock [GeneralIR]
-            -> NextBlock [GeneralIR]
-            -> State MappedRegs (BasicBlock [GeneralIR])
+stupidRegAlloc :: BasicBlock MateIR
+            -> NextBlock MateIR
+            -> State MappedRegs (BasicBlock MateIR)
 {- post condition: basicblocks doesn't contain any IReg's or FReg's -}
 stupidRegAlloc bb nb = do
   code' <- mapM assignRegs $ code bb
   return $ BasicBlock { bbID = bbID bb, code = code', nextBlock = nb }
   where
-    -- assignRegs :: GeneralIR (Var s) -> State MappedRegs GeneralIR (HVar b)
+    -- assignRegs :: MateIR (Var s) -> State MappedRegs MateIR (HVar b)
     assignRegs (IROp op dst src1 src2) = do
       dstnew <- doAssign dst
       src1new <- doAssign src1
@@ -418,26 +403,74 @@ stupidRegAlloc bb nb = do
 {- /regalloc -}
 
 {- codegen test -}
-girEmit :: GeneralIR -> CodeGen e s ()
-girEmit = undefined
-{-
-girEmit (IROp Add (IReg dst) (IReg src1) (IReg src2)) = do
-  let [d, s1, s2] = map Reg32 [dst, src1, src2]
-  mov d s1
-  add d s2
-girEmit (IROp Add (IReg dst) (IConstant (JInt c1)) (IConstant (JInt c2))) = do
-  let d = Reg32 dst
-  mov d (fromIntegral $ c1 + c2 :: Word32)
+girEmit :: MateIR -> CodeGen e s ()
+girEmit insn@(IROp Add dst' src1' src2') = do
+    ge (trans dst') (trans src1') (trans src2')
+  where
+    trans r = case cast r of
+                Just x -> x
+                Nothing -> error $ "girEmit (add) @ Nothing: " ++ show insn
+    ge :: HVar -> HVar -> HVar -> CodeGen e s ()
+    ge (HIReg dst) (HIReg src1) (HIReg src2)
+        | dst == src1 = add src1 src2
+        | dst == src2 = add src2 src1
+        | otherwise = do mov dst src1; add dst src2
+    ge (HIReg dst) (HIConstant (JInt c1)) (HIConstant (JInt c2)) = do
+      mov dst (fromIntegral $ c1 + c2 :: Word32)
+
+    ge (HIReg dst) (HIConstant (JInt c1)) (HIReg src2) = do
+      mov dst src2
+      when (c1 /= 0) $ add dst (fromIntegral c1 :: Word32)
+    ge (HIReg dst) (HIConstant (JInt c1)) (SpillIReg disp) = do
+      let src2 = (disp, ebp)
+      mov dst src2
+      when (c1 /= 0) $ add dst (fromIntegral c1 :: Word32)
+    ge (HIReg dst) (SpillIReg disp) (HIReg src2) = do
+      let src1 = (disp, ebp)
+      mov dst src2
+      add dst src1
+    ge (HIReg dst) src1 c1@(HIConstant _) = ge (HIReg dst) c1 src1
+    ge (HIReg dst) src1 spill@(SpillIReg _) = ge (HIReg dst) spill src1
+    ge (HIReg dst) spill@(SpillIReg _) src2 = ge (HIReg dst) src2 spill
+    ge (SpillIReg disp) (HIReg src1) (HIReg src2) = do
+      let dst = (disp, ebp)
+      mov dst src1
+      add dst src2
+
+    ge (HFReg dst) (HFReg src1) (HFReg src2) = do
+      movss dst src2
+      addss dst src1
+    ge (HFReg dst) (HFConstant _) (HFConstant _) = do
+      newNamedLabel "TODO!" >>= defineLabel
+      movss dst dst
+    ge (HFReg dst) (HFReg src) (HFConstant (JFloat 0)) = do
+      movss dst src
+    ge p1 p2 p3 = error $ "girEmit (add): " ++ show p1 ++ ", " ++ show p2 ++ ", " ++ show p3
+girEmit (IROp Mul _ _ _) = do
+  newNamedLabel "TODO!" >>= defineLabel
+  nop
+girEmit insn@(IRIfElse src1' src2') = do
+    ge (trans src1') (trans src2')
+  where
+    trans r = case cast r of
+                Just x -> x
+                Nothing -> error $ "girEmit (if) @ Nothing: " ++ show insn
+    ge :: HVar -> HVar -> CodeGen e s ()
+    ge (HIReg src1) (HIReg src2) = do
+      cmp src1 src2
+    ge (HIReg src1) (HIConstant (JInt src2)) = do
+      cmp src1 (fromIntegral src2 :: Word32)
+    ge src1@(HIConstant _) src2 = ge src2 src1
+    ge p1 p2 = error $ "girEmit (if): " ++ show p1 ++ ", " ++ show p2
 girEmit (IRReturn _) = ret
 girEmit x = error $ "girEmit: insn not implemented: " ++ show x
--}
 {- /codegen -}
 
 
 {- application -}
 dummy = 0x1337 -- jumpoffset will be eliminated after basicblock analysis
 
-ex0 :: BasicBlock [JVMInstruction]
+ex0 :: BasicBlock JVMInstruction
 ex0 = BasicBlock 1 [ICONST_0, ISTORE 0] $ Jump (Ref bb2)
   where
     bb2 = BasicBlock 2 [ILOAD 0, ICONST_1, IADD, ISTORE 0
@@ -451,10 +484,10 @@ ex0 = BasicBlock 1 [ICONST_0, ISTORE 0] $ Jump (Ref bb2)
                        [RETURN]) Return
     regpressure = concat $ replicate 5 [ILOAD 0, ILOAD 0, IADD, ISTORE 0]
 
-ex1 :: BasicBlock [JVMInstruction]
+ex1 :: BasicBlock JVMInstruction
 ex1 = BasicBlock 1 [RETURN] Return
 
-ex2 :: BasicBlock [JVMInstruction]
+ex2 :: BasicBlock JVMInstruction
 ex2 = BasicBlock 1 [IPUSH 0x20, IPUSH 0x30, IADD, RETURN] Return
 
 
@@ -464,39 +497,91 @@ prettyHeader str = do
   replicateM_ len (putChar '-'); putStrLn ""
   printf "-- %s --\n" str
   replicateM_ len (putChar '-'); putStrLn ""
+  putStrLn "press any key to continue..." >> getChar
+  return ()
 
 
 main :: IO ()
 main = do
   prettyHeader "PRINT ex0"
   bbFold print ex0
-  prettyHeader "PRINT ex0 as GeneralIR"
+  prettyHeader "PRINT ex0 as MateIR"
   let bbgir0 = bbRewriteWith transformJ2IR (SimStack [] 50000 60000) ex0
   bbFold print bbgir0
-  prettyHeader "PRINT ex0 as GeneralIR (reg alloc)"
+  prettyHeader "PRINT ex0 as MateIR (reg alloc)"
   let bbgir0_regalloc = bbRewriteWith stupidRegAlloc emptyRegs bbgir0
   bbFold print bbgir0_regalloc
-
+  prettyHeader "DISASM ex0"
+  (_, Right d0) <- runCodeGen (compile bbgir0_regalloc) M.empty S.empty
+  mapM_ (printf "%s\n" . showIntel) d0
+  {-
   prettyHeader "PRINT ex2"
   bbFold print ex2
-  prettyHeader "PRINT ex2 as GeneralIR"
+  prettyHeader "PRINT ex2 as MateIR"
   let bbgir2 = bbRewriteWith transformJ2IR (SimStack [] 4 10) ex2
   bbFold print bbgir2
-  prettyHeader "PRINT ex2 as GeneralIR (reg alloc)"
+  prettyHeader "PRINT ex2 as MateIR (reg alloc)"
   let bbgir2_regalloc = bbRewriteWith stupidRegAlloc emptyRegs bbgir2
   bbFold print bbgir2_regalloc
-  {-
-  putStrLn "\n-- DISASM ex2 --\n\n"
-  (_, Right d) <- runCodeGen (compile bbgir2) () ()
-  mapM_ (printf "%s\n" . showIntel) d
+  prettyHeader "DISASM ex2"
+  (_, Right d2) <- runCodeGen (compile bbgir2_regalloc) M.empty S.empty
+  mapM_ (printf "%s\n" . showIntel) d2
   -}
 
-compile :: BasicBlock [GeneralIR] -> CodeGen e s [Instruction]
+
+type BlockMap = M.Map BlockID Label
+type BlockGenerated = S.Set BlockID
+
+compile :: BasicBlock MateIR -> CodeGen e BlockGenerated [Instruction]
 compile bbgir = do
-  bbFold (\bb -> mapM_ girEmit $ code bb) bbgir
+  bblabels <- mapM (\x -> do
+                            l <- newNamedLabel ("BB: " ++ show x)
+                            return (x, l)
+                   ) $ basicBlockBids bbgir
+  let lmap :: BlockMap
+      lmap = M.fromList bblabels
+  bbFold (\bb -> do
+    defineLabel $ lmap M.! (bbID bb)
+    mapM_ (\x -> printInsn x >> girEmit x) $ code bb
+    bset <- getState
+    let jmpblock :: BlockRef a -> CodeGen e s ()
+        jmpblock Self = jmp $ lmap M.! (bbID bb)
+        jmpblock (Ref bbnext) = jmp $ lmap M.! (bbID bbnext)
+
+        jmpblock2 :: BlockRef a -> BlockRef a -> CodeGen e s ()
+        jmpblock2 Self ref = do jmpblock Self; maybeJmpblock' ref
+        jmpblock2 ref Self = do maybeJmpblock ref; jmpblock Self
+        jmpblock2 ref1 ref2 = do
+          skippedInsn <- maybeJmpblock ref1
+          if skippedInsn
+            then jmpblock ref2
+            else do maybeJmpblock' ref2
+
+        maybeJmpblock' :: BlockRef a -> CodeGen e s ()
+        maybeJmpblock' x = maybeJmpblock x >> return ()
+        maybeJmpblock :: BlockRef a -> CodeGen e s Bool
+        maybeJmpblock ref@(Ref bbnext) = do
+          let bbid = bbID bbnext
+          if S.member bbid bset
+            then do jmpblock ref; return False
+            else return True -- block will be generated next => jmp can be omitted
+        maybeJmpblock x = do jmpblock x; return False
+    case nextBlock bb of
+      Return -> return ()
+      Jump r -> maybeJmpblock' r
+      TwoJumps r1 r2 -> jmpblock2 r1 r2
+      Switch _ -> error "comiple: switch"
+    setState (S.insert (bbID bb) bset)
+   ) bbgir
   d <- disassemble
   return d
+    where
+      printInsn insn = do
+        l <- newNamedLabel ("//MateIR: " ++ show insn)
+        defineLabel l
 
+basicBlockBids :: BasicBlock a -> [BlockID]
+basicBlockBids = bbFold ((:[]) . bbID)
 
 oldmain :: IO ()
 oldmain = do
