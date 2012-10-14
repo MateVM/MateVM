@@ -83,7 +83,7 @@ type BlockID = Int
 data BasicBlock a = BasicBlock
   { bbID :: BlockID
   , code :: [a]
-  , nextBlock :: (NextBlock a) }
+  , nextBlock :: NextBlock a }
 
 data NextBlock a
   = Return
@@ -180,7 +180,7 @@ type BasicBlockMap a = M.Map BlockID (BasicBlock a)
 type RewriteState a = State Visited (BasicBlockMap a)
 
 bbRewrite :: (BasicBlock a -> BasicBlock b) -> BasicBlock a -> BasicBlock b
-bbRewrite f bb' = bbRewriteWith f' () bb'
+bbRewrite f = bbRewriteWith f' ()
   where f' x _ = return $ f x
 {- /rewrite-}
 
@@ -266,21 +266,20 @@ transformJ2IR jvmbb next = do
     -- helper
     newivar = do
       sims <- get
-      put $ sims { iregcnt = (iregcnt sims) + 1 }
+      put $ sims { iregcnt = iregcnt sims + 1 }
       return $ IReg $ iregcnt sims
     newfvar = do
       sims <- get
-      put $ sims { fregcnt = (fregcnt sims) + 1 }
+      put $ sims { fregcnt = fregcnt sims + 1 }
       return $ FReg $ fregcnt sims
     apush x = do
       sims <- get
-      put $ sims { stack = ((StackElem x):stack sims) }
+      put $ sims { stack = StackElem x : stack sims }
     apop :: State SimStack Var
     apop = do
       sims <- get
       put $ sims { stack = tail $ stack sims }
-      case head . stack $ sims of
-               StackElem x -> do return x
+      case head . stack $ sims of StackElem x -> return x
 {- /JVMInstruction -> MateIR -}
 
 {- regalloc -}
@@ -300,7 +299,7 @@ stupidRegAlloc :: BasicBlock MateIR
 {- post condition: basicblocks doesn't contain any IReg's or FReg's -}
 stupidRegAlloc bb nb = do
   code' <- mapM assignRegs $ code bb
-  return $ BasicBlock { bbID = bbID bb, code = code', nextBlock = nb }
+  return BasicBlock { bbID = bbID bb, code = code', nextBlock = nb }
   where
     -- assignRegs :: MateIR (Var s) -> State MappedRegs MateIR (HVar b)
     assignRegs (IROp op dst src1 src2) = do
@@ -404,18 +403,16 @@ stupidRegAlloc bb nb = do
 
 {- codegen test -}
 girEmit :: MateIR -> CodeGen e s ()
-girEmit insn@(IROp Add dst' src1' src2') = do
+girEmit insn@(IROp Add dst' src1' src2') =
     ge (trans dst') (trans src1') (trans src2')
   where
-    trans r = case cast r of
-                Just x -> x
-                Nothing -> error $ "girEmit (add) @ Nothing: " ++ show insn
+    trans r = fromMaybe (error $ "girEmit (add) @ Nothing: " ++ show insn) (cast r)
     ge :: HVar -> HVar -> HVar -> CodeGen e s ()
     ge (HIReg dst) (HIReg src1) (HIReg src2)
         | dst == src1 = add src1 src2
         | dst == src2 = add src2 src1
         | otherwise = do mov dst src1; add dst src2
-    ge (HIReg dst) (HIConstant (JInt c1)) (HIConstant (JInt c2)) = do
+    ge (HIReg dst) (HIConstant (JInt c1)) (HIConstant (JInt c2)) =
       mov dst (fromIntegral $ c1 + c2 :: Word32)
 
     ge (HIReg dst) (HIConstant (JInt c1)) (HIReg src2) = do
@@ -443,22 +440,18 @@ girEmit insn@(IROp Add dst' src1' src2') = do
     ge (HFReg dst) (HFConstant _) (HFConstant _) = do
       newNamedLabel "TODO!" >>= defineLabel
       movss dst dst
-    ge (HFReg dst) (HFReg src) (HFConstant (JFloat 0)) = do
+    ge (HFReg dst) (HFReg src) (HFConstant (JFloat 0)) =
       movss dst src
     ge p1 p2 p3 = error $ "girEmit (add): " ++ show p1 ++ ", " ++ show p2 ++ ", " ++ show p3
 girEmit (IROp Mul _ _ _) = do
   newNamedLabel "TODO!" >>= defineLabel
   nop
-girEmit insn@(IRIfElse src1' src2') = do
-    ge (trans src1') (trans src2')
+girEmit insn@(IRIfElse src1' src2') = ge (trans src1') (trans src2')
   where
-    trans r = case cast r of
-                Just x -> x
-                Nothing -> error $ "girEmit (if) @ Nothing: " ++ show insn
+    trans r = fromMaybe (error $ "girEmit (if) @ Nothing: " ++ show insn) (cast r)
     ge :: HVar -> HVar -> CodeGen e s ()
-    ge (HIReg src1) (HIReg src2) = do
-      cmp src1 src2
-    ge (HIReg src1) (HIConstant (JInt src2)) = do
+    ge (HIReg src1) (HIReg src2) = cmp src1 src2
+    ge (HIReg src1) (HIConstant (JInt src2)) =
       cmp src1 (fromIntegral src2 :: Word32)
     ge src1@(HIConstant _) src2 = ge src2 src1
     ge p1 p2 = error $ "girEmit (if): " ++ show p1 ++ ", " ++ show p2
@@ -541,12 +534,12 @@ compile bbgir = do
   let lmap :: BlockMap
       lmap = M.fromList bblabels
   bbFold (\bb -> do
-    defineLabel $ lmap M.! (bbID bb)
+    defineLabel $ lmap M.! bbID bb
     mapM_ (\x -> printInsn x >> girEmit x) $ code bb
     bset <- getState
     let jmpblock :: BlockRef a -> CodeGen e s ()
-        jmpblock Self = jmp $ lmap M.! (bbID bb)
-        jmpblock (Ref bbnext) = jmp $ lmap M.! (bbID bbnext)
+        jmpblock Self = jmp $ lmap M.! bbID bb
+        jmpblock (Ref bbnext) = jmp $ lmap M.! bbID bbnext
 
         jmpblock2 :: BlockRef a -> BlockRef a -> CodeGen e s ()
         jmpblock2 Self ref = do jmpblock Self; maybeJmpblock' ref
@@ -555,10 +548,10 @@ compile bbgir = do
           skippedInsn <- maybeJmpblock ref1
           if skippedInsn
             then jmpblock ref2
-            else do maybeJmpblock' ref2
+            else maybeJmpblock' ref2
 
         maybeJmpblock' :: BlockRef a -> CodeGen e s ()
-        maybeJmpblock' x = maybeJmpblock x >> return ()
+        maybeJmpblock' x = void (maybeJmpblock x)
         maybeJmpblock :: BlockRef a -> CodeGen e s Bool
         maybeJmpblock ref@(Ref bbnext) = do
           let bbid = bbID bbnext
@@ -573,8 +566,7 @@ compile bbgir = do
       Switch _ -> error "comiple: switch"
     setState (S.insert (bbID bb) bset)
    ) bbgir
-  d <- disassemble
-  return d
+  disassemble
     where
       printInsn insn = do
         l <- newNamedLabel ("//MateIR: " ++ show insn)
@@ -585,10 +577,10 @@ basicBlockBids = bbFold ((:[]) . bbID)
 
 oldmain :: IO ()
 oldmain = do
-  let extractbid = \(BasicBlock bid _ _) -> [bid]
-  putStrLn $ "woot: " ++ (show $ GOTO 12)
-  putStrLn $ "getlabels: ex0: " ++ (show $ bbFold extractbid ex0)
-  putStrLn $ "getlabels: ex1: " ++ (show $ bbFold extractbid ex1)
+  let extractbid (BasicBlock bid _ _) = [bid]
+  putStrLn $ "woot: " ++ show (GOTO 12)
+  putStrLn $ "getlabels: ex0: " ++ show (bbFold extractbid ex0)
+  putStrLn $ "getlabels: ex1: " ++ show (bbFold extractbid ex1)
   putStrLn "\n\n-- REWRITING (id) --\n\n"
   bbFold print $ bbRewrite id ex0
   putStrLn "\n\n-- REWRITING (dup code segment [indeed, it's pointless]) --\n\n"
@@ -597,6 +589,6 @@ oldmain = do
   let rewrite1 bb _ = do
         modify (+1)
         factor <- get
-        return $ bb { code = concat $ take factor $ repeat (code bb) }
+        return $ bb { code = concat $ replicate factor (code bb) }
   bbFold print $ bbRewriteWith rewrite1 0 ex0
 {- /application -}
