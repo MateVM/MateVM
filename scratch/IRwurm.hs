@@ -2,6 +2,7 @@
 {-# LANGUAGE OverlappingInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE StandaloneDeriving #-}
 module Main where
 
 import qualified Data.List as L
@@ -9,6 +10,7 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Int
 import Data.Word
+import Data.Maybe
 import Control.Applicative
 import Data.Monoid
 
@@ -26,7 +28,7 @@ import Text.Printf
 (.) extend `MateIR' with Open/Close for Hoopl
 (.) replace BasicBlock stuff with Hoopl.Graph if possible (at least for codegen?)
 (.) typeclass for codeemitting: http://pastebin.com/RZ9qR3k7 (depricated) || http://pastebin.com/BC3Jr5hG
-(.) reg access typeclass for Var/HVar?
+(.) codegen: jmp/je bugfix plzkkthx -.-
 -}
 
 -- source IR (jvm bytecode)
@@ -67,6 +69,9 @@ data HVar
   | HFReg XMMReg
   | HFConstant Float
   | SpillFReg Disp
+  deriving Eq
+
+deriving instance Eq Disp
 
 data VarType = JInt | JFloat deriving (Show, Eq)
 
@@ -280,19 +285,17 @@ transformJ2IR jvmbb next = do
 
 {- regalloc -}
 data MappedRegs = MappedRegs
-  { intMap :: M.Map Integer HVar
-  , floatMap :: M.Map Integer HVar
+  { regMap :: M.Map Integer HVar
   , stackCnt :: Word32 }
 
-emptyRegs = MappedRegs M.empty M.empty 0
+emptyRegs = MappedRegs M.empty 0
 
-allIntRegs = [eax, ecx, edx, ebx, esi, edi] :: [Reg32]
-allFloatRegs = [xmm0, xmm1, xmm2, xmm3, xmm4, xmm5, xmm6, xmm7] :: [XMMReg]
+allIntRegs = map HIReg [eax, ecx, edx, ebx, esi, edi] :: [HVar]
+allFloatRegs = map HFReg [xmm0, xmm1, xmm2, xmm3, xmm4, xmm5, xmm6, xmm7] :: [HVar]
 
 stupidRegAlloc :: BasicBlock (MateIR Var)
             -> NextBlock (MateIR HVar)
             -> State MappedRegs (BasicBlock (MateIR HVar))
-{- post condition: basicblocks doesn't contain any IReg's or FReg's -}
 stupidRegAlloc bb nb = do
   code' <- mapM assignRegs $ code bb
   return BasicBlock { bbID = bbID bb, code = code', nextBlock = nb }
@@ -310,16 +313,6 @@ stupidRegAlloc bb nb = do
     assignRegs (IRReturn x) = return $ IRReturn x -- TODO: what do?
     assignRegs x = error $ "assignRegs: " ++ show x
 
-    hasAssign :: Var -> State MappedRegs Bool
-    hasAssign (VReg JInt vreg) = M.member vreg <$> intMap <$> get
-    hasAssign (VReg JFloat vreg) = M.member vreg <$> floatMap <$> get
-    hasAssign x = error $ "hasAssign: " ++ show x
-
-    getAssign :: Var -> State MappedRegs HVar
-    getAssign (VReg JInt vreg) = (M.! vreg) <$> intMap <$> get
-    getAssign (VReg JFloat vreg) = (M.! vreg) <$> floatMap <$> get
-    getAssign x = error $ "getAssign: " ++ show x
-
     doAssign :: Var -> State MappedRegs HVar
     doAssign (JIntValue x) = return $ HIConstant x
     doAssign (JFloatValue x) = return $ HFConstant x
@@ -328,70 +321,51 @@ stupidRegAlloc bb nb = do
       if isAssignVr
         then getAssign vr
         else nextAvailReg vr
+      where
+        hasAssign :: Var -> State MappedRegs Bool
+        hasAssign (VReg _ vreg) = M.member vreg <$> regMap <$> get
+        hasAssign x = error $ "hasAssign: " ++ show x
 
-    intRegsInUse :: State MappedRegs [Reg32]
-    intRegsInUse = do
-      mr <- M.elems <$> intMap <$> get
-      let unpackReg :: HVar -> Reg32
-          unpackReg (HIReg r) = r
-          unpackReg _ = error "intRegsInUse: can't happen"
-      let f (HIReg _) = True
-          f _ = False
-      return . map unpackReg . filter f $ mr
+        getAssign :: Var -> State MappedRegs HVar
+        getAssign (VReg _ vreg) = (M.! vreg) <$> regMap <$> get
+        getAssign x = error $ "getAssign: " ++ show x
 
-    floatRegsInUse :: State MappedRegs [XMMReg]
-    floatRegsInUse = do
-      mr <- M.elems <$> floatMap <$> get
-      let unpackReg :: HVar -> XMMReg
-          unpackReg (HFReg r) = r
-          unpackReg _ = error "floatRegsInUse: can't happen"
-      let f (HFReg _) = True
-          f _ = False
-      return . map unpackReg . filter f $ mr
+        nextAvailReg:: Var -> State MappedRegs HVar
+        nextAvailReg (VReg t vreg) = do
+          availregs <- availRegs t
+          mr <- get
+          case availregs of
+            [] -> do
+              let disp = stackCnt mr
+              let spill = case t of
+                            JInt -> SpillIReg (Disp disp)
+                            JFloat -> SpillFReg (Disp disp)
+              let imap = M.insert vreg spill $ regMap mr
+              put (mr { stackCnt = disp + 4, regMap = imap} )
+              return spill
+            (x:_) -> do
+              let imap = M.insert vreg x $ regMap mr
+              put (mr { regMap = imap })
+              return x
+        nextAvailReg _ = error "intNextReg: dafuq"
 
-    intAvailRegs :: State MappedRegs [Reg32]
-    intAvailRegs = do
-      inuse <- intRegsInUse
-      return $ allIntRegs L.\\ inuse
+        regsInUse :: VarType -> State MappedRegs [HVar]
+        regsInUse t = do
+          mr <- M.elems <$> regMap <$> get
+          let unpackIntReg :: HVar -> Maybe HVar
+              unpackIntReg x@(HIReg _) = Just x
+              unpackIntReg _ = Nothing
+          let unpackFloatReg :: HVar -> Maybe HVar
+              unpackFloatReg x@(HFReg _) = Just x
+              unpackFloatReg _ = Nothing
+          let unpacker = case t of JInt -> unpackIntReg; JFloat -> unpackFloatReg
+          return . mapMaybe unpacker $ mr
 
-    floatAvailRegs :: State MappedRegs [XMMReg]
-    floatAvailRegs = do
-      inuse <- floatRegsInUse
-      return $ allFloatRegs L.\\ inuse
-
-    nextAvailReg:: Var -> State MappedRegs HVar
-    -- TODO: simplify
-    nextAvailReg (VReg JInt vreg) = do
-      availregs <- intAvailRegs
-      mr <- get
-      case availregs of
-        [] -> do
-          let disp = stackCnt mr
-          let spill = SpillIReg (Disp disp)
-          let imap = M.insert vreg spill $ intMap mr
-          put (mr { stackCnt = disp + 4, intMap = imap} )
-          return spill
-        (x:_) -> do
-          let regalloc = HIReg x
-          let imap = M.insert vreg regalloc $ intMap mr
-          put (mr { intMap = imap })
-          return regalloc
-    nextAvailReg (VReg JFloat vreg) = do
-      availregs <- floatAvailRegs
-      mr <- get
-      case availregs of
-        [] -> do
-          let disp = stackCnt mr
-          let spill = SpillFReg (Disp disp)
-          let imap = M.insert vreg spill $ floatMap mr
-          put (mr { stackCnt = disp + 4, floatMap = imap} )
-          return spill
-        (x:_) -> do
-          let regalloc = HFReg x
-          let imap = M.insert vreg regalloc $ floatMap mr
-          put (mr { floatMap = imap })
-          return regalloc
-    nextAvailReg _ = error "intNextReg: dafuq"
+        availRegs :: VarType -> State MappedRegs [HVar]
+        availRegs t = do
+          inuse <- regsInUse t
+          let allregs = case t of JInt -> allIntRegs; JFloat -> allFloatRegs
+          return (allregs L.\\ inuse)
 {- /regalloc -}
 
 {- codegen test -}
