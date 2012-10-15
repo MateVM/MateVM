@@ -7,10 +7,8 @@ module Main where
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Set as S
-import Data.Maybe
 import Data.Int
 import Data.Word
-import Data.Typeable
 import Control.Applicative
 import Data.Monoid
 
@@ -28,7 +26,6 @@ import Text.Printf
 (.) extend `MateIR' with Open/Close for Hoopl
 (.) replace BasicBlock stuff with Hoopl.Graph if possible (at least for codegen?)
 (.) typeclass for codeemitting: http://pastebin.com/RZ9qR3k7 (depricated) || http://pastebin.com/BC3Jr5hG
-(.) data dep for Var: this `Var JInt a' should be `Var JInt Int32'. Or via constructors
 (.) reg access typeclass for Var/HVar?
 -}
 
@@ -74,7 +71,8 @@ data HVar
 data VarType = JInt | JFloat deriving Show
 
 data Var
-  = forall a . (Num a, Typeable a) => Value VarType a
+  = JIntValue Int32
+  | JFloatValue Float
   | VReg VarType Integer
 
 
@@ -132,8 +130,8 @@ instance Show HVar where
 
 instance Show Var where
   show (VReg t n) = printf "%s(%02d)" (show t) n
-  show (Value JInt n) = printf "0x%08x" ((fromJust . cast) n :: Int32)
-  show (Value JFloat n) = printf "%2.2ff" ((fromJust . cast) n :: Float)
+  show (JIntValue n) = printf "0x%08x" n
+  show (JFloatValue n) = printf "%2.2ff" n
 {- /show -}
 
 
@@ -229,9 +227,9 @@ transformJ2IR jvmbb next = do
     tir :: JVMInstruction -> State SimStack (MateIR Var)
     tir ICONST_0 = tir (IPUSH 0)
     tir ICONST_1 = tir (IPUSH 1)
-    tir (IPUSH x) = do apush $ Value JInt x; return IRNop
-    tir FCONST_0 =  do apush $ Value JFloat (0 :: Float); return IRNop
-    tir FCONST_1 =  do apush $ Value JFloat (1 :: Float); return IRNop
+    tir (IPUSH x) = do apush $ JIntValue x; return IRNop
+    tir FCONST_0 =  do apush $ JFloatValue 0; return IRNop
+    tir FCONST_1 =  do apush $ JFloatValue 1; return IRNop
     tir (ILOAD x) = do apush $ VReg JInt (fromIntegral x); return IRNop
     tir (ISTORE y) = tirStore y JInt
     tir (FSTORE y) = tirStore y JFloat
@@ -248,7 +246,9 @@ transformJ2IR jvmbb next = do
 
     tirStore w8 t = do
       x <- apop
-      let nul = case t of JInt -> Value JInt (0 :: Int32); JFloat -> Value JFloat (0 :: Float)
+      let nul = case t of
+                  JInt -> JIntValue 0
+                  JFloat -> JFloatValue 0
       return $ IROp Add (VReg t $ fromIntegral w8) x nul
     tirOpInt op t = do
       x <- apop; y <- apop
@@ -313,8 +313,8 @@ stupidRegAlloc bb nb = do
     getAssign x = error $ "getAssign: " ++ show x
 
     doAssign :: Var -> State MappedRegs HVar
-    doAssign (Value JInt x) = return $ HIConstant (fromJust . cast $ x)
-    doAssign (Value JFloat x) = return $ HFConstant (fromJust . cast $ x)
+    doAssign (JIntValue x) = return $ HIConstant x
+    doAssign (JFloatValue x) = return $ HFConstant x
     doAssign vr = do
       isAssignVr <- hasAssign vr
       if isAssignVr
