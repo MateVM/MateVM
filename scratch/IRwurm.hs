@@ -1,6 +1,5 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverlappingInstances #-}
-{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 module Main where
@@ -28,9 +27,9 @@ import Text.Printf
 {- TODO
 (.) extend `MateIR' with Open/Close for Hoopl
 (.) replace BasicBlock stuff with Hoopl.Graph if possible (at least for codegen?)
-(.) make typeclass for Var/HVar ...
-(.) typeclass for codeemitting: http://pastebin.com/RZ9qR3k7
-(.) data dep for Var: this `Var JInt a' should be `Var JInt Int32'
+(.) typeclass for codeemitting: http://pastebin.com/RZ9qR3k7 (depricated) || http://pastebin.com/BC3Jr5hG
+(.) data dep for Var: this `Var JInt a' should be `Var JInt Int32'. Or via constructors
+(.) reg access typeclass for Var/HVar?
 -}
 
 -- source IR (jvm bytecode)
@@ -50,13 +49,13 @@ data JVMInstruction
   | RETURN
   deriving Show
 
-data MateIR where
-  IROp :: (Show t, Typeable t) => OpType -> t -> t -> t -> MateIR
-  IRJump :: MateIR
-  IRIfElse :: (Show t, Typeable t) => t -> t -> MateIR
-  IRReturn :: Bool -> MateIR
-  IRInvoke :: Word8 -> MateIR
-  IRNop :: MateIR
+data MateIR t where
+  IROp :: (Show t) => OpType -> t -> t -> t -> MateIR t
+  IRJump :: MateIR t
+  IRIfElse :: (Show t) => t -> t -> MateIR t
+  IRReturn :: Bool -> MateIR t
+  IRInvoke :: Word8 -> MateIR t
+  IRNop :: MateIR t
 
 data OpType
   = Add
@@ -71,14 +70,12 @@ data HVar
   | HFReg XMMReg
   | HFConstant Float
   | SpillFReg Disp
-  deriving Typeable
 
 data VarType = JInt | JFloat deriving Show
 
 data Var
   = forall a . (Num a, Typeable a) => Value VarType a
   | VReg VarType Integer
-  deriving Typeable
 
 
 {- generic basicblock datastructure -}
@@ -117,7 +114,7 @@ instance Show (BlockRef a) where
   show Self = "self"
   show (Ref bb) = printf "BasicBlock%03d" (bbID bb)
 
-instance Show MateIR where
+instance Show (MateIR t) where
   show (IROp op vr v1 v2) = printf "%s %s,  %s, %s" (show op) (show vr) (show v1) (show v2)
   show (IRInvoke x) = printf "invoke %s" (show x)
   show IRJump = printf "jump"
@@ -221,15 +218,15 @@ data SimStack = SimStack
   , regcnt :: Integer }
 
 transformJ2IR :: BasicBlock JVMInstruction
-                 -> NextBlock MateIR
-                 -> State SimStack (BasicBlock MateIR)
+                 -> NextBlock (MateIR Var)
+                 -> State SimStack (BasicBlock (MateIR Var))
 transformJ2IR jvmbb next = do
   res <- filter noNop <$> mapM tir (code jvmbb)
   return (BasicBlock (bbID jvmbb) res next)
   where
     noNop IRNop = False; noNop _ = True
 
-    tir :: JVMInstruction -> State SimStack MateIR
+    tir :: JVMInstruction -> State SimStack (MateIR Var)
     tir ICONST_0 = tir (IPUSH 0)
     tir ICONST_1 = tir (IPUSH 1)
     tir (IPUSH x) = do apush $ Value JInt x; return IRNop
@@ -284,15 +281,15 @@ emptyRegs = MappedRegs M.empty M.empty 0
 allIntRegs = [eax, ecx, edx, ebx, esi, edi] :: [Reg32]
 allFloatRegs = [xmm0, xmm1, xmm2, xmm3, xmm4, xmm5, xmm6, xmm7] :: [XMMReg]
 
-stupidRegAlloc :: BasicBlock MateIR
-            -> NextBlock MateIR
-            -> State MappedRegs (BasicBlock MateIR)
+stupidRegAlloc :: BasicBlock (MateIR Var)
+            -> NextBlock (MateIR HVar)
+            -> State MappedRegs (BasicBlock (MateIR HVar))
 {- post condition: basicblocks doesn't contain any IReg's or FReg's -}
 stupidRegAlloc bb nb = do
   code' <- mapM assignRegs $ code bb
   return BasicBlock { bbID = bbID bb, code = code', nextBlock = nb }
   where
-    -- assignRegs :: MateIR (Var s) -> State MappedRegs MateIR (HVar b)
+    assignRegs :: MateIR Var -> State MappedRegs (MateIR HVar)
     assignRegs (IROp op dst src1 src2) = do
       dstnew <- doAssign dst
       src1new <- doAssign src1
@@ -302,7 +299,7 @@ stupidRegAlloc bb nb = do
       cmp1new <- doAssign cmp1
       cmp2new <- doAssign cmp2
       return $ IRIfElse cmp1new cmp2new
-    assignRegs x@(IRReturn _) = return x -- TODO: what do?
+    assignRegs (IRReturn x) = return $ IRReturn x -- TODO: what do?
     assignRegs x = error $ "assignRegs: " ++ show x
 
     hasAssign :: Var -> State MappedRegs Bool
@@ -315,17 +312,14 @@ stupidRegAlloc bb nb = do
     getAssign (VReg JFloat vreg) = (M.! vreg) <$> floatMap <$> get
     getAssign x = error $ "getAssign: " ++ show x
 
-    doAssign :: Typeable t => t -> State MappedRegs HVar
-    doAssign = da . fromJust . cast
-      where
-        da :: Var -> State MappedRegs HVar
-        da (Value JInt x) = return $ HIConstant (fromJust . cast $ x)
-        da (Value JFloat x) = return $ HFConstant (fromJust . cast $ x)
-        da vr = do
-          isAssignVr <- hasAssign vr
-          if isAssignVr
-            then getAssign vr
-            else nextAvailReg vr
+    doAssign :: Var -> State MappedRegs HVar
+    doAssign (Value JInt x) = return $ HIConstant (fromJust . cast $ x)
+    doAssign (Value JFloat x) = return $ HFConstant (fromJust . cast $ x)
+    doAssign vr = do
+      isAssignVr <- hasAssign vr
+      if isAssignVr
+        then getAssign vr
+        else nextAvailReg vr
 
     intRegsInUse :: State MappedRegs [Reg32]
     intRegsInUse = do
@@ -393,11 +387,10 @@ stupidRegAlloc bb nb = do
 {- /regalloc -}
 
 {- codegen test -}
-girEmit :: MateIR -> CodeGen e s ()
-girEmit insn@(IROp Add dst' src1' src2') =
-    ge (trans dst') (trans src1') (trans src2')
+girEmit :: MateIR HVar -> CodeGen e s ()
+girEmit (IROp Add dst' src1' src2') =
+    ge dst' src1' src2'
   where
-    trans r = fromMaybe (error $ "girEmit (add) @ Nothing: " ++ show insn) (cast r)
     ge :: HVar -> HVar -> HVar -> CodeGen e s ()
     ge (HIReg dst) (HIReg src1) (HIReg src2)
         | dst == src1 = add src1 src2
@@ -437,9 +430,8 @@ girEmit insn@(IROp Add dst' src1' src2') =
 girEmit (IROp Mul _ _ _) = do
   newNamedLabel "TODO!" >>= defineLabel
   nop
-girEmit insn@(IRIfElse src1' src2') = ge (trans src1') (trans src2')
+girEmit (IRIfElse src1' src2') = ge src1' src2'
   where
-    trans r = fromMaybe (error $ "girEmit (if) @ Nothing: " ++ show insn) (cast r)
     ge :: HVar -> HVar -> CodeGen e s ()
     ge (HIReg src1) (HIReg src2) = cmp src1 src2
     ge (HIReg src1) (HIConstant src2) =
@@ -516,7 +508,7 @@ main = do
 type BlockMap = M.Map BlockID Label
 type BlockGenerated = S.Set BlockID
 
-compile :: BasicBlock MateIR -> CodeGen e BlockGenerated [Instruction]
+compile :: BasicBlock (MateIR HVar) -> CodeGen e BlockGenerated [Instruction]
 compile bbgir = do
   bblabels <- mapM (\x -> do
                             l <- newNamedLabel ("BB: " ++ show x)
