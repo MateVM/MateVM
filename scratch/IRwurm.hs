@@ -68,12 +68,17 @@ data HVar
   | HFConstant Float
   | SpillFReg Disp
 
-data VarType = JInt | JFloat deriving Show
+data VarType = JInt | JFloat deriving (Show, Eq)
 
 data Var
   = JIntValue Int32
   | JFloatValue Float
   | VReg VarType Integer
+
+varType :: Var -> VarType
+varType (JIntValue _) = JInt
+varType (JFloatValue _) = JFloat
+varType (VReg t _) = t
 
 
 {- generic basicblock datastructure -}
@@ -240,6 +245,7 @@ transformJ2IR jvmbb next = do
     tir (IFEQ_ICMP _) = do
       x <- apop
       y <- apop
+      unless (varType x == varType y) $ error "tir IFEQ_ICMP: type mismatch"
       return $ IRIfElse x y
     tir RETURN = return $ IRReturn False
     tir x = error $ "tir: " ++ show x
@@ -249,10 +255,12 @@ transformJ2IR jvmbb next = do
       let nul = case t of
                   JInt -> JIntValue 0
                   JFloat -> JFloatValue 0
+      unless (t == varType x) $ error "tirStore: type mismatch"
       return $ IROp Add (VReg t $ fromIntegral w8) x nul
     tirOpInt op t = do
       x <- apop; y <- apop
       nv <- newvar t; apush nv
+      unless (t == varType x && t == varType y) $ error "tirOpInt: type mismatch"
       return $ IROp op nv x y
 
     -- helper
