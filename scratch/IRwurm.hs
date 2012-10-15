@@ -1,7 +1,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverlappingInstances #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE StandaloneDeriving #-}
 module Main where
 
@@ -148,7 +147,7 @@ instance Show Var where
 
 {- traverse the basicblock datastructure -}
 type Visited = [BlockID]
-type FoldState m = Monoid m => State Visited m
+type FoldState m = State Visited m
 
 -- TODO: this is a hack, is this defined somewhere?
 instance Monoid (IO ()) where { mempty = return mempty; mappend = (>>) }
