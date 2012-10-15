@@ -25,6 +25,13 @@ import Control.Monad.State
 -- import Debug.Trace
 import Text.Printf
 
+{- TODO
+(.) extend `MateIR' with Open/Close for Hoopl
+(.) replace BasicBlock stuff with Hoopl.Graph if possible (at least for codegen?)
+(.) make typeclass for Var/HVar ...
+(.) typeclass for codeemitting: http://pastebin.com/RZ9qR3k7
+(.) data dep for Var: this `Var JInt a' should be `Var JInt Int32'
+-}
 
 -- source IR (jvm bytecode)
 data JVMInstruction
@@ -43,10 +50,6 @@ data JVMInstruction
   | RETURN
   deriving Show
 
--- java types
-data JInt = JInt Int32 deriving Typeable
-data JFloat = JFloat Float deriving Typeable
-
 data MateIR where
   IROp :: (Show t, Typeable t) => OpType -> t -> t -> t -> MateIR
   IRJump :: MateIR
@@ -63,18 +66,18 @@ data OpType
 
 data HVar
   = HIReg Reg32
-  | HIConstant JInt
+  | HIConstant Int32
   | SpillIReg Disp
   | HFReg XMMReg
-  | HFConstant JFloat
+  | HFConstant Float
   | SpillFReg Disp
   deriving Typeable
 
+data VarType = JInt | JFloat deriving Show
+
 data Var
-  = IReg Word8
-  | IConstant JInt
-  | FReg Word8
-  | FConstant JFloat
+  = forall a . (Num a, Typeable a) => Value VarType a
+  | VReg VarType Integer
   deriving Typeable
 
 
@@ -124,17 +127,16 @@ instance Show MateIR where
 
 instance Show HVar where
   show (HIReg r32) = printf "%s" (show r32)
-  show (HIConstant (JInt val)) = printf "0x%08x" val
+  show (HIConstant val) = printf "0x%08x" val
   show (SpillIReg (Disp d)) = printf "0x%02x(ebp[i])" d
   show (HFReg xmm) = printf "%s" (show xmm)
-  show (HFConstant (JFloat val)) = printf "%2.2ff" val
+  show (HFConstant val) = printf "%2.2ff" val
   show (SpillFReg (Disp d)) = printf "0x%02x(ebp[f])" d
 
 instance Show Var where
-  show (IReg n) = printf "i(%02d)" n
-  show (IConstant (JInt val)) = printf "0x%08x" val
-  show (FReg n) = printf "f(%02d)" n
-  show (FConstant (JFloat val)) = printf "%2.2ff" val
+  show (VReg t n) = printf "%s(%02d)" (show t) n
+  show (Value JInt n) = printf "0x%08x" ((fromJust . cast) n :: Int32)
+  show (Value JFloat n) = printf "%2.2ff" ((fromJust . cast) n :: Float)
 {- /show -}
 
 
@@ -215,12 +217,8 @@ bbRewriteWith f state' bb' = let (res, _, _) = bbRewrite' state' M.empty bb' in 
 
 {- JVMInstruction -> MateIR -}
 data SimStack = SimStack
-  { stack :: [StackElem]
-  , iregcnt :: Word8
-  , fregcnt :: Word8 }
-
-data StackElem where
-  StackElem :: Var -> StackElem
+  { stack :: [Var]
+  , regcnt :: Integer }
 
 transformJ2IR :: BasicBlock JVMInstruction
                  -> NextBlock MateIR
@@ -234,23 +232,16 @@ transformJ2IR jvmbb next = do
     tir :: JVMInstruction -> State SimStack MateIR
     tir ICONST_0 = tir (IPUSH 0)
     tir ICONST_1 = tir (IPUSH 1)
-    tir (IPUSH x) = do apush (IConstant $ JInt x); return IRNop
-    tir FCONST_0 = do apush (FConstant $ JFloat 0); return IRNop
-    tir FCONST_1 = do apush (FConstant $ JFloat 1); return IRNop
-    tir (ILOAD x) = do apush $ IReg (fromIntegral x); return IRNop
-    tir (ISTORE y) = do
-     x <- apop
-     return $ IROp Add (IReg $ fromIntegral y) x (IConstant $ JInt 0)
-    tir (FSTORE y) = do
-      x <- apop
-      return $ IROp Add (FReg $ fromIntegral y) x (FConstant $ JFloat 0)
-    tir IADD = tirOpInt Add
-    tir ISUB = tirOpInt Sub
-    tir IMUL = tirOpInt Mul
-    tir FADD = do
-      x <- apop; y <- apop; newvar <- newfvar
-      apush newvar
-      return $ IROp Add newvar x y
+    tir (IPUSH x) = do apush $ Value JInt x; return IRNop
+    tir FCONST_0 =  do apush $ Value JFloat (0 :: Float); return IRNop
+    tir FCONST_1 =  do apush $ Value JFloat (1 :: Float); return IRNop
+    tir (ILOAD x) = do apush $ VReg JInt (fromIntegral x); return IRNop
+    tir (ISTORE y) = tirStore y JInt
+    tir (FSTORE y) = tirStore y JFloat
+    tir IADD = tirOpInt Add JInt
+    tir ISUB = tirOpInt Sub JInt
+    tir IMUL = tirOpInt Mul JInt
+    tir FADD = tirOpInt Add JFloat
     tir (IFEQ_ICMP _) = do
       x <- apop
       y <- apop
@@ -258,39 +249,39 @@ transformJ2IR jvmbb next = do
     tir RETURN = return $ IRReturn False
     tir x = error $ "tir: " ++ show x
 
-    tirOpInt op = do
+    tirStore w8 t = do
+      x <- apop
+      let nul = case t of JInt -> Value JInt (0 :: Int32); JFloat -> Value JFloat (0 :: Float)
+      return $ IROp Add (VReg t $ fromIntegral w8) x nul
+    tirOpInt op t = do
       x <- apop; y <- apop
-      newvar <- newivar; apush newvar
-      return $ IROp op newvar x y
+      nv <- newvar t; apush nv
+      return $ IROp op nv x y
 
     -- helper
-    newivar = do
+    newvar t = do
       sims <- get
-      put $ sims { iregcnt = iregcnt sims + 1 }
-      return $ IReg $ iregcnt sims
-    newfvar = do
-      sims <- get
-      put $ sims { fregcnt = fregcnt sims + 1 }
-      return $ FReg $ fregcnt sims
+      put $ sims { regcnt = regcnt sims + 1 }
+      return $ VReg t $ regcnt sims
     apush x = do
       sims <- get
-      put $ sims { stack = StackElem x : stack sims }
+      put $ sims { stack = x : stack sims }
     apop :: State SimStack Var
     apop = do
       sims <- get
       put $ sims { stack = tail $ stack sims }
-      case head . stack $ sims of StackElem x -> return x
+      return . head . stack $ sims
 {- /JVMInstruction -> MateIR -}
 
 {- regalloc -}
 data MappedRegs = MappedRegs
-  { intMap :: M.Map Word8 HVar
-  , floatMap :: M.Map Word8 HVar
+  { intMap :: M.Map Integer HVar
+  , floatMap :: M.Map Integer HVar
   , stackCnt :: Word32 }
 
 emptyRegs = MappedRegs M.empty M.empty 0
 
-allIntRegs = [eax, ecx, edx, ebx, ebp, esi, edi] :: [Reg32]
+allIntRegs = [eax, ecx, edx, ebx, esi, edi] :: [Reg32]
 allFloatRegs = [xmm0, xmm1, xmm2, xmm3, xmm4, xmm5, xmm6, xmm7] :: [XMMReg]
 
 stupidRegAlloc :: BasicBlock MateIR
@@ -315,21 +306,21 @@ stupidRegAlloc bb nb = do
     assignRegs x = error $ "assignRegs: " ++ show x
 
     hasAssign :: Var -> State MappedRegs Bool
-    hasAssign (IReg vreg) = M.member vreg <$> intMap <$> get
-    hasAssign (FReg vreg) = M.member vreg <$> floatMap <$> get
+    hasAssign (VReg JInt vreg) = M.member vreg <$> intMap <$> get
+    hasAssign (VReg JFloat vreg) = M.member vreg <$> floatMap <$> get
     hasAssign x = error $ "hasAssign: " ++ show x
 
     getAssign :: Var -> State MappedRegs HVar
-    getAssign (IReg vreg) = (M.! vreg) <$> intMap <$> get
-    getAssign (FReg vreg) = (M.! vreg) <$> floatMap <$> get
+    getAssign (VReg JInt vreg) = (M.! vreg) <$> intMap <$> get
+    getAssign (VReg JFloat vreg) = (M.! vreg) <$> floatMap <$> get
     getAssign x = error $ "getAssign: " ++ show x
 
     doAssign :: Typeable t => t -> State MappedRegs HVar
     doAssign = da . fromJust . cast
       where
         da :: Var -> State MappedRegs HVar
-        da (IConstant x) = return $ HIConstant x
-        da (FConstant x) = return $ HFConstant x
+        da (Value JInt x) = return $ HIConstant (fromJust . cast $ x)
+        da (Value JFloat x) = return $ HFConstant (fromJust . cast $ x)
         da vr = do
           isAssignVr <- hasAssign vr
           if isAssignVr
@@ -368,7 +359,7 @@ stupidRegAlloc bb nb = do
 
     nextAvailReg:: Var -> State MappedRegs HVar
     -- TODO: simplify
-    nextAvailReg (IReg vreg) = do
+    nextAvailReg (VReg JInt vreg) = do
       availregs <- intAvailRegs
       mr <- get
       case availregs of
@@ -383,7 +374,7 @@ stupidRegAlloc bb nb = do
           let imap = M.insert vreg regalloc $ intMap mr
           put (mr { intMap = imap })
           return regalloc
-    nextAvailReg (FReg vreg) = do
+    nextAvailReg (VReg JFloat vreg) = do
       availregs <- floatAvailRegs
       mr <- get
       case availregs of
@@ -412,13 +403,13 @@ girEmit insn@(IROp Add dst' src1' src2') =
         | dst == src1 = add src1 src2
         | dst == src2 = add src2 src1
         | otherwise = do mov dst src1; add dst src2
-    ge (HIReg dst) (HIConstant (JInt c1)) (HIConstant (JInt c2)) =
+    ge (HIReg dst) (HIConstant c1) (HIConstant c2) =
       mov dst (fromIntegral $ c1 + c2 :: Word32)
 
-    ge (HIReg dst) (HIConstant (JInt c1)) (HIReg src2) = do
+    ge (HIReg dst) (HIConstant c1) (HIReg src2) = do
       mov dst src2
       when (c1 /= 0) $ add dst (fromIntegral c1 :: Word32)
-    ge (HIReg dst) (HIConstant (JInt c1)) (SpillIReg disp) = do
+    ge (HIReg dst) (HIConstant c1) (SpillIReg disp) = do
       let src2 = (disp, ebp)
       mov dst src2
       when (c1 /= 0) $ add dst (fromIntegral c1 :: Word32)
@@ -440,7 +431,7 @@ girEmit insn@(IROp Add dst' src1' src2') =
     ge (HFReg dst) (HFConstant _) (HFConstant _) = do
       newNamedLabel "TODO!" >>= defineLabel
       movss dst dst
-    ge (HFReg dst) (HFReg src) (HFConstant (JFloat 0)) =
+    ge (HFReg dst) (HFReg src) (HFConstant 0) =
       movss dst src
     ge p1 p2 p3 = error $ "girEmit (add): " ++ show p1 ++ ", " ++ show p2 ++ ", " ++ show p3
 girEmit (IROp Mul _ _ _) = do
@@ -451,7 +442,7 @@ girEmit insn@(IRIfElse src1' src2') = ge (trans src1') (trans src2')
     trans r = fromMaybe (error $ "girEmit (if) @ Nothing: " ++ show insn) (cast r)
     ge :: HVar -> HVar -> CodeGen e s ()
     ge (HIReg src1) (HIReg src2) = cmp src1 src2
-    ge (HIReg src1) (HIConstant (JInt src2)) =
+    ge (HIReg src1) (HIConstant src2) =
       cmp src1 (fromIntegral src2 :: Word32)
     ge src1@(HIConstant _) src2 = ge src2 src1
     ge p1 p2 = error $ "girEmit (if): " ++ show p1 ++ ", " ++ show p2
@@ -496,22 +487,11 @@ prettyHeader str = do
 
 main :: IO ()
 main = do
-  prettyHeader "PRINT ex0"
-  bbFold print ex0
-  prettyHeader "PRINT ex0 as MateIR"
-  let bbgir0 = bbRewriteWith transformJ2IR (SimStack [] 50000 60000) ex0
-  bbFold print bbgir0
-  prettyHeader "PRINT ex0 as MateIR (reg alloc)"
-  let bbgir0_regalloc = bbRewriteWith stupidRegAlloc emptyRegs bbgir0
-  bbFold print bbgir0_regalloc
-  prettyHeader "DISASM ex0"
-  (_, Right d0) <- runCodeGen (compile bbgir0_regalloc) M.empty S.empty
-  mapM_ (printf "%s\n" . showIntel) d0
   {-
   prettyHeader "PRINT ex2"
   bbFold print ex2
   prettyHeader "PRINT ex2 as MateIR"
-  let bbgir2 = bbRewriteWith transformJ2IR (SimStack [] 4 10) ex2
+  let bbgir2 = bbRewriteWith transformJ2IR (SimStack [] 4) ex2
   bbFold print bbgir2
   prettyHeader "PRINT ex2 as MateIR (reg alloc)"
   let bbgir2_regalloc = bbRewriteWith stupidRegAlloc emptyRegs bbgir2
@@ -520,6 +500,17 @@ main = do
   (_, Right d2) <- runCodeGen (compile bbgir2_regalloc) M.empty S.empty
   mapM_ (printf "%s\n" . showIntel) d2
   -}
+  prettyHeader "PRINT ex0"
+  bbFold print ex0
+  prettyHeader "PRINT ex0 as MateIR"
+  let bbgir0 = bbRewriteWith transformJ2IR (SimStack [] 50000) ex0
+  bbFold print bbgir0
+  prettyHeader "PRINT ex0 as MateIR (reg alloc)"
+  let bbgir0_regalloc = bbRewriteWith stupidRegAlloc emptyRegs bbgir0
+  bbFold print bbgir0_regalloc
+  prettyHeader "DISASM ex0"
+  (_, Right d0) <- runCodeGen (compile bbgir0_regalloc) M.empty S.empty
+  mapM_ (printf "%s\n" . showIntel) d0
 
 
 type BlockMap = M.Map BlockID Label
