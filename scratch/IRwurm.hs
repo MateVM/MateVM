@@ -10,7 +10,7 @@ import qualified Data.Set as S
 import Data.Int
 import Data.Word
 import Data.Maybe
-import Control.Applicative
+import Control.Applicative hiding ((<*>))
 import Data.Monoid
 
 import Harpy
@@ -29,6 +29,11 @@ import Text.Printf
 (.) replace BasicBlock stuff with Hoopl.Graph if possible (at least for codegen?)
 (.) typeclass for codeemitting: http://pastebin.com/RZ9qR3k7 (depricated) || http://pastebin.com/BC3Jr5hG
 (.) codegen: jmp/je bugfix plzkkthx -.-
+(.) bbFold: Data.{Foldable,Traversable} and stuff
+
+TODO for hoopl:
+  - leave BasicBlock for JavaIR, and use Hoopl.Graph
+  - we need a function with `BasicBlock JVMInstruction -> Graph (MateIR Var) C C'
 -}
 
 -- source IR (jvm bytecode)
@@ -220,16 +225,53 @@ bbRewriteWith f state' bb' = let (res, _, _) = bbRewrite' state' M.empty bb' in 
       where (r, m, newstate) = bbRewrite' st vmap bb
 {- /rewrite with -}
 
+data MateIR2 t e x where
+  IR2Label :: H.Label -> MateIR2 t C O
+  IR2Op :: (Show t) => OpType -> t -> t -> t -> MateIR2 t O O
+  IR2Jump :: MateIR2 t O C
+  IR2IfElse :: (Show t) => t -> t -> MateIR2 t O C
+  IR2Return :: Bool -> MateIR2 t O C
+  IR2Invoke :: Word8 -> MateIR2 t O C
+  IR2Nop :: MateIR2 t O O
 
-type LabelLookup = M.Map Int Label 
+deriving instance Show (MateIR2 t e x)
 
-blub :: StateT Int SimpleUniqueMonad (Label,Label)
-blub = do currentState <- get
-          x <- lift freshLabel
-          --return (x,x)
-          undefined
+type LabelLookup = M.Map Int H.Label
 
-result = runSimpleUniqueMonad  $ runStateT blub 0
+-- μ> :t mkFirst
+-- mkFirst ::    GraphRep g              =>  n C O  -> g n C O
+-- mkMiddle  :: (GraphRep g, NonLocal n) =>  n O O  -> g n O O
+-- mkMiddles :: (GraphRep g, NonLocal n) => [n O O] -> g n O O
+-- mkLast ::     GraphRep g =>               n O C  -> g n O C
+-- (<*>) :: (GraphRep g, NonLocal n) => g n e O -> g n O x -> g n e x
+
+
+type LabelState a e x = StateT LabelLookup SimpleUniqueMonad (a e x)
+
+blub :: [JVMInstruction] -> LabelState (Graph (MateIR2 Var)) C C
+blub jvminsn = do
+  lab <- lift freshLabel
+  let f' = IR2Label lab
+  ms' <- toMid $ init jvminsn -- mapM toMid (init jvminsn)
+  l' <- toLast (last jvminsn)
+  return $ mkFirst f' <*> mkMiddle ms' <*> mkLast l'
+  -- return $ mkFirst f' <*> mkMiddle ms' <*> mkLast l'
+
+instance NonLocal (MateIR2 Var) where
+  entryLabel (IR2Label l) = l
+  successors = undefined
+
+toMid [ICONST_0, ICONST_1, IADD] = return $ IR2Op Add (VReg JInt 0) (JIntValue 0) (JIntValue 1)
+toMid x = error $ "toMid: " ++ show x
+
+toLast :: JVMInstruction -> LabelState (MateIR2 Var) O C
+toLast RETURN = return $ IR2Return True
+toLast x = error $ "toLast: " ++ show x
+
+jvm0 = [ICONST_0, ICONST_1, IADD, RETURN]
+result :: IO ()
+result = do
+  printf "%s" $ showGraph show $ Prelude.fst $ runSimpleUniqueMonad  $ runStateT (blub jvm0) M.empty
 
 
 
