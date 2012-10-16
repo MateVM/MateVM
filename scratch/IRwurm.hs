@@ -17,6 +17,7 @@ import Harpy
 import Harpy.X86Disassembler
 
 import Compiler.Hoopl hiding (Label)
+import qualified Compiler.Hoopl as H
 
 import Control.Monad.State
 
@@ -218,6 +219,19 @@ bbRewriteWith f state' bb' = let (res, _, _) = bbRewrite' state' M.empty bb' in 
     brVisit st vmap (Ref bb) = (Ref r, m, newstate)
       where (r, m, newstate) = bbRewrite' st vmap bb
 {- /rewrite with -}
+
+
+type LabelLookup = M.Map Int Label 
+
+blub :: StateT Int SimpleUniqueMonad (Label,Label)
+blub = do currentState <- get
+          x <- lift freshLabel
+          --return (x,x)
+          undefined
+
+result = runSimpleUniqueMonad  $ runStateT blub 0
+
+
 
 {- JVMInstruction -> MateIR -}
 data SimStack = SimStack
