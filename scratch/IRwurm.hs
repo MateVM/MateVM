@@ -236,7 +236,13 @@ data MateIR2 t e x where
 
 deriving instance Show (MateIR2 t e x)
 
-type LabelLookup = M.Map Int H.Label
+instance NonLocal (MateIR2 Var) where
+  entryLabel (IR2Label l) = l
+  successors = undefined
+
+data LabelLookup = LabelLookup 
+  { labels :: M.Map Int H.Label
+  , simStack :: SimStack } 
 
 -- μ> :t mkFirst
 -- mkFirst ::    GraphRep g              =>  n C O  -> g n C O
@@ -250,30 +256,42 @@ type LabelState a e x = StateT LabelLookup SimpleUniqueMonad (a e x)
 
 blub :: [JVMInstruction] -> LabelState (Graph (MateIR2 Var)) C C
 blub jvminsn = do
-  lab <- lift freshLabel
-  let f' = IR2Label lab
+  f' <- lift $ liftM IR2Label freshLabel
   ms' <- toMid $ init jvminsn -- mapM toMid (init jvminsn)
   l' <- toLast (last jvminsn)
-  return $ mkFirst f' <*> mkMiddle ms' <*> mkLast l'
+  return $ mkFirst f' <*> mkMiddles ms' <*> mkLast l'
   -- return $ mkFirst f' <*> mkMiddle ms' <*> mkLast l'
 
-instance NonLocal (MateIR2 Var) where
-  entryLabel (IR2Label l) = l
-  successors = undefined
+toMid :: [JVMInstruction] -> StateT LabelLookup SimpleUniqueMonad [MateIR2 Var O O]
+toMid xs = do 
+  state <- get
+  mapM tir' xs  
 
-toMid [ICONST_0, ICONST_1, IADD] = return $ IR2Op Add (VReg JInt 0) (JIntValue 0) (JIntValue 1)
-toMid x = error $ "toMid: " ++ show x
+tir' :: JVMInstruction -> LabelState (MateIR2 Var) O O
+tir' x = do
+  state <- get
+  let (ins,state') = runState (tir2 x) (simStack state) 
+  put $ state { simStack = state' }
+  return ins
 
 toLast :: JVMInstruction -> LabelState (MateIR2 Var) O C
 toLast RETURN = return $ IR2Return True
 toLast x = error $ "toLast: " ++ show x
 
 jvm0 = [ICONST_0, ICONST_1, IADD, RETURN]
+jvm1 = [ICONST_0, ICONST_1, IADD, ICONST_1, IFEQ_ICMP 2, RETURN, ICONST_1, RETURN]
 result :: IO ()
-result = do
-  printf "%s" $ showGraph show $ Prelude.fst $ runSimpleUniqueMonad  $ runStateT (blub jvm0) M.empty
+result = printf "%s" $ showGraph show $ Prelude.fst $ runSimpleUniqueMonad  $ runStateT (blub jvm0) LabelLookup { labels = M.empty, simStack = SimStack [] 50000} 
 
 
+-- what is this
+switchStateT :: Monad m => (s -> t) -> (t -> s) -> State t a -> StateT s m b -> StateT s m b
+switchStateT project expand first second = do
+  firstState <- get
+  let (result,state') = runState first (project firstState)
+  put $ expand state'
+  second
+  
 
 {- JVMInstruction -> MateIR -}
 data SimStack = SimStack
@@ -289,53 +307,87 @@ transformJ2IR jvmbb next = do
   where
     noNop IRNop = False; noNop _ = True
 
-    tir :: JVMInstruction -> State SimStack (MateIR Var)
-    tir ICONST_0 = tir (IPUSH 0)
-    tir ICONST_1 = tir (IPUSH 1)
-    tir (IPUSH x) = do apush $ JIntValue x; return IRNop
-    tir FCONST_0 =  do apush $ JFloatValue 0; return IRNop
-    tir FCONST_1 =  do apush $ JFloatValue 1; return IRNop
-    tir (ILOAD x) = do apush $ VReg JInt (fromIntegral x); return IRNop
-    tir (ISTORE y) = tirStore y JInt
-    tir (FSTORE y) = tirStore y JFloat
-    tir IADD = tirOpInt Add JInt
-    tir ISUB = tirOpInt Sub JInt
-    tir IMUL = tirOpInt Mul JInt
-    tir FADD = tirOpInt Add JFloat
-    tir (IFEQ_ICMP _) = do
-      x <- apop
-      y <- apop
-      unless (varType x == varType y) $ error "tir IFEQ_ICMP: type mismatch"
-      return $ IRIfElse x y
-    tir RETURN = return $ IRReturn False
-    tir x = error $ "tir: " ++ show x
+-- hs did something evil here... (moved inner where clause to global. actually i think
+-- it is not that evil)
 
-    tirStore w8 t = do
-      x <- apop
-      let nul = case t of
-                  JInt -> JIntValue 0
-                  JFloat -> JFloatValue 0
-      unless (t == varType x) $ error "tirStore: type mismatch"
-      return $ IROp Add (VReg t $ fromIntegral w8) x nul
-    tirOpInt op t = do
-      x <- apop; y <- apop
-      nv <- newvar t; apush nv
-      unless (t == varType x && t == varType y) $ error "tirOpInt: type mismatch"
-      return $ IROp op nv x y
+tir2 :: JVMInstruction -> State SimStack (MateIR2 Var O O)
+tir2 ICONST_0 = tir2 (IPUSH 0)
+tir2 ICONST_1 = tir2 (IPUSH 1)
+tir2 (IPUSH x) = do apush $ JIntValue x; return IR2Nop
+tir2 FCONST_0 =  do apush $ JFloatValue 0; return IR2Nop
+tir2 FCONST_1 =  do apush $ JFloatValue 1; return IR2Nop
+tir2 (ILOAD x) = do apush $ VReg JInt (fromIntegral x); return IR2Nop
+tir2 (ISTORE y) = tirStore2 y JInt
+tir2 (FSTORE y) = tirStore2 y JFloat
+tir2 IADD = tirOpInt2 Add JInt
+tir2 ISUB = tirOpInt2 Sub JInt
+tir2 IMUL = tirOpInt2 Mul JInt
+tir2 FADD = tirOpInt2 Add JFloat
+tir2 (IFEQ_ICMP _) = error "if in middle of block"
+tir2 RETURN = error "return in middle of block" -- return $ IR2Return False
+tir2 x = error $ "tir: " ++ show x
 
-    -- helper
-    newvar t = do
-      sims <- get
-      put $ sims { regcnt = regcnt sims + 1 }
-      return $ VReg t $ regcnt sims
-    apush x = do
-      sims <- get
-      put $ sims { stack = x : stack sims }
-    apop :: State SimStack Var
-    apop = do
-      sims <- get
-      put $ sims { stack = tail $ stack sims }
-      return . head . stack $ sims
+tirStore2 w8 t = do
+  x <- apop
+  let nul = case t of
+              JInt -> JIntValue 0
+              JFloat -> JFloatValue 0
+  unless (t == varType x) $ error "tirStore: type mismatch"
+  return $ IR2Op Add (VReg t $ fromIntegral w8) x nul
+tirOpInt2 op t = do
+  x <- apop; y <- apop
+  nv <- newvar t; apush nv
+  unless (t == varType x && t == varType y) $ error "tirOpInt: type mismatch"
+  return $ IR2Op op nv x y
+
+tir :: JVMInstruction -> State SimStack (MateIR Var)
+tir ICONST_0 = tir (IPUSH 0)
+tir ICONST_1 = tir (IPUSH 1)
+tir (IPUSH x) = do apush $ JIntValue x; return IRNop
+tir FCONST_0 =  do apush $ JFloatValue 0; return IRNop
+tir FCONST_1 =  do apush $ JFloatValue 1; return IRNop
+tir (ILOAD x) = do apush $ VReg JInt (fromIntegral x); return IRNop
+tir (ISTORE y) = tirStore y JInt
+tir (FSTORE y) = tirStore y JFloat
+tir IADD = tirOpInt Add JInt
+tir ISUB = tirOpInt Sub JInt
+tir IMUL = tirOpInt Mul JInt
+tir FADD = tirOpInt Add JFloat
+tir (IFEQ_ICMP _) = do
+  x <- apop
+  y <- apop
+  unless (varType x == varType y) $ error "tir IFEQ_ICMP: type mismatch"
+  return $ IRIfElse x y
+tir RETURN = return $ IRReturn False
+tir x = error $ "tir: " ++ show x
+
+tirStore w8 t = do
+  x <- apop
+  let nul = case t of
+              JInt -> JIntValue 0
+              JFloat -> JFloatValue 0
+  unless (t == varType x) $ error "tirStore: type mismatch"
+  return $ IROp Add (VReg t $ fromIntegral w8) x nul
+tirOpInt op t = do
+  x <- apop; y <- apop
+  nv <- newvar t; apush nv
+  unless (t == varType x && t == varType y) $ error "tirOpInt: type mismatch"
+  return $ IROp op nv x y
+
+-- helper
+newvar t = do
+  sims <- get
+  put $ sims { regcnt = regcnt sims + 1 }
+  return $ VReg t $ regcnt sims
+apush x = do
+  sims <- get
+  put $ sims { stack = x : stack sims }
+apop :: State SimStack Var
+apop = do
+  sims <- get
+  put $ sims { stack = tail $ stack sims }
+  return . head . stack $ sims
+
 {- /JVMInstruction -> MateIR -}
 
 {- regalloc -}
