@@ -21,7 +21,7 @@ import qualified Compiler.Hoopl as H
 
 import Control.Monad.State
 
--- import Debug.Trace
+import Debug.Trace
 import Text.Printf
 
 {- TODO
@@ -228,69 +228,143 @@ bbRewriteWith f state' bb' = let (res, _, _) = bbRewrite' state' M.empty bb' in 
 data MateIR2 t e x where
   IR2Label :: H.Label -> MateIR2 t C O
   IR2Op :: (Show t) => OpType -> t -> t -> t -> MateIR2 t O O
-  IR2Jump :: MateIR2 t O C
-  IR2IfElse :: (Show t) => t -> t -> MateIR2 t O C
-  IR2Return :: Bool -> MateIR2 t O C
-  IR2Invoke :: Word8 -> MateIR2 t O C
   IR2Nop :: MateIR2 t O O
+  IR2Invoke :: Word8 -> MateIR2 t O O
 
-deriving instance Show (MateIR2 t e x)
+  IR2Jump :: H.Label -> MateIR2 t O C
+  IR2IfElse :: (Show t) => t -> t -> H.Label -> H.Label -> MateIR2 t O C
+  IR2Return :: Bool -> MateIR2 t O C
+
+instance Show (MateIR2 t e x) where
+  show (IR2Label l) = printf "label: %s\n" (show l)
+  show (IR2Op op vr v1 v2) = printf "\t%s %s,  %s, %s" (show op) (show vr) (show v1) (show v2)
+  show (IR2Invoke x) = printf "\tinvoke %s" (show x)
+  show (IR2Jump l) = printf "\tjump %s" (show l)
+  show (IR2IfElse v1 v2 l1 l2) = printf "\tif (%s == %s) then %s else %s" (show v1) (show v2) (show l1) (show l2)
+  show (IR2Return b) = printf "\treturn (%s)" (show b)
+  show IR2Nop = printf "\tnop"
 
 instance NonLocal (MateIR2 Var) where
   entryLabel (IR2Label l) = l
   successors = undefined
 
 data LabelLookup = LabelLookup 
-  { labels :: M.Map Int H.Label
-  , simStack :: SimStack } 
+  { labels :: M.Map Int16 H.Label
+  , simStack :: SimStack
+  , pcOffset :: Int16 }
 
--- μ> :t mkFirst
--- mkFirst ::    GraphRep g              =>  n C O  -> g n C O
--- mkMiddle  :: (GraphRep g, NonLocal n) =>  n O O  -> g n O O
--- mkMiddles :: (GraphRep g, NonLocal n) => [n O O] -> g n O O
--- mkLast ::     GraphRep g =>               n O C  -> g n O C
--- (<*>) :: (GraphRep g, NonLocal n) => g n e O -> g n O x -> g n e x
+-- mkFirst ::    GraphRep g              =>   n C O  -> g n C O
+-- mkMiddle  :: (GraphRep g, NonLocal n) =>   n O O  -> g n O O
+-- mkMiddles :: (GraphRep g, NonLocal n) =>  [n O O] -> g n O O
+-- mkLast ::     GraphRep g =>                n O C  -> g n O C
+-- (<*>) ::     (GraphRep g, NonLocal n) => g n e O  -> g n O x -> g n e x
+-- (|*><*|) ::  (GraphRep g, NonLocal n) => g n e C  -> g n C x -> g n e x
 
+type LabelState a = StateT LabelLookup SimpleUniqueMonad a
 
-type LabelState a e x = StateT LabelLookup SimpleUniqueMonad (a e x)
-
-blub :: [JVMInstruction] -> LabelState (Graph (MateIR2 Var)) C C
-blub jvminsn = do
-  f' <- lift $ liftM IR2Label freshLabel
-  ms' <- toMid $ init jvminsn -- mapM toMid (init jvminsn)
+mkBlock :: [JVMInstruction] -> LabelState (Graph (MateIR2 Var) C C)
+mkBlock jvminsn = do
+  pc <- liftM pcOffset get
+  f' <- liftM IR2Label (addLabel pc)
+  ms' <- toMid $ init jvminsn
   l' <- toLast (last jvminsn)
   return $ mkFirst f' <*> mkMiddles ms' <*> mkLast l'
-  -- return $ mkFirst f' <*> mkMiddle ms' <*> mkLast l'
 
-toMid :: [JVMInstruction] -> StateT LabelLookup SimpleUniqueMonad [MateIR2 Var O O]
-toMid xs = do 
-  state <- get
-  mapM tir' xs  
+addLabel :: Int16 -> LabelState H.Label
+addLabel boff = do
+  lmap <- liftM labels get
+  if M.member boff lmap
+    then return $ lmap M.! boff
+    else do
+      label <- lift $ freshLabel
+      modify (\s -> s {labels = M.insert boff label (labels s) })
+      return label
 
-tir' :: JVMInstruction -> LabelState (MateIR2 Var) O O
-tir' x = do
-  state <- get
-  let (ins,state') = runState (tir2 x) (simStack state) 
-  put $ state { simStack = state' }
-  return ins
+toMid :: [JVMInstruction] -> LabelState [MateIR2 Var O O]
+toMid xs = mapM tir' xs
+  where
+    tir' :: JVMInstruction -> LabelState (MateIR2 Var O O)
+    tir' x = do
+      -- st <- (trace $ printf "tir': %s\n" (show x)) get
+      st <- get
+      let (ins, state') = runState (tir2 x) (simStack st)
+      put $ st { simStack = state'}
+      incrementPC x
+      return ins
 
-toLast :: JVMInstruction -> LabelState (MateIR2 Var) O C
-toLast RETURN = return $ IR2Return True
-toLast x = error $ "toLast: " ++ show x
+incrementPC :: JVMInstruction -> LabelState ()
+incrementPC ins = modify (\s -> s { pcOffset = pcOffset s + insnLength ins})
+
+toLast :: JVMInstruction -> LabelState (MateIR2 Var O C)
+toLast instruction = do
+  res <- case instruction of
+    RETURN -> return $ IR2Return True
+    (IFEQ_ICMP rel) -> do
+      x <- apop2
+      y <- apop2
+      unless (varType x == varType y) $ error "toLast IFEQ_ICMP: type mismatch"
+      pc <- liftM pcOffset get
+      truejmp <- addLabel (pc + rel)
+      falsejmp <- addLabel (pc + insnLength instruction)
+      return $ IR2IfElse x y truejmp falsejmp
+    _ -> error $ "toLast: " ++ show instruction
+  incrementPC instruction
+  return res
+
+apop2 :: LabelState Var
+apop2 = do
+  st <- get
+  let lol = simStack st
+  modify (\s -> s { simStack = lol { stack = tail (stack lol)} } )
+  return . head . stack $ lol
 
 jvm0 = [ICONST_0, ICONST_1, IADD, RETURN]
-jvm1 = [ICONST_0, ICONST_1, IADD, ICONST_1, IFEQ_ICMP 2, RETURN, ICONST_1, RETURN]
-result :: IO ()
-result = printf "%s" $ showGraph show $ Prelude.fst $ runSimpleUniqueMonad  $ runStateT (blub jvm0) LabelLookup { labels = M.empty, simStack = SimStack [] 50000} 
 
+jvm1 = [jvm1_1, jvm1_2]
+jvm1_1 = [ICONST_0, ICONST_1, IADD, ICONST_1, IFEQ_ICMP (-9)]
+jvm1_2 = [ICONST_1, RETURN]
+
+jvm2 = [jvm2_1, jvm2_2, jvm2_3]
+jvm2_1 = [ICONST_0, ISTORE 0
+         , ILOAD 0, ICONST_1, IADD, ISTORE 0
+         , IPUSH 10, ILOAD 0, IFEQ_ICMP (-14)]
+jvm2_2 = [ILOAD 0, IPUSH 20, IFEQ_ICMP (-6)]
+jvm2_3 = [FCONST_0, FCONST_1, FADD, FSTORE 1
+         , IPUSH 20, IPUSH 1, IMUL, ISTORE 2
+         , RETURN]
+
+result :: IO ()
+result = do
+  let initstate = LabelLookup { labels = M.empty
+                              , simStack = SimStack [] 50000
+                              , pcOffset = 0 }
+  let transform bs = do
+        foldl (liftM2 (|*><*|)) (return emptyClosedGraph) (map mkBlock bs)
+  let runStuff x = runSimpleUniqueMonad . runStateT x
+  let res jvminsns = runStuff (transform jvminsns) initstate
+
+  let printjvmres :: [[JVMInstruction]] -> IO ()
+      printjvmres insns = do
+        let r = res insns
+        printf "graph:\n%s\n" $ showGraph show $ Prelude.fst r
+        printf "map: %s\n" (show . labels . snd $ r)
+
+  printjvmres jvm1
+  printjvmres jvm2
 
 -- what is this
 switchStateT :: Monad m => (s -> t) -> (t -> s) -> State t a -> StateT s m b -> StateT s m b
 switchStateT project expand first second = do
   firstState <- get
-  let (result,state') = runState first (project firstState)
+  let (_, state') = runState first (project firstState)
   put $ expand state'
   second
+
+-- dummy
+insnLength :: JVMInstruction -> Int16
+insnLength ICONST_0 = 2
+insnLength ICONST_1 = 2
+insnLength _ = 3
   
 
 {- JVMInstruction -> MateIR -}
