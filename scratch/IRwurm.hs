@@ -264,15 +264,15 @@ type LabelState a = StateT LabelLookup SimpleUniqueMonad a
 
 mkBlock :: [JVMInstruction] -> LabelState (Graph (MateIR2 Var) C C)
 mkBlock jvminsn = do
-  pc <- liftM pcOffset get
-  f' <- liftM IR2Label (addLabel pc)
+  pc <- pcOffset <$> get
+  f' <- IR2Label <$> (addLabel pc)
   ms' <- toMid $ init jvminsn
   l' <- toLast (last jvminsn)
   return $ mkFirst f' <*> mkMiddles ms' <*> mkLast l'
 
 addLabel :: Int16 -> LabelState H.Label
 addLabel boff = do
-  lmap <- liftM labels get
+  lmap <- labels <$> get
   if M.member boff lmap
     then return $ lmap M.! boff
     else do
@@ -281,16 +281,13 @@ addLabel boff = do
       return label
 
 toMid :: [JVMInstruction] -> LabelState [MateIR2 Var O O]
-toMid xs = mapM tir' xs
-  where
-    tir' :: JVMInstruction -> LabelState (MateIR2 Var O O)
-    tir' x = do
-      -- st <- (trace $ printf "tir': %s\n" (show x)) get
-      st <- get
-      let (ins, state') = runState (tir2 x) (simStack st)
-      put $ st { simStack = state'}
-      incrementPC x
-      return ins
+toMid xs = forM xs $ \x -> do
+  -- st <- (trace $ printf "tir': %s\n" (show x)) get
+  st <- get
+  let (ins, state') = runState (tir2 x) (simStack st)
+  put $ st { simStack = state'}
+  incrementPC x
+  return ins
 
 incrementPC :: JVMInstruction -> LabelState ()
 incrementPC ins = modify (\s -> s { pcOffset = pcOffset s + insnLength ins})
@@ -303,7 +300,7 @@ toLast instruction = do
       x <- apop2
       y <- apop2
       unless (varType x == varType y) $ error "toLast IFEQ_ICMP: type mismatch"
-      pc <- liftM pcOffset get
+      pc <- pcOffset <$> get
       truejmp <- addLabel (pc + rel)
       falsejmp <- addLabel (pc + insnLength instruction)
       return $ IR2IfElse x y truejmp falsejmp
@@ -365,6 +362,9 @@ insnLength :: JVMInstruction -> Int16
 insnLength ICONST_0 = 2
 insnLength ICONST_1 = 2
 insnLength _ = 3
+
+instance Functor SimpleUniqueMonad where
+  fmap = liftM
   
 
 {- JVMInstruction -> MateIR -}
