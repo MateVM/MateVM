@@ -2,6 +2,7 @@
 {-# LANGUAGE OverlappingInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE RankNTypes #-}
 module Main where
 
 import qualified Data.List as L
@@ -315,6 +316,29 @@ apop2 = do
   modify (\s -> s { simStack = lol { stack = tail (stack lol)} } )
   return . head . stack $ lol
 
+-- foldGraphNodes :: forall n a. (forall e x. n e x -> a -> a)
+--                -> forall e x. Graph n e x -> a -> a
+
+compileGraphWith :: Monoid m => (forall e x. (MateIR2 HVar) e x -> m)
+                         -> Graph (MateIR2 HVar) e1 x1 -> m
+compileGraphWith f g = foldGraphNodes (\x y -> (f x) `mappend` y) g mempty
+
+compileGraph :: Graph (MateIR2 HVar) e x -> CodeGen env s ()
+compileGraph = compileGraphWith compileIns
+
+compileIns :: (MateIR2 HVar) e x -> CodeGen env s ()
+compileIns ins = gen
+  where
+    gen = case ins of
+      IR2Label l -> do
+        lab <- newNamedLabel ("BB: " ++ show l)
+        defineLabel lab
+      _ -> undefined
+
+-- we need something like `mapGraph' here, but with State!
+regallocGraph :: Graph (MateIR2 Var) e x -> Graph (MateIR2 HVar) e x
+regallocGraph = undefined
+
 jvm0 = [ICONST_0, ICONST_1, IADD, RETURN]
 
 jvm1 = [jvm1_1, jvm1_2]
@@ -343,9 +367,10 @@ result = do
   let printjvmres :: [[JVMInstruction]] -> IO ()
       printjvmres insns = do
         let r = res insns
-        printf "graph:\n%s\n" $ showGraph show $ Prelude.fst r
+        let g = Prelude.fst r
+        printf "graph:\n%s\n" $ showGraph show g
         printf "map: %s\n" (show . labels . snd $ r)
-
+        -- TODO: regalloc + compileGraph
   printjvmres jvm1
   printjvmres jvm2
 
