@@ -62,6 +62,7 @@ data MateIR t where
   IRInvoke :: Word8 -> MateIR t
   IRNop :: MateIR t
 
+
 data OpType
   = Add
   | Sub
@@ -236,8 +237,13 @@ data MateIR2 t e x where
   IR2IfElse :: (Show t) => t -> t -> H.Label -> H.Label -> MateIR2 t O C
   IR2Return :: Bool -> MateIR2 t O C
 
+data LinearIns t
+  = Fst (MateIR2 t C O)
+  | Mid (MateIR2 t O O)
+  | Lst (MateIR2 t O C)
+
 instance Show (MateIR2 t e x) where
-  show (IR2Label l) = printf "label: %s\n" (show l)
+  show (IR2Label l) = printf "label: %s:\n" (show l)
   show (IR2Op op vr v1 v2) = printf "\t%s %s,  %s, %s" (show op) (show vr) (show v1) (show v2)
   show (IR2Invoke x) = printf "\tinvoke %s" (show x)
   show (IR2Jump l) = printf "\tjump %s" (show l)
@@ -245,9 +251,16 @@ instance Show (MateIR2 t e x) where
   show (IR2Return b) = printf "\treturn (%s)" (show b)
   show IR2Nop = printf "\tnop"
 
+instance Show (LinearIns t) where
+  show (Fst n) = printf "%s\n" $ show n
+  show (Mid n) = printf "%s\n" $ show n
+  show (Lst n) = printf "%s\n" $ show n
+
 instance NonLocal (MateIR2 Var) where
   entryLabel (IR2Label l) = l
-  successors = undefined
+  successors (IR2Jump l) = [l]
+  successors (IR2IfElse _ _ l1 l2) = [l1, l2]
+  successors (IR2Return _) = []
 
 data LabelLookup = LabelLookup 
   { labels :: M.Map Int16 H.Label
@@ -262,6 +275,11 @@ data LabelLookup = LabelLookup
 -- (|*><*|) ::  (GraphRep g, NonLocal n) => g n e C  -> g n C x -> g n e x
 
 type LabelState a = StateT LabelLookup SimpleUniqueMonad a
+
+mkMethod :: Graph (MateIR2 Var) C C -> LabelState (Graph (MateIR2 Var) O C)
+mkMethod g = do
+  entryseq <- mkLast <$> IR2Jump <$> addLabel 0
+  return $ entryseq |*><*| g
 
 mkBlock :: [JVMInstruction] -> LabelState (Graph (MateIR2 Var) C C)
 mkBlock jvminsn = do
@@ -282,13 +300,15 @@ addLabel boff = do
       return label
 
 toMid :: [JVMInstruction] -> LabelState [MateIR2 Var O O]
-toMid xs = forM xs $ \x -> do
-  -- st <- (trace $ printf "tir': %s\n" (show x)) get
-  st <- get
-  let (ins, state') = runState (tir2 x) (simStack st)
-  put $ st { simStack = state'}
-  incrementPC x
-  return ins
+toMid xs = do insn <- forM xs $ \x -> do
+                -- st <- (trace $ printf "tir': %s\n" (show x)) get
+                st <- get
+                let (ins, state') = runState (tir2 x) (simStack st)
+                put $ st { simStack = state'}
+                incrementPC x
+                return ins
+              let noNop IR2Nop = False; noNop _ = True
+              return $ filter noNop insn
 
 incrementPC :: JVMInstruction -> LabelState ()
 incrementPC ins = modify (\s -> s { pcOffset = pcOffset s + insnLength ins})
@@ -316,28 +336,125 @@ apop2 = do
   modify (\s -> s { simStack = lol { stack = tail (stack lol)} } )
   return . head . stack $ lol
 
--- foldGraphNodes :: forall n a. (forall e x. n e x -> a -> a)
---                -> forall e x. Graph n e x -> a -> a
 
-compileGraphWith :: Monoid m => (forall e x. (MateIR2 HVar) e x -> m)
-                         -> Graph (MateIR2 HVar) e1 x1 -> m
-compileGraphWith f g = foldGraphNodes (\x y -> (f x) `mappend` y) g mempty
-
-compileGraph :: Graph (MateIR2 HVar) e x -> CodeGen env s ()
-compileGraph = compileGraphWith compileIns
-
-compileIns :: (MateIR2 HVar) e x -> CodeGen env s ()
-compileIns ins = gen
+mkLinear :: Graph (MateIR2 Var) O x -> [LinearIns Var] -- [Block (MateIR2 Var) C C]
+mkLinear = concatMap lineariseBlock . postorder_dfs
   where
-    gen = case ins of
-      IR2Label l -> do
-        lab <- newNamedLabel ("BB: " ++ show l)
-        defineLabel lab
-      _ -> undefined
+    -- see compiler/Lambdachine/Grin/RegAlloc.hs
+    -- lineariseBlock :: Block (MateIR2 Var) C C -> [LinearIns Var]
+    lineariseBlock block = entry_ins ++ map Mid middles ++ tail_ins
+      where
+        (entry, middles, tailb) = blockToNodeList block
+        entry_ins :: [LinearIns Var]
+        entry_ins = case entry of JustC n -> [Fst n]; NothingC -> []
+        tail_ins :: [LinearIns Var]
+        tail_ins = case tailb of JustC n -> [Lst n]; NothingC -> []
 
--- we need something like `mapGraph' here, but with State!
-regallocGraph :: Graph (MateIR2 Var) e x -> Graph (MateIR2 HVar) e x
-regallocGraph = undefined
+stupidRegAlloc2 :: [LinearIns Var] -> [LinearIns HVar]
+stupidRegAlloc2 linsn = evalState regAlloc' emptyRegs
+  where
+    regAlloc' = mapM assignReg linsn
+    assignReg :: LinearIns Var -> State MappedRegs (LinearIns HVar)
+    assignReg lv = case lv of
+      Fst x -> case x of
+        IR2Label x' -> return $ Fst $ IR2Label x'
+      Mid ins -> case ins of
+        IR2Op op dst src1 src2 -> do
+          dstnew <- doAssign dst
+          src1new <- doAssign src1
+          src2new <- doAssign src2
+          return $ Mid $ IR2Op op dstnew src1new src2new
+        IR2Nop -> return $ Mid $ IR2Nop
+        IR2Invoke b -> return $ Mid $ IR2Invoke b
+      Lst ins -> case ins of
+        IR2Jump l -> return $ Lst $ IR2Jump l
+        IR2IfElse cmp1 cmp2 l1 l2 -> do
+          cmp1new <- doAssign cmp1
+          cmp2new <- doAssign cmp2
+          return $ Lst $ IR2IfElse cmp1new cmp2new l1 l2
+        IR2Return b -> return $ Lst $ IR2Return b
+
+    doAssign :: Var -> State MappedRegs HVar
+    doAssign (JIntValue x) = return $ HIConstant x
+    doAssign (JFloatValue x) = return $ HFConstant x
+    doAssign vr = do
+      isAssignVr <- hasAssign vr
+      if isAssignVr
+        then getAssign vr
+        else nextAvailReg vr
+      where
+        hasAssign :: Var -> State MappedRegs Bool
+        hasAssign (VReg _ vreg) = M.member vreg <$> regMap <$> get
+        hasAssign x = error $ "hasAssign: " ++ show x
+
+        getAssign :: Var -> State MappedRegs HVar
+        getAssign (VReg _ vreg) = (M.! vreg) <$> regMap <$> get
+        getAssign x = error $ "getAssign: " ++ show x
+
+        nextAvailReg:: Var -> State MappedRegs HVar
+        nextAvailReg (VReg t vreg) = do
+          availregs <- availRegs t
+          mr <- get
+          case availregs of
+            [] -> do
+              let disp = stackCnt mr
+              let spill = case t of
+                            JInt -> SpillIReg (Disp disp)
+                            JFloat -> SpillFReg (Disp disp)
+              let imap = M.insert vreg spill $ regMap mr
+              put (mr { stackCnt = disp + 4, regMap = imap} )
+              return spill
+            (x:_) -> do
+              let imap = M.insert vreg x $ regMap mr
+              put (mr { regMap = imap })
+              return x
+        nextAvailReg _ = error "intNextReg: dafuq"
+
+        regsInUse :: VarType -> State MappedRegs [HVar]
+        regsInUse t = do
+          mr <- M.elems <$> regMap <$> get
+          let unpackIntReg :: HVar -> Maybe HVar
+              unpackIntReg x@(HIReg _) = Just x
+              unpackIntReg _ = Nothing
+          let unpackFloatReg :: HVar -> Maybe HVar
+              unpackFloatReg x@(HFReg _) = Just x
+              unpackFloatReg _ = Nothing
+          let unpacker = case t of JInt -> unpackIntReg; JFloat -> unpackFloatReg
+          return . mapMaybe unpacker $ mr
+
+        availRegs :: VarType -> State MappedRegs [HVar]
+        availRegs t = do
+          inuse <- regsInUse t
+          let allregs = case t of JInt -> allIntRegs; JFloat -> allFloatRegs
+          return (allregs L.\\ inuse)
+
+compileLinear :: M.Map Int16 H.Label -> [LinearIns HVar] -> CodeGen e s [Instruction]
+compileLinear labels linsn = do
+  bblabels <- forM (M.elems labels) $ \h -> do
+                l <- newNamedLabel ("Label: " ++ show h)
+                return (h, l)
+  let lmap :: M.Map H.Label Label
+      lmap = M.fromList bblabels
+  let compileIns (Fst (IR2Label h)) = defineLabel $ lmap M.! h
+      compileIns (Mid ins) = girEmitOO ins
+      compileIns (Lst ins) = case ins of
+        IR2IfElse src1 src2 h1 h2 -> do
+          let l1 = lmap M.! h1
+          let l2 = lmap M.! h2
+          case (src1, src2) of
+            (HIReg s1, HIReg s2) -> cmp s1 s2
+            (HIConstant c, HIReg s1) -> cmp s1 (fromIntegral c :: Word32)
+            (HIReg s1, HIConstant c) -> cmp s1 (fromIntegral c :: Word32)
+            x -> error $ "ir2ifelse: not impl. yet" ++ show x
+          je l1
+          jmp l2
+        IR2Return _ -> ret
+        x -> error $ "lst: not impl. yet: " ++ show x
+  mapM_ compileIns linsn
+  disassemble
+
+
+
 
 jvm0 = [ICONST_0, ICONST_1, IADD, RETURN]
 
@@ -362,15 +479,21 @@ result = do
   let transform bs = do
         foldl (liftM2 (|*><*|)) (return emptyClosedGraph) (map mkBlock bs)
   let runStuff x = runSimpleUniqueMonad . runStateT x
-  let res jvminsns = runStuff (transform jvminsns) initstate
+  let res jvminsns = runStuff (transform jvminsns >>= \g -> mkMethod g) initstate
 
   let printjvmres :: [[JVMInstruction]] -> IO ()
       printjvmres insns = do
         let r = res insns
         let g = Prelude.fst r
-        printf "graph:\n%s\n" $ showGraph show g
-        printf "map: %s\n" (show . labels . snd $ r)
-        -- TODO: regalloc + compileGraph
+        let lbls = labels . snd $ r
+        let l = mkLinear g
+        let ra = stupidRegAlloc2 l
+        printf "GRAPH:\n%s\n" $ showGraph show g
+        printf "MAP: %s\n" (show lbls)
+        printf "LINEAR: %s\n" (show l)
+        printf "REGALLOC: %s\n" (show ra)
+        (_, Right dis) <- runCodeGen (compileLinear lbls ra) () ()
+        mapM_ (printf "%s\n" . showIntel) dis
   printjvmres jvm1
   printjvmres jvm2
 
@@ -575,8 +698,8 @@ stupidRegAlloc bb nb = do
 {- /regalloc -}
 
 {- codegen test -}
-girEmit :: MateIR HVar -> CodeGen e s ()
-girEmit (IROp Add dst' src1' src2') =
+girEmitOO :: MateIR2 HVar O O -> CodeGen e s ()
+girEmitOO (IR2Op Add dst' src1' src2') =
     ge dst' src1' src2'
   where
     ge :: HVar -> HVar -> HVar -> CodeGen e s ()
@@ -615,19 +738,10 @@ girEmit (IROp Add dst' src1' src2') =
     ge (HFReg dst) (HFReg src) (HFConstant 0) =
       movss dst src
     ge p1 p2 p3 = error $ "girEmit (add): " ++ show p1 ++ ", " ++ show p2 ++ ", " ++ show p3
-girEmit (IROp Mul _ _ _) = do
+girEmitOO (IR2Op Mul _ _ _) = do
   newNamedLabel "TODO!" >>= defineLabel
   nop
-girEmit (IRIfElse src1' src2') = ge src1' src2'
-  where
-    ge :: HVar -> HVar -> CodeGen e s ()
-    ge (HIReg src1) (HIReg src2) = cmp src1 src2
-    ge (HIReg src1) (HIConstant src2) =
-      cmp src1 (fromIntegral src2 :: Word32)
-    ge src1@(HIConstant _) src2 = ge src2 src1
-    ge p1 p2 = error $ "girEmit (if): " ++ show p1 ++ ", " ++ show p2
-girEmit (IRReturn _) = ret
-girEmit x = error $ "girEmit: insn not implemented: " ++ show x
+girEmitOO x = error $ "girEmitOO: insn not implemented: " ++ show x
 {- /codegen -}
 
 
@@ -706,7 +820,7 @@ compile bbgir = do
       lmap = M.fromList bblabels
   bbFold (\bb -> do
     defineLabel $ lmap M.! bbID bb
-    mapM_ (\x -> printInsn x >> girEmit x) $ code bb
+    -- mapM_ (\x -> printInsn x >> girEmit x) $ code bb
     bset <- getState
     let jmpblock :: BlockRef a -> CodeGen e s ()
         jmpblock Self = jmp $ lmap M.! bbID bb
