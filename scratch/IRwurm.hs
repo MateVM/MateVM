@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverlappingInstances #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE RankNTypes #-}
@@ -8,6 +9,7 @@ module Main where
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Set as S
+import qualified Data.ByteString.Lazy as B
 import Data.Int
 import Data.Word
 import Data.Maybe
@@ -15,6 +17,11 @@ import Control.Applicative hiding ((<*>))
 
 import Harpy
 import Harpy.X86Disassembler
+
+import JVM.Assembler hiding (Instruction)
+import qualified JVM.Assembler as J
+import JVM.ClassFile
+import JVM.Converter
 
 import Compiler.Hoopl hiding (Label)
 import qualified Compiler.Hoopl as H
@@ -26,33 +33,18 @@ import Text.Printf
 
 {- TODO
 (.) typeclass for codeemitting: http://pastebin.com/RZ9qR3k7 (depricated) || http://pastebin.com/BC3Jr5hG
-(.) backref resolution before JavaStackSim
+(.) what about argument passing to methods
+(.) what about return values in methods (related problem to above?)
+(.) hoopl passes
 -}
-
--- source IR (jvm bytecode)
-data JVMInstruction
-  = ICONST_0 | ICONST_1
-  | FCONST_0 | FCONST_1
-  | IPUSH Int32
-  | ILOAD Word8  -- storage offset
-  | FLOAD Word8  -- storage offset
-  | ISTORE Word8 -- storage offset
-  | FSTORE Word8 -- storage offset
-  | IADD | ISUB | IMUL | FADD
-  | IFEQ_ICMP Int16 -- signed relative offset
-  | GOTO Int16
-  | DUP | SWAP
-  | INVOKE Word8 -- amount of arguments
-  | RETURN
-  deriving Show
 
 data MateIR t e x where
   IRLabel :: H.Label -> MateIR t C O
   IROp :: (Show t) => OpType -> t -> t -> t -> MateIR t O O
   IRNop :: MateIR t O O
-  IRInvoke :: Word8 -> MateIR t O O
+  IRInvoke :: Word16 -> MateIR t O O
   IRJump :: H.Label -> MateIR t O C
-  IRIfElse :: (Show t) => t -> t -> H.Label -> H.Label -> MateIR t O C
+  IRIfElse :: (Show t) => CMP -> t -> t -> H.Label -> H.Label -> MateIR t O C
   IRReturn :: Bool -> MateIR t O C
 
 data LinearIns t
@@ -95,7 +87,7 @@ instance Functor SimpleUniqueMonad where
 instance NonLocal (MateIR Var) where
   entryLabel (IRLabel l) = l
   successors (IRJump l) = [l]
-  successors (IRIfElse _ _ l1 l2) = [l1, l2]
+  successors (IRIfElse _ _ _ l1 l2) = [l1, l2]
   successors (IRReturn _) = []
 
 {- show -}
@@ -104,7 +96,7 @@ instance Show (MateIR t e x) where
   show (IROp op vr v1 v2) = printf "\t%s %s,  %s, %s" (show op) (show vr) (show v1) (show v2)
   show (IRInvoke x) = printf "\tinvoke %s" (show x)
   show (IRJump l) = printf "\tjump %s" (show l)
-  show (IRIfElse v1 v2 l1 l2) = printf "\tif (%s == %s) then %s else %s" (show v1) (show v2) (show l1) (show l2)
+  show (IRIfElse jcmp v1 v2 l1 l2) = printf "\tif (%s `%s` %s) then %s else %s" (show v1) (show jcmp) (show v2) (show l1) (show l2)
   show (IRReturn b) = printf "\treturn (%s)" (show b)
   show IRNop = printf "\tnop"
 
@@ -137,7 +129,7 @@ data LabelLookup = LabelLookup
   { labels :: M.Map Int16 H.Label
   , blockEntries :: S.Set Int16
   , simStack :: SimStack
-  , instructions :: [JVMInstruction]
+  , instructions :: [J.Instruction]
   , pcOffset :: Int16 }
 
 type LabelState a = StateT LabelLookup SimpleUniqueMonad a
@@ -148,6 +140,9 @@ type LabelState a = StateT LabelLookup SimpleUniqueMonad a
 -- mkLast ::     GraphRep g =>                n O C  -> g n O C
 -- (<*>) ::     (GraphRep g, NonLocal n) => g n e O  -> g n O x -> g n e x
 -- (|*><*|) ::  (GraphRep g, NonLocal n) => g n e C  -> g n C x -> g n e x
+
+w162i16 :: Word16 -> Int16
+w162i16 w16 = fromIntegral w16
 
 -- forward references wouldn't be a problem, but backwards are
 resolveReferences :: LabelState ()
@@ -165,13 +160,22 @@ resolveReferences = do
         popInstruction
         resolveReferences
   where
-    addJumpTarget :: JVMInstruction -> Int16 -> LabelState ()
+    addJumpTarget :: J.Instruction -> Int16 -> LabelState ()
     addJumpTarget ins pc = case ins of
-        IFEQ_ICMP rel -> do
-          addPC (pc + insnLength ins)
-          addPC (pc + rel)
-        GOTO rel -> addPC (pc + rel)
+        (IF _ rel) -> addPCs pc rel ins
+        (IF_ICMP _ rel) -> addPCs pc rel ins
+        (IF_ACMP _ rel) -> addPCs pc rel ins
+        (IFNULL rel) -> addPCs pc rel ins
+        (IFNONNULL rel) -> addPCs pc rel ins
+        GOTO rel -> addPC (pc + w162i16 rel)
+        JSR _ -> error "addJumpTarget: JSR?!"
+        GOTO_W _ -> error "addJumpTarget: GOTO_W?!"
+        JSR_W _ -> error "addJumpTarget: JSR_W?!"
+        TABLESWITCH _ _ _ _ _ -> error "addJumpTarget: tableswitch"
+        LOOKUPSWITCH _ _ _ _ -> error "addJumpTarget: lookupswitch"
         _ -> return ()
+    addPCs :: Int16 -> Word16 -> J.Instruction -> LabelState ()
+    addPCs pc rel ins = do addPC (pc + insnLength ins); addPC (pc + (w162i16 rel))
     addPC :: Int16 -> LabelState ()
     addPC bcoff = do
       modify (\s -> s { blockEntries = S.insert bcoff (blockEntries s) })
@@ -244,39 +248,69 @@ toMid = do
       popInstruction
       return insIR
 
-    toLast :: JVMInstruction -> LabelState (Maybe (MateIR Var O O), MateIR Var O C)
+    toLast :: J.Instruction -> LabelState (Maybe (MateIR Var O O), MateIR Var O C)
     toLast ins = do
       pc <- pcOffset <$> get
+      let ifstuff jcmp rel op1 op2 = do
+            truejmp <- addLabel (pc + w162i16 rel)
+            falsejmp <- addLabel (pc + insnLength ins)
+            incrementPC ins
+            popInstruction
+            return $ (Nothing, IRIfElse jcmp op1 op2 truejmp falsejmp)
       case ins of
         RETURN -> do
           incrementPC ins
           popInstruction
-          return $ (Nothing, IRReturn True)
-        (IFEQ_ICMP rel) -> do
-          x <- apop2
-          y <- apop2
-          unless (varType x == varType y) $ error "toLast IFEQ_ICMP: type mismatch"
-          truejmp <- addLabel (pc + rel)
-          falsejmp <- addLabel (pc + insnLength ins)
-          incrementPC ins
-          popInstruction
-          return $ (Nothing, IRIfElse x y truejmp falsejmp)
-        (GOTO rel) -> do error "toLast: goto"
+          return $ (Nothing, IRReturn False)
+        ARETURN -> returnSomething
+        IRETURN -> returnSomething
+        LRETURN -> returnSomething
+        FRETURN -> returnSomething
+        DRETURN -> returnSomething
+        (IF _ _) -> error "toLast: IF _ _)"
+        (IFNULL _) -> error "toLast: IFNULL"
+        (IFNONNULL _) -> error "toLast: IFNONNULL"
+        (IF_ICMP jcmp rel) -> do
+          op1 <- apop2
+          op2 <- apop2
+          unless (varType op1 == varType op2) $ error "toLast IF_ICMP: type mismatch"
+          ifstuff jcmp rel op1 op2
+        (IF_ACMP jcmp rel) -> do
+          op1 <- apop2
+          op2 <- apop2
+          unless (varType op1 == varType op2) $ error "toLast IF_ICMP: type mismatch"
+          ifstuff jcmp rel op1 op2
+        (GOTO _) -> do error "toLast: goto"
         _ -> do -- fallthrough case
           next <- addLabel (pc + insnLength ins)
           insIR <- normalIns ins
           return $ (Just insIR, IRJump next)
+      where
+        returnSomething = do
+          incrementPC ins
+          popInstruction
+          return $ (Nothing, IRReturn True) -- todo: encode type?!
 
--- dummy
-insnLength :: JVMInstruction -> Int16
-insnLength ICONST_0 = 2
-insnLength ICONST_1 = 2
-insnLength _ = 3
+insnLength :: Integral a => J.Instruction -> a
+insnLength x = case x of
+  (TABLESWITCH padding _ _ _ xs) ->
+    fromIntegral $ 1 {- opcode -}
+                 + (fromIntegral padding)
+                 + (3 * 4) {- def, low, high -}
+                 + 4 * length xs {- entries -}
+  (LOOKUPSWITCH padding _ _ xs) ->
+    fromIntegral $ 1 {- opcode -}
+                 + (fromIntegral padding)
+                 + (2 * 4) {- def, n -}
+                 + 8 * length xs {- pairs -}
+  _ -> len
+  where
+    len = fromIntegral . B.length . encodeInstructions . (:[]) $ x
 
-incrementPC :: JVMInstruction -> LabelState ()
+incrementPC :: J.Instruction -> LabelState ()
 incrementPC ins = modify (\s -> s { pcOffset = pcOffset s + insnLength ins})
 
-resetPC :: [JVMInstruction] -> LabelState ()
+resetPC :: [J.Instruction] -> LabelState ()
 resetPC jvmins = do
   modify (\s -> s { pcOffset = 0, instructions = jvmins })
 
@@ -288,12 +322,14 @@ apop2 = do
   modify (\s -> s { simStack = lol { stack = tail (stack lol)} } )
   return . head . stack $ lol
 
-tir :: JVMInstruction -> State SimStack (MateIR Var O O)
-tir ICONST_0 = tir (IPUSH 0)
-tir ICONST_1 = tir (IPUSH 1)
-tir (IPUSH x) = do apush $ JIntValue x; return IRNop
+tir :: J.Instruction -> State SimStack (MateIR Var O O)
+tir ICONST_0 = tir (BIPUSH 0)
+tir ICONST_1 = tir (BIPUSH 1)
+tir ICONST_2 = tir (BIPUSH 2)
+tir (BIPUSH x) = do apush $ JIntValue (fromIntegral x); return IRNop
 tir FCONST_0 =  do apush $ JFloatValue 0; return IRNop
 tir FCONST_1 =  do apush $ JFloatValue 1; return IRNop
+tir (ILOAD_ x) = tir (ILOAD (case x of I0 -> 0; I1 -> 1; I2 -> 2; I3 -> 3))
 tir (ILOAD x) = do apush $ VReg JInt (fromIntegral x); return IRNop
 tir (ISTORE y) = tirStore y JInt
 tir (FSTORE y) = tirStore y JFloat
@@ -301,8 +337,7 @@ tir IADD = tirOpInt Add JInt
 tir ISUB = tirOpInt Sub JInt
 tir IMUL = tirOpInt Mul JInt
 tir FADD = tirOpInt Add JFloat
-tir (IFEQ_ICMP _) = error "if in middle of block"
-tir RETURN = error "return in middle of block" -- return $ IRReturn False
+tir (INVOKESTATIC ident) = return $ IRInvoke ident -- TODO...
 tir x = error $ "tir: " ++ show x
 
 tirStore w8 t = do
@@ -375,10 +410,10 @@ stupidRegAlloc linsn = evalState regAlloc' emptyRegs
         IRInvoke b -> return $ Mid $ IRInvoke b
       Lst ins -> case ins of
         IRJump l -> return $ Lst $ IRJump l
-        IRIfElse cmp1 cmp2 l1 l2 -> do
+        IRIfElse jcmp cmp1 cmp2 l1 l2 -> do
           cmp1new <- doAssign cmp1
           cmp2new <- doAssign cmp2
-          return $ Lst $ IRIfElse cmp1new cmp2new l1 l2
+          return $ Lst $ IRIfElse jcmp cmp1new cmp2new l1 l2
         IRReturn b -> return $ Lst $ IRReturn b
 
     doAssign :: Var -> State MappedRegs HVar
@@ -447,7 +482,7 @@ compileLinear lbls linsn = do
   let compileIns (Fst (IRLabel h)) = defineLabel $ lmap M.! h
       compileIns (Mid ins) = girEmitOO ins
       compileIns (Lst ins) = case ins of
-        IRIfElse src1 src2 h1 h2 -> do
+        IRIfElse jcmp src1 src2 h1 h2 -> do
           let l1 = lmap M.! h1
           let l2 = lmap M.! h2
           case (src1, src2) of
@@ -455,12 +490,18 @@ compileLinear lbls linsn = do
             (HIConstant c, HIReg s1) -> cmp s1 (fromIntegral c :: Word32)
             (HIReg s1, HIConstant c) -> cmp s1 (fromIntegral c :: Word32)
             x -> error $ "IRifelse: not impl. yet" ++ show x
-          je l1
+          case jcmp of
+            C_EQ -> je  l1; C_NE -> jne l1
+            C_LT -> jl  l1; C_GT -> jg  l1
+            C_GE -> jge l1; C_LE -> jle l1
           jmp l2
         IRJump h -> jmp (lmap M.! h)
         IRReturn _ -> ret
   mapM_ compileIns linsn
   disassemble
+
+i322w32 :: Int32 -> Word32
+i322w32 = fromIntegral
 
 girEmitOO :: MateIR HVar O O -> CodeGen e s ()
 girEmitOO (IROp Add dst' src1' src2') =
@@ -502,40 +543,27 @@ girEmitOO (IROp Add dst' src1' src2') =
     ge (HFReg dst) (HFReg src) (HFConstant 0) =
       movss dst src
     ge p1 p2 p3 = error $ "girEmit (add): " ++ show p1 ++ ", " ++ show p2 ++ ", " ++ show p3
+girEmitOO (IROp Sub dst' src1' src2') = do
+    ge dst' src1' src2'
+  where
+    ge :: HVar -> HVar -> HVar -> CodeGen e s ()
+    ge (HIReg dst) (HIReg src1) (HIReg src2) = do
+      mov dst src2; sub dst src1
+    ge (HIReg dst) (HIConstant i32) (HIReg src2) = do
+      mov dst src2; sub dst (i322w32 i32)
+    ge _ _ _ = error $ "sub: not impl.: " ++ show dst' ++ ", "
+                     ++ show src1' ++ ", " ++ show src2'
 girEmitOO (IROp Mul _ _ _) = do
-  newNamedLabel "TODO!" >>= defineLabel
+  newNamedLabel "TODO! IROp Mul" >>= defineLabel
   nop
+girEmitOO (IRInvoke _) = do
+  newNamedLabel "TODO! call" >>= defineLabel
+  call (0x0 :: Word32)
 girEmitOO x = error $ "girEmitOO: insn not implemented: " ++ show x
 {- /codeGen -}
 
 {- sandbox to play -}
-jvm0 = [ICONST_0, ICONST_1, IADD, RETURN]
-
-jvm1 = jvm1_1 ++ jvm1_2
-jvm1_1 = [ICONST_0, ICONST_1, IADD, ICONST_1, IFEQ_ICMP (-9)]
-jvm1_2 = [ICONST_1, RETURN]
-
-jvm2 = jvm2_1 ++ jvm2_2 ++ jvm2_3
-jvm2_1 = [ICONST_0, ISTORE 0 -- 5
-         , ILOAD 0, ICONST_1, IADD, ISTORE 0 -- 16
-         , IPUSH 10, ILOAD 0, IFEQ_ICMP (-17)] -- 25
-jvm2_2 = [ILOAD 0, IPUSH 20, IFEQ_ICMP (-6)] -- 34
-jvm2_3 = [FCONST_0, FCONST_1, FADD, FSTORE 1 -- 46
-         , IPUSH 20, IPUSH 1, IMUL, ISTORE 2 -- 58
-         , RETURN] -- 61
-
-jvm3 = [ICONST_0, ISTORE 0]
-    ++ [ILOAD 0, ICONST_1, IADD, ISTORE 0
-       ,ILOAD 0, IPUSH 10, IFEQ_ICMP (-17)] -- len: 20
-    ++ [ILOAD 0, IPUSH 20, IFEQ_ICMP (-26)]
-    ++ [FCONST_0, FCONST_1, FADD, FSTORE 1, IPUSH 20
-       ,IPUSH 1, IMUL, ISTORE 2]
-    ++ regpressure
-    ++ [RETURN]
-  where
-    regpressure = concat $ replicate 5 [ILOAD 0, ILOAD 0, IADD, ISTORE 0]
-
-pipeline :: [JVMInstruction] -> Bool -> IO ()
+pipeline :: [J.Instruction] -> Bool -> IO ()
 pipeline jvminsn debug = do
     prettyHeader "JVM Input"
     mapM_ (printf "\t%s\n" . show) jvminsn
@@ -581,10 +609,10 @@ prettyHeader str = do
 
 main :: IO ()
 main = do
-  -- printf "\n\n\njvm1 example\n"
-  -- pipeline jvm1 True
-  printf "\n\n\njvm2 example\n"
-  pipeline jvm2 True
-  printf "\n\n\njvm3 example\n"
-  pipeline jvm3 True
+  cls <- parseClassFile "../tests/Fib.class"
+  case lookupMethod "fib" cls of
+    Just m -> do
+      let code = codeInstructions $ decodeMethod $ fromMaybe (error "no code seg") (attrByName m "Code")
+      pipeline code True
+    Nothing -> error "lookupMethod"
 {- /application -}
