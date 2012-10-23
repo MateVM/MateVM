@@ -7,6 +7,7 @@ module Main where
 
 import qualified Data.List as L
 import qualified Data.Map as M
+import qualified Data.Set as S
 import Data.Int
 import Data.Word
 import Data.Maybe
@@ -134,7 +135,9 @@ data SimStack = SimStack
 
 data LabelLookup = LabelLookup 
   { labels :: M.Map Int16 H.Label
+  , blockEntries :: S.Set Int16
   , simStack :: SimStack
+  , instructions :: [JVMInstruction]
   , pcOffset :: Int16 }
 
 type LabelState a = StateT LabelLookup SimpleUniqueMonad a
@@ -146,18 +149,61 @@ type LabelState a = StateT LabelLookup SimpleUniqueMonad a
 -- (<*>) ::     (GraphRep g, NonLocal n) => g n e O  -> g n O x -> g n e x
 -- (|*><*|) ::  (GraphRep g, NonLocal n) => g n e C  -> g n C x -> g n e x
 
+-- forward references wouldn't be a problem, but backwards are
+resolveReferences :: LabelState ()
+resolveReferences = do
+    jvminsn <- instructions <$> get
+    pc <- pcOffset <$> get
+    if null jvminsn
+      then do
+        addPC 0 -- add entry instruction
+        addPC pc -- mark return instruction
+      else do
+        let ins = head jvminsn
+        addJumpTarget ins pc
+        incrementPC ins
+        popInstruction
+        resolveReferences
+  where
+    addJumpTarget :: JVMInstruction -> Int16 -> LabelState ()
+    addJumpTarget ins pc = case ins of
+        IFEQ_ICMP rel -> do
+          addPC (pc + insnLength ins)
+          addPC (pc + rel)
+        GOTO rel -> addPC (pc + rel)
+        _ -> return ()
+    addPC :: Int16 -> LabelState ()
+    addPC bcoff = do
+      modify (\s -> s { blockEntries = S.insert bcoff (blockEntries s) })
+
 mkMethod :: Graph (MateIR Var) C C -> LabelState (Graph (MateIR Var) O C)
 mkMethod g = do
   entryseq <- mkLast <$> IRJump <$> addLabel 0
   return $ entryseq |*><*| g
 
-mkBlock :: [JVMInstruction] -> LabelState (Graph (MateIR Var) C C)
-mkBlock jvminsn = do
+mkBlocks :: LabelState [Graph (MateIR Var) C C]
+mkBlocks = do
+  pc <- pcOffset <$> get
+  entries <- blockEntries <$> get
+  jvminsn <- instructions <$> get
+  if null jvminsn
+    then return []
+    else if S.member pc entries
+      then do
+        g <- mkBlock
+        gs <- mkBlocks
+        return $ g : gs
+      else error $ "mkBlocks: something wrong here. pc: " ++ show pc ++
+                   "\ninsn: " ++ show jvminsn
+
+mkBlock :: LabelState (Graph (MateIR Var) C C)
+mkBlock = do
   pc <- pcOffset <$> get
   f' <- IRLabel <$> (addLabel pc)
-  ms' <- toMid $ init jvminsn
-  l' <- toLast (last jvminsn)
-  return $ mkFirst f' <*> mkMiddles ms' <*> mkLast l'
+  (ms', l') <- toMid
+  let noNop IRNop = False; noNop _ = True
+  let ms'' = filter noNop ms'
+  return $ mkFirst f' <*> mkMiddles ms'' <*> mkLast l'
 
 addLabel :: Int16 -> LabelState H.Label
 addLabel boff = do
@@ -169,16 +215,57 @@ addLabel boff = do
       modify (\s -> s {labels = M.insert boff label (labels s) })
       return label
 
-toMid :: [JVMInstruction] -> LabelState [MateIR Var O O]
-toMid xs = do insn <- forM xs $ \x -> do
-                -- st <- (trace $ printf "tir': %s\n" (show x)) get
-                st <- get
-                let (ins, state') = runState (tir x) (simStack st)
-                put $ st { simStack = state'}
-                incrementPC x
-                return ins
-              let noNop IRNop = False; noNop _ = True
-              return $ filter noNop insn
+popInstruction :: LabelState ()
+popInstruction = do
+  i <- instructions <$> get
+  modify (\s -> s { instructions = tail i })
+
+toMid :: LabelState ([MateIR Var O O], MateIR Var O C)
+toMid = do
+    pc <- pcOffset <$> get
+    ins <- head <$> instructions <$> get
+    entries <- blockEntries <$> get
+    if S.member (pc + insnLength ins) entries
+      then do
+        (insOO, lastins) <- toLast ins
+        let insOOs = case insOO of Nothing -> []; Just x -> [x]
+        return (insOOs, lastins)
+      else do
+        insIR <- normalIns ins
+        (insn, lastins) <- toMid
+        return (insIR:insn, lastins)
+  where
+    normalIns ins = do
+      st <- get
+      -- st <- (trace $ printf "tir': %s\n" (show x)) get
+      let (insIR, state') = runState (tir ins) (simStack st)
+      put $ st { simStack = state'}
+      incrementPC ins
+      popInstruction
+      return insIR
+
+    toLast :: JVMInstruction -> LabelState (Maybe (MateIR Var O O), MateIR Var O C)
+    toLast ins = do
+      pc <- pcOffset <$> get
+      case ins of
+        RETURN -> do
+          incrementPC ins
+          popInstruction
+          return $ (Nothing, IRReturn True)
+        (IFEQ_ICMP rel) -> do
+          x <- apop2
+          y <- apop2
+          unless (varType x == varType y) $ error "toLast IFEQ_ICMP: type mismatch"
+          truejmp <- addLabel (pc + rel)
+          falsejmp <- addLabel (pc + insnLength ins)
+          incrementPC ins
+          popInstruction
+          return $ (Nothing, IRIfElse x y truejmp falsejmp)
+        (GOTO rel) -> do error "toLast: goto"
+        _ -> do -- fallthrough case
+          next <- addLabel (pc + insnLength ins)
+          insIR <- normalIns ins
+          return $ (Just insIR, IRJump next)
 
 -- dummy
 insnLength :: JVMInstruction -> Int16
@@ -189,21 +276,9 @@ insnLength _ = 3
 incrementPC :: JVMInstruction -> LabelState ()
 incrementPC ins = modify (\s -> s { pcOffset = pcOffset s + insnLength ins})
 
-toLast :: JVMInstruction -> LabelState (MateIR Var O C)
-toLast instruction = do
-  res <- case instruction of
-    RETURN -> return $ IRReturn True
-    (IFEQ_ICMP rel) -> do
-      x <- apop2
-      y <- apop2
-      unless (varType x == varType y) $ error "toLast IFEQ_ICMP: type mismatch"
-      pc <- pcOffset <$> get
-      truejmp <- addLabel (pc + rel)
-      falsejmp <- addLabel (pc + insnLength instruction)
-      return $ IRIfElse x y truejmp falsejmp
-    _ -> error $ "toLast: " ++ show instruction
-  incrementPC instruction
-  return res
+resetPC :: [JVMInstruction] -> LabelState ()
+resetPC jvmins = do
+  modify (\s -> s { pcOffset = 0, instructions = jvmins })
 
 -- helper
 apop2 :: LabelState Var
@@ -363,8 +438,8 @@ stupidRegAlloc linsn = evalState regAlloc' emptyRegs
 
 {- codegen -}
 compileLinear :: M.Map Int16 H.Label -> [LinearIns HVar] -> CodeGen e s [Instruction]
-compileLinear labels linsn = do
-  bblabels <- forM (M.elems labels) $ \h -> do
+compileLinear lbls linsn = do
+  bblabels <- forM (M.elems lbls) $ \h -> do
                 l <- newNamedLabel ("Label: " ++ show h)
                 return (h, l)
   let lmap :: M.Map H.Label Label
@@ -382,8 +457,8 @@ compileLinear labels linsn = do
             x -> error $ "IRifelse: not impl. yet" ++ show x
           je l1
           jmp l2
+        IRJump h -> jmp (lmap M.! h)
         IRReturn _ -> ret
-        x -> error $ "lst: not impl. yet: " ++ show x
   mapM_ compileIns linsn
   disassemble
 
@@ -436,45 +511,34 @@ girEmitOO x = error $ "girEmitOO: insn not implemented: " ++ show x
 {- sandbox to play -}
 jvm0 = [ICONST_0, ICONST_1, IADD, RETURN]
 
-jvm1 = [jvm1_1, jvm1_2]
+jvm1 = jvm1_1 ++ jvm1_2
 jvm1_1 = [ICONST_0, ICONST_1, IADD, ICONST_1, IFEQ_ICMP (-9)]
 jvm1_2 = [ICONST_1, RETURN]
 
-jvm2 = [jvm2_1, jvm2_2, jvm2_3]
-jvm2_1 = [ICONST_0, ISTORE 0
-         , ILOAD 0, ICONST_1, IADD, ISTORE 0
-         , IPUSH 10, ILOAD 0, IFEQ_ICMP (-14)]
-jvm2_2 = [ILOAD 0, IPUSH 20, IFEQ_ICMP (-6)]
-jvm2_3 = [FCONST_0, FCONST_1, FADD, FSTORE 1
-         , IPUSH 20, IPUSH 1, IMUL, ISTORE 2
-         , RETURN]
+jvm2 = jvm2_1 ++ jvm2_2 ++ jvm2_3
+jvm2_1 = [ICONST_0, ISTORE 0 -- 5
+         , ILOAD 0, ICONST_1, IADD, ISTORE 0 -- 16
+         , IPUSH 10, ILOAD 0, IFEQ_ICMP (-17)] -- 25
+jvm2_2 = [ILOAD 0, IPUSH 20, IFEQ_ICMP (-6)] -- 34
+jvm2_3 = [FCONST_0, FCONST_1, FADD, FSTORE 1 -- 46
+         , IPUSH 20, IPUSH 1, IMUL, ISTORE 2 -- 58
+         , RETURN] -- 61
 
-{-
-ex0 :: BasicBlock JVMInstruction
-ex0 = BasicBlock 1 [ICONST_0, ISTORE 0] $ Jump (Ref bb2)
+jvm3 = [ICONST_0, ISTORE 0]
+    ++ [ILOAD 0, ICONST_1, IADD, ISTORE 0
+       ,ILOAD 0, IPUSH 10, IFEQ_ICMP (-17)] -- len: 20
+    ++ [ILOAD 0, IPUSH 20, IFEQ_ICMP (-26)]
+    ++ [FCONST_0, FCONST_1, FADD, FSTORE 1, IPUSH 20
+       ,IPUSH 1, IMUL, ISTORE 2]
+    ++ regpressure
+    ++ [RETURN]
   where
-    bb2 = BasicBlock 2 [ILOAD 0, ICONST_1, IADD, ISTORE 0
-                       , ILOAD 0, IPUSH 10, IFEQ_ICMP dummy]
-                       $ TwoJumps Self (Ref bb3)
-    bb3 = BasicBlock 3 [ILOAD 0, IPUSH 20, IFEQ_ICMP dummy]
-                       $ TwoJumps (Ref bb2) (Ref bb4)
-    bb4 = BasicBlock 4 ([FCONST_0, FCONST_1, FADD, FSTORE 1, IPUSH 20
-                       , IPUSH 1, IMUL, ISTORE 2]
-                       ++ regpressure ++
-                       [RETURN]) Return
     regpressure = concat $ replicate 5 [ILOAD 0, ILOAD 0, IADD, ISTORE 0]
 
-ex1 :: BasicBlock JVMInstruction
-ex1 = BasicBlock 1 [RETURN] Return
-
-ex2 :: BasicBlock JVMInstruction
-ex2 = BasicBlock 1 [IPUSH 0x20, IPUSH 0x30, IADD, RETURN] Return
--}
-
-pipeline :: [[JVMInstruction]] -> Bool -> IO ()
+pipeline :: [JVMInstruction] -> Bool -> IO ()
 pipeline jvminsn debug = do
     prettyHeader "JVM Input"
-    mapM_ (printf "\t%s\n" . show) (concat jvminsn)
+    mapM_ (printf "\t%s\n" . show) jvminsn
     when debug $ prettyHeader "Hoopl Graph"
     when debug $ printf "%s\n" (showGraph show graph)
     when debug $ prettyHeader "Label Map"
@@ -488,11 +552,20 @@ pipeline jvminsn debug = do
     mapM_ (printf "%s\n" . showIntel) dis
   where
     initstate = LabelLookup { labels = M.empty
+                            , blockEntries = S.empty
                             , simStack = SimStack [] 50000
+                            , instructions = jvminsn
                             , pcOffset = 0 }
-    transform = foldl (liftM2 (|*><*|)) (return emptyClosedGraph) . map mkBlock
-    runAll x = runSimpleUniqueMonad . runStateT x
-    (graph, transstate) = runAll (transform jvminsn >>= \g -> mkMethod g) initstate
+    -- transform = foldl (liftM2 (|*><*|)) (return emptyClosedGraph) mkBlocks
+    runAll prog = (runSimpleUniqueMonad . runStateT prog) initstate
+    (graph, transstate) = runAll $ do
+      resolveReferences
+      refs <- blockEntries <$> get
+      trace (printf "refs: %s\n" (show refs)) $ resetPC jvminsn
+      -- modify (\s -> s { blockEntries = S.fromList [0, 5, 25, 34, 61] })
+      gs <- mkBlocks
+      let g = foldl (|*><*|) emptyClosedGraph gs
+      mkMethod g
     lbls = labels transstate
     linear = mkLinear graph
     ra = stupidRegAlloc linear
@@ -508,8 +581,10 @@ prettyHeader str = do
 
 main :: IO ()
 main = do
-  printf "\n\n\njvm1 example\n"
-  pipeline jvm1 True
+  -- printf "\n\n\njvm1 example\n"
+  -- pipeline jvm1 True
   printf "\n\n\njvm2 example\n"
-  pipeline jvm2 False
+  pipeline jvm2 True
+  printf "\n\n\njvm3 example\n"
+  pipeline jvm3 True
 {- /application -}
