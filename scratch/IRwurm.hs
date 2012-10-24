@@ -33,19 +33,22 @@ import Text.Printf
 
 {- TODO
 (.) typeclass for codeemitting: http://pastebin.com/RZ9qR3k7 (depricated) || http://pastebin.com/BC3Jr5hG
-(.) what about argument passing to methods
-(.) what about return values in methods (related problem to above?)
+(.) getting arguments ("pop"?) in `callee'
 (.) hoopl passes
 -}
 
 data MateIR t e x where
   IRLabel :: H.Label -> MateIR t C O
   IROp :: (Show t) => OpType -> t -> t -> t -> MateIR t O O
+  IRStore :: (Show t) => t {- objectref -} -> t {- src -} -> MateIR t O O
+  IRLoad :: (Show t) => t {- objectref -} -> t {- target -} -> MateIR t O O
+  IRLoadRT :: (Show t) => RTPool -> t -> MateIR t O O
   IRNop :: MateIR t O O
-  IRInvoke :: Word16 -> MateIR t O O
+  IRInvoke :: (Show t) => RTPool -> Maybe t -> MateIR t O O
+  IRPush :: (Show t) => Word8 -> t -> MateIR t O O
   IRJump :: H.Label -> MateIR t O C
   IRIfElse :: (Show t) => CMP -> t -> t -> H.Label -> H.Label -> MateIR t O C
-  IRReturn :: Bool -> MateIR t O C
+  IRReturn :: (Show t) => Maybe t -> MateIR t O C
 
 data LinearIns t
   = Fst (MateIR t C O)
@@ -65,21 +68,28 @@ data HVar
   | HFReg XMMReg
   | HFConstant Float
   | SpillFReg Disp
+  | SpillRReg Disp
   deriving Eq
 
 deriving instance Eq Disp
 
-data VarType = JInt | JFloat deriving (Show, Eq)
+data RTPool = RTPool Word16
+instance Show RTPool where
+  show (RTPool w16) = printf "RT(%02d)" w16
+
+data VarType = JInt | JFloat | JRef deriving (Show, Eq)
 
 data Var
   = JIntValue Int32
   | JFloatValue Float
   | VReg VarType Integer
+  | JRefNull
 
 varType :: Var -> VarType
 varType (JIntValue _) = JInt
 varType (JFloatValue _) = JFloat
 varType (VReg t _) = t
+varType JRefNull = JRef
 
 instance Functor SimpleUniqueMonad where
   fmap = liftM
@@ -94,7 +104,11 @@ instance NonLocal (MateIR Var) where
 instance Show (MateIR t e x) where
   show (IRLabel l) = printf "label: %s:\n" (show l)
   show (IROp op vr v1 v2) = printf "\t%s %s,  %s, %s" (show op) (show vr) (show v1) (show v2)
-  show (IRInvoke x) = printf "\tinvoke %s" (show x)
+  show (IRLoad obj dst) = printf "\t%s -> %s" (show obj) (show dst)
+  show (IRLoadRT obj dst) = printf "\t%s -> %s" (show obj) (show dst)
+  show (IRStore obj src) = printf "\t%s <- %s" (show obj) (show src)
+  show (IRInvoke x r) = printf "\tinvoke %s %s" (show x) (show r)
+  show (IRPush argnr x) = printf "\tpush(%d) %s" argnr (show x)
   show (IRJump l) = printf "\tjump %s" (show l)
   show (IRIfElse jcmp v1 v2 l1 l2) = printf "\tif (%s `%s` %s) then %s else %s" (show v1) (show jcmp) (show v2) (show l1) (show l2)
   show (IRReturn b) = printf "\treturn (%s)" (show b)
@@ -112,25 +126,27 @@ instance Show HVar where
   show (HFReg xmm) = printf "%s" (show xmm)
   show (HFConstant val) = printf "%2.2ff" val
   show (SpillFReg (Disp d)) = printf "0x%02x(ebp[f])" d
+  show (SpillRReg (Disp d)) = printf "0x%02x(ebp[r])" d
 
 instance Show Var where
   show (VReg t n) = printf "%s(%02d)" (show t) n
   show (JIntValue n) = printf "0x%08x" n
   show (JFloatValue n) = printf "%2.2ff" n
+  show JRefNull = printf "(null)"
 {- /show -}
-
 
 {- make Hoopl graph from JVMInstruction -}
 data SimStack = SimStack
   { stack :: [Var]
-  , regcnt :: Integer }
+  , regcnt :: Integer
+  , classf :: Class Direct }
 
 data LabelLookup = LabelLookup 
-  { labels :: M.Map Int16 H.Label
-  , blockEntries :: S.Set Int16
+  { labels :: M.Map Int32 H.Label
+  , blockEntries :: S.Set Int32
   , simStack :: SimStack
   , instructions :: [J.Instruction]
-  , pcOffset :: Int16 }
+  , pcOffset :: Int32 }
 
 type LabelState a = StateT LabelLookup SimpleUniqueMonad a
 
@@ -141,8 +157,9 @@ type LabelState a = StateT LabelLookup SimpleUniqueMonad a
 -- (<*>) ::     (GraphRep g, NonLocal n) => g n e O  -> g n O x -> g n e x
 -- (|*><*|) ::  (GraphRep g, NonLocal n) => g n e C  -> g n C x -> g n e x
 
-w162i16 :: Word16 -> Int16
-w162i16 w16 = fromIntegral w16
+w162i32 :: Word16 -> Int32
+w162i32 w16 = fromIntegral i16
+  where i16 = fromIntegral w16 :: Int16
 
 -- forward references wouldn't be a problem, but backwards are
 resolveReferences :: LabelState ()
@@ -154,29 +171,30 @@ resolveReferences = do
         addPC 0 -- add entry instruction
         addPC pc -- mark return instruction
       else do
+        when (null jvminsn) $ error "resolveReferences: something is really wrong here"
         let ins = head jvminsn
         addJumpTarget ins pc
         incrementPC ins
         popInstruction
         resolveReferences
   where
-    addJumpTarget :: J.Instruction -> Int16 -> LabelState ()
+    addJumpTarget :: J.Instruction -> Int32 -> LabelState ()
     addJumpTarget ins pc = case ins of
         (IF _ rel) -> addPCs pc rel ins
         (IF_ICMP _ rel) -> addPCs pc rel ins
         (IF_ACMP _ rel) -> addPCs pc rel ins
         (IFNULL rel) -> addPCs pc rel ins
         (IFNONNULL rel) -> addPCs pc rel ins
-        GOTO rel -> addPC (pc + w162i16 rel)
+        GOTO rel -> addPC (pc + w162i32 rel)
         JSR _ -> error "addJumpTarget: JSR?!"
         GOTO_W _ -> error "addJumpTarget: GOTO_W?!"
         JSR_W _ -> error "addJumpTarget: JSR_W?!"
         TABLESWITCH _ _ _ _ _ -> error "addJumpTarget: tableswitch"
         LOOKUPSWITCH _ _ _ _ -> error "addJumpTarget: lookupswitch"
         _ -> return ()
-    addPCs :: Int16 -> Word16 -> J.Instruction -> LabelState ()
-    addPCs pc rel ins = do addPC (pc + insnLength ins); addPC (pc + (w162i16 rel))
-    addPC :: Int16 -> LabelState ()
+    addPCs :: Int32 -> Word16 -> J.Instruction -> LabelState ()
+    addPCs pc rel ins = do addPC (pc + insnLength ins); addPC (pc + (w162i32 rel))
+    addPC :: Int32 -> LabelState ()
     addPC bcoff = do
       modify (\s -> s { blockEntries = S.insert bcoff (blockEntries s) })
 
@@ -203,13 +221,13 @@ mkBlocks = do
 mkBlock :: LabelState (Graph (MateIR Var) C C)
 mkBlock = do
   pc <- pcOffset <$> get
-  f' <- IRLabel <$> (addLabel pc)
+  f' <- IRLabel <$> addLabel pc
   (ms', l') <- toMid
   let noNop IRNop = False; noNop _ = True
   let ms'' = filter noNop ms'
   return $ mkFirst f' <*> mkMiddles ms'' <*> mkLast l'
 
-addLabel :: Int16 -> LabelState H.Label
+addLabel :: Int32 -> LabelState H.Label
 addLabel boff = do
   lmap <- labels <$> get
   if M.member boff lmap
@@ -222,22 +240,22 @@ addLabel boff = do
 popInstruction :: LabelState ()
 popInstruction = do
   i <- instructions <$> get
+  when (null i) $ error "popInstruction: something is really wrong here"
   modify (\s -> s { instructions = tail i })
 
 toMid :: LabelState ([MateIR Var O O], MateIR Var O C)
 toMid = do
     pc <- pcOffset <$> get
+    insns <- instructions <$> get
+    when (null insns) $ error "toMid: something is really wrong here :/"
     ins <- head <$> instructions <$> get
     entries <- blockEntries <$> get
     if S.member (pc + insnLength ins) entries
-      then do
-        (insOO, lastins) <- toLast ins
-        let insOOs = case insOO of Nothing -> []; Just x -> [x]
-        return (insOOs, lastins)
+      then toLast ins
       else do
         insIR <- normalIns ins
         (insn, lastins) <- toMid
-        return (insIR:insn, lastins)
+        return (insIR ++ insn, lastins)
   where
     normalIns ins = do
       st <- get
@@ -248,25 +266,25 @@ toMid = do
       popInstruction
       return insIR
 
-    toLast :: J.Instruction -> LabelState (Maybe (MateIR Var O O), MateIR Var O C)
+    toLast :: J.Instruction -> LabelState ([MateIR Var O O], MateIR Var O C)
     toLast ins = do
       pc <- pcOffset <$> get
       let ifstuff jcmp rel op1 op2 = do
-            truejmp <- addLabel (pc + w162i16 rel)
+            truejmp <- addLabel (pc + w162i32 rel)
             falsejmp <- addLabel (pc + insnLength ins)
             incrementPC ins
             popInstruction
-            return $ (Nothing, IRIfElse jcmp op1 op2 truejmp falsejmp)
+            return $ ([], IRIfElse jcmp op1 op2 truejmp falsejmp)
       case ins of
         RETURN -> do
           incrementPC ins
           popInstruction
-          return $ (Nothing, IRReturn False)
-        ARETURN -> returnSomething
-        IRETURN -> returnSomething
-        LRETURN -> returnSomething
-        FRETURN -> returnSomething
-        DRETURN -> returnSomething
+          return $ ([], IRReturn Nothing)
+        ARETURN -> returnSomething JRef
+        IRETURN -> returnSomething JInt
+        LRETURN -> error "toLast: LReturn"
+        FRETURN -> returnSomething JFloat
+        DRETURN -> error "toLast: DReturn"
         (IF _ _) -> error "toLast: IF _ _)"
         (IFNULL _) -> error "toLast: IFNULL"
         (IFNONNULL _) -> error "toLast: IFNONNULL"
@@ -284,12 +302,14 @@ toMid = do
         _ -> do -- fallthrough case
           next <- addLabel (pc + insnLength ins)
           insIR <- normalIns ins
-          return $ (Just insIR, IRJump next)
+          return $ (insIR, IRJump next)
       where
-        returnSomething = do
+        returnSomething t = do
           incrementPC ins
           popInstruction
-          return $ (Nothing, IRReturn True) -- todo: encode type?!
+          r <- apop2
+          unless (varType r == t) $ error "toLast return: type mismatch"
+          return $ ([], IRReturn $ Just r)
 
 insnLength :: Integral a => J.Instruction -> a
 insnLength x = case x of
@@ -319,25 +339,115 @@ apop2 :: LabelState Var
 apop2 = do
   st <- get
   let lol = simStack st
+  when (null . stack $ lol) $ error "apop2: something is really wrong here"
   modify (\s -> s { simStack = lol { stack = tail (stack lol)} } )
   return . head . stack $ lol
 
-tir :: J.Instruction -> State SimStack (MateIR Var O O)
+imm2num :: Num a => IMM -> a
+imm2num I0 = 0
+imm2num I1 = 1
+imm2num I2 = 2
+imm2num I3 = 3
+
+fieldType :: Class Direct -> Word16 -> VarType
+fieldType cls off = fieldType2VarType $ ntSignature nt
+  where nt = case constsPool cls M.! off of
+                (CField _ nt') -> nt'
+                _ -> error "fieldType: fail :("
+
+methodType :: Class Direct -> Word16 -> ([VarType], Maybe VarType)
+methodType cls off = (map fieldType2VarType argst, rett)
+  where
+    (MethodSignature argst returnt) = ntSignature $
+      case constsPool cls M.! off of
+        (CMethod _ nt') -> nt'
+        _ -> error "methodType: fail :("
+    rett = case returnt of
+            Returns ft -> Just (fieldType2VarType ft)
+            ReturnsVoid -> Nothing
+
+fieldType2VarType :: FieldType -> VarType
+fieldType2VarType IntType = JInt
+fieldType2VarType FloatType = JFloat
+fieldType2VarType (ObjectType _) = JRef
+fieldType2VarType x = error $ "fieldType2VarType: " ++ show x
+
+tir :: J.Instruction -> State SimStack [MateIR Var O O]
 tir ICONST_0 = tir (BIPUSH 0)
 tir ICONST_1 = tir (BIPUSH 1)
 tir ICONST_2 = tir (BIPUSH 2)
-tir (BIPUSH x) = do apush $ JIntValue (fromIntegral x); return IRNop
-tir FCONST_0 =  do apush $ JFloatValue 0; return IRNop
-tir FCONST_1 =  do apush $ JFloatValue 1; return IRNop
-tir (ILOAD_ x) = tir (ILOAD (case x of I0 -> 0; I1 -> 1; I2 -> 2; I3 -> 3))
-tir (ILOAD x) = do apush $ VReg JInt (fromIntegral x); return IRNop
+tir ICONST_3 = tir (BIPUSH 3)
+tir (BIPUSH x) = do apush $ JIntValue (fromIntegral x); return []
+tir (SIPUSH x) = do apush $ JIntValue (fromIntegral x); return []
+tir FCONST_0 =  do apush $ JFloatValue 0; return []
+tir FCONST_1 =  do apush $ JFloatValue 1; return []
+tir FCONST_2 =  do apush $ JFloatValue 3; return []
+tir (ILOAD_ x) = tir (ILOAD (imm2num x))
+tir (ILOAD x) = do apush $ VReg JInt (fromIntegral x); return []
+tir (ALOAD_ x) = tir (ALOAD (imm2num x))
+tir (ALOAD x) = do apush $ VReg JRef (fromIntegral x); return []
+tir (FLOAD_ x) = tir (FLOAD (imm2num x))
+tir (FLOAD x) = do apush $ VReg JFloat (fromIntegral x); return []
+tir (ISTORE_ x) = tir (ISTORE (imm2num x))
 tir (ISTORE y) = tirStore y JInt
+tir (FSTORE_ y) = tir (FSTORE (imm2num y))
 tir (FSTORE y) = tirStore y JFloat
+tir (ASTORE_ x) = tir (ASTORE (imm2num x))
+tir (ASTORE x) = tirStore x JRef
+tir (PUTFIELD x) = do -- TODO: use x!!11
+  src <- apop
+  obj <- apop
+  unless (JRef == varType obj) $ error "putfield: type mismatch"
+  cls <- classf <$> get
+  unless (fieldType cls x == varType src) $ error "putfield: type mismatch2"
+  return [IRStore obj src]
+tir (GETFIELD x) = do -- TODO: use x!!111
+  obj <- apop
+  unless (JRef == varType obj) $ error "getfield: type mismatch"
+  cls <- classf <$> get
+  nv <- newvar (fieldType cls x)
+  apush nv
+  return [IRLoad obj nv]
+tir (LDC1 x) = tir (LDC2 (fromIntegral x))
+tir (LDC2 x) = do
+  nv <- newvar JRef -- TODO: type
+  apush nv
+  return [IRLoadRT (RTPool x) nv]
+tir (NEW x) = do
+  nv <- newvar JRef
+  apush nv
+  return [IRLoadRT (RTPool x) nv]
+tir DUP = do
+  x <- apop
+  apush x
+  nv <- newvar (varType x)
+  apush nv
+  return [IROp Add nv x (JIntValue 0)]
+tir POP = do apop; return []
 tir IADD = tirOpInt Add JInt
 tir ISUB = tirOpInt Sub JInt
 tir IMUL = tirOpInt Mul JInt
 tir FADD = tirOpInt Add JFloat
-tir (INVOKESTATIC ident) = return $ IRInvoke ident -- TODO...
+tir (INVOKESTATIC ident) = do -- TODO: pop amount of args and make new var if return value :o
+  cls <- classf <$> get
+  let (varts, mret) = methodType cls ident
+  pushes <- forM (reverse $ zip varts [0..]) $ \(x, nr) -> do
+    y <- apop
+    unless (x == varType y) $ error "invoke: type mismatch"
+    return $ IRPush nr y
+  -- TODO: reverse pushes again, for x86 call conv stuff?
+  targetreg <- case mret of
+    Just x -> do
+      let prereg = case x of
+                      JInt -> preeax
+                      JFloat -> prexmm7
+                      JRef -> preeax
+      let nv = VReg x prereg
+      apush nv
+      return $ Just nv
+    Nothing -> return Nothing
+  return $ pushes ++ [IRInvoke (RTPool ident) targetreg]
+tir (INVOKESPECIAL ident) = tir (INVOKESTATIC ident)
 tir x = error $ "tir: " ++ show x
 
 tirStore w8 t = do
@@ -345,26 +455,28 @@ tirStore w8 t = do
   let nul = case t of
               JInt -> JIntValue 0
               JFloat -> JFloatValue 0
+              JRef -> JRefNull
   unless (t == varType x) $ error "tirStore: type mismatch"
-  return $ IROp Add (VReg t $ fromIntegral w8) x nul
+  return [IROp Add (VReg t $ fromIntegral w8) x nul]
 tirOpInt op t = do
   x <- apop; y <- apop
   nv <- newvar t; apush nv
   unless (t == varType x && t == varType y) $ error "tirOpInt: type mismatch"
-  return $ IROp op nv x y
+  return [IROp op nv x y]
 
 newvar t = do
   sims <- get
   put $ sims { regcnt = regcnt sims + 1 }
   return $ VReg t $ regcnt sims
 apush x = do
+  s <- stack <$> get
   sims <- get
-  put $ sims { stack = x : stack sims }
+  put $ sims { stack = x : s }
 apop :: State SimStack Var
 apop = do
-  sims <- get
-  put $ sims { stack = tail $ stack sims }
-  return . head . stack $ sims
+  (s:ss) <- stack <$> get
+  modify (\m -> m { stack = ss })
+  return s
 {- /make hoopl graph -}
 
 {- flatten hoople graph -}
@@ -387,10 +499,20 @@ data MappedRegs = MappedRegs
   { regMap :: M.Map Integer HVar
   , stackCnt :: Word32 }
 
-emptyRegs = MappedRegs M.empty 0
+{- pre assign hardware registers -}
+preeax = 99999
+prexmm7 = 100000
+preAssignedRegs = M.fromList [ (preeax,  HIReg eax)
+                             , (prexmm7, HFReg xmm7)
+                             ]
+emptyRegs = MappedRegs preAssignedRegs 0
 
-allIntRegs = map HIReg [eax, ecx, edx, ebx, esi, edi] :: [HVar]
-allFloatRegs = map HFReg [xmm0, xmm1, xmm2, xmm3, xmm4, xmm5, xmm6, xmm7] :: [HVar]
+-- register usage:
+-- - eax as scratch/int return
+-- - esp/ebp for stack (TODO: maybe we can elimate ebp usage?)
+-- - xmm7 as return for float
+allIntRegs = map HIReg [ecx, edx, ebx, esi, edi] :: [HVar]
+allFloatRegs = map HFReg [xmm0, xmm1, xmm2, xmm3, xmm4, xmm5, xmm6] :: [HVar]
 
 stupidRegAlloc :: [LinearIns Var] -> [LinearIns HVar]
 stupidRegAlloc linsn = evalState regAlloc' emptyRegs
@@ -406,15 +528,35 @@ stupidRegAlloc linsn = evalState regAlloc' emptyRegs
           src1new <- doAssign src1
           src2new <- doAssign src2
           return $ Mid $ IROp op dstnew src1new src2new
+        IRStore obj src -> do
+          objnew <- doAssign obj
+          srcnew <- doAssign src
+          return $ Mid $ IRStore objnew srcnew
+        IRLoad obj dst -> do
+          objnew <- doAssign obj
+          dstnew <- doAssign dst
+          return $ Mid $ IRLoad objnew dstnew
+        IRLoadRT rt dst -> do
+          dstnew <- doAssign dst
+          return $ Mid $ IRLoadRT rt dstnew
         IRNop -> return $ Mid $ IRNop
-        IRInvoke b -> return $ Mid $ IRInvoke b
+        IRPush nr src -> do
+          srcnew <- doAssign src
+          return $ Mid $ IRPush nr srcnew
+        IRInvoke b (Just r) -> do
+          rnew <- Just <$> doAssign r
+          return $ Mid $ IRInvoke b rnew
+        IRInvoke b Nothing -> return $ Mid $ IRInvoke b Nothing
       Lst ins -> case ins of
         IRJump l -> return $ Lst $ IRJump l
         IRIfElse jcmp cmp1 cmp2 l1 l2 -> do
           cmp1new <- doAssign cmp1
           cmp2new <- doAssign cmp2
           return $ Lst $ IRIfElse jcmp cmp1new cmp2new l1 l2
-        IRReturn b -> return $ Lst $ IRReturn b
+        IRReturn (Just b) -> do
+          bnew <- Just <$> doAssign b
+          return $ Lst $ IRReturn bnew
+        IRReturn Nothing -> return $ Lst $ IRReturn Nothing
 
     doAssign :: Var -> State MappedRegs HVar
     doAssign (JIntValue x) = return $ HIConstant x
@@ -443,6 +585,7 @@ stupidRegAlloc linsn = evalState regAlloc' emptyRegs
               let spill = case t of
                             JInt -> SpillIReg (Disp disp)
                             JFloat -> SpillFReg (Disp disp)
+                            JRef -> SpillRReg (Disp disp)
               let imap = M.insert vreg spill $ regMap mr
               put (mr { stackCnt = disp + 4, regMap = imap} )
               return spill
@@ -467,12 +610,15 @@ stupidRegAlloc linsn = evalState regAlloc' emptyRegs
         availRegs :: VarType -> State MappedRegs [HVar]
         availRegs t = do
           inuse <- regsInUse t
-          let allregs = case t of JInt -> allIntRegs; JFloat -> allFloatRegs
+          let allregs = case t of
+                  JInt -> allIntRegs
+                  JRef -> allIntRegs
+                  JFloat -> allFloatRegs
           return (allregs L.\\ inuse)
 {- /regalloc -}
 
 {- codegen -}
-compileLinear :: M.Map Int16 H.Label -> [LinearIns HVar] -> CodeGen e s [Instruction]
+compileLinear :: M.Map Int32 H.Label -> [LinearIns HVar] -> CodeGen e s [Instruction]
 compileLinear lbls linsn = do
   bblabels <- forM (M.elems lbls) $ \h -> do
                 l <- newNamedLabel ("Label: " ++ show h)
@@ -496,7 +642,11 @@ compileLinear lbls linsn = do
             C_GE -> jge l1; C_LE -> jle l1
           jmp l2
         IRJump h -> jmp (lmap M.! h)
-        IRReturn _ -> ret
+        IRReturn Nothing -> ret
+        IRReturn (Just (HIReg r)) -> do
+          mov eax r
+          ret
+        IRReturn _ -> error "IRReturn: impl. me"
   mapM_ compileIns linsn
   disassemble
 
@@ -556,19 +706,24 @@ girEmitOO (IROp Sub dst' src1' src2') = do
 girEmitOO (IROp Mul _ _ _) = do
   newNamedLabel "TODO! IROp Mul" >>= defineLabel
   nop
-girEmitOO (IRInvoke _) = do
+girEmitOO (IRInvoke _ (Just r)) = do
+  newNamedLabel "TODO! call with return" >>= defineLabel
+  call (0x0 :: Word32)
+girEmitOO (IRInvoke _ Nothing) = do
   newNamedLabel "TODO! call" >>= defineLabel
   call (0x0 :: Word32)
+girEmitOO (IRPush _ (HIReg x)) = push x
+girEmitOO (IRPush argnr (HFReg x)) = movss (XMMReg argnr) x
 girEmitOO x = error $ "girEmitOO: insn not implemented: " ++ show x
 {- /codeGen -}
 
 {- sandbox to play -}
-pipeline :: [J.Instruction] -> Bool -> IO ()
-pipeline jvminsn debug = do
-    prettyHeader "JVM Input"
-    mapM_ (printf "\t%s\n" . show) jvminsn
-    when debug $ prettyHeader "Hoopl Graph"
-    when debug $ printf "%s\n" (showGraph show graph)
+pipeline :: Class Direct -> [J.Instruction] -> Bool -> IO ()
+pipeline cls jvminsn debug = do
+    when debug $ prettyHeader "JVM Input"
+    when debug $ mapM_ (printf "\t%s\n" . show) jvminsn
+    -- when debug $ prettyHeader "Hoopl Graph"
+    -- when debug $ printf "%s\n" (showGraph show graph)
     when debug $ prettyHeader "Label Map"
     when debug $ printf "%s\n" (show lbls)
     when debug $ prettyHeader "Flatten Graph"
@@ -581,7 +736,7 @@ pipeline jvminsn debug = do
   where
     initstate = LabelLookup { labels = M.empty
                             , blockEntries = S.empty
-                            , simStack = SimStack [] 50000
+                            , simStack = SimStack [] 50000 cls
                             , instructions = jvminsn
                             , pcOffset = 0 }
     -- transform = foldl (liftM2 (|*><*|)) (return emptyClosedGraph) mkBlocks
@@ -590,9 +745,8 @@ pipeline jvminsn debug = do
       resolveReferences
       refs <- blockEntries <$> get
       trace (printf "refs: %s\n" (show refs)) $ resetPC jvminsn
-      -- modify (\s -> s { blockEntries = S.fromList [0, 5, 25, 34, 61] })
       gs <- mkBlocks
-      let g = foldl (|*><*|) emptyClosedGraph gs
+      let g = L.foldl' (|*><*|) emptyClosedGraph gs
       mkMethod g
     lbls = labels transstate
     linear = mkLinear graph
@@ -607,12 +761,19 @@ prettyHeader str = do
   -- putStrLn "press any key to continue..." >> getChar
   return ()
 
-main :: IO ()
-main = do
-  cls <- parseClassFile "../tests/Fib.class"
-  case lookupMethod "fib" cls of
+compileMethod :: B.ByteString -> String -> Bool -> IO ()
+compileMethod method classfile debug = do
+  cls <- parseClassFile classfile
+  case lookupMethod method cls of
     Just m -> do
       let code = codeInstructions $ decodeMethod $ fromMaybe (error "no code seg") (attrByName m "Code")
-      pipeline code True
-    Nothing -> error "lookupMethod"
+      pipeline cls code debug
+    Nothing -> error $ "lookupMethod: " ++ show method
+
+
+main :: IO ()
+main = do
+  -- compileMethod "fib" "../tests/Fib.class" False
+  -- compileMethod "main" "../tests/Instance1.class" True
+  compileMethod "main" "Play.class" True
 {- /application -}
