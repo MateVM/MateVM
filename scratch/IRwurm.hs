@@ -15,6 +15,8 @@ import Data.Word
 import Data.Maybe
 import Control.Applicative hiding ((<*>))
 
+import Data.Binary.IEEE754
+
 import Harpy
 import Harpy.X86Disassembler
 
@@ -617,8 +619,10 @@ stupidRegAlloc linsn = evalState regAlloc' emptyRegs
           return (allregs L.\\ inuse)
 {- /regalloc -}
 
+type CompileState = M.Map Label Float
 {- codegen -}
-compileLinear :: M.Map Int32 H.Label -> [LinearIns HVar] -> CodeGen e s [Instruction]
+compileLinear :: M.Map Int32 H.Label -> [LinearIns HVar]
+              -> CodeGen e CompileState [Instruction]
 compileLinear lbls linsn = do
   bblabels <- forM (M.elems lbls) $ \h -> do
                 l <- newNamedLabel ("Label: " ++ show h)
@@ -648,16 +652,21 @@ compileLinear lbls linsn = do
           ret
         IRReturn _ -> error "IRReturn: impl. me"
   mapM_ compileIns linsn
+  floatconstants <- M.toList <$> getState
+  forM_ floatconstants $ \(l, f) -> do
+    defineLabel l
+    emit32 (floatToWord f)
+  forM_ [0..0x3] $ \_ -> nop -- just some NOPs to fix up the disasm
   disassemble
 
 i322w32 :: Int32 -> Word32
 i322w32 = fromIntegral
 
-girEmitOO :: MateIR HVar O O -> CodeGen e s ()
+girEmitOO :: MateIR HVar O O -> CodeGen e CompileState ()
 girEmitOO (IROp Add dst' src1' src2') =
     ge dst' src1' src2'
   where
-    ge :: HVar -> HVar -> HVar -> CodeGen e s ()
+    ge :: HVar -> HVar -> HVar -> CodeGen e CompileState ()
     ge (HIReg dst) (HIReg src1) (HIReg src2)
         | dst == src1 = add src1 src2
         | dst == src2 = add src2 src1
@@ -687,9 +696,12 @@ girEmitOO (IROp Add dst' src1' src2') =
     ge (HFReg dst) (HFReg src1) (HFReg src2) = do
       movss dst src2
       addss dst src1
-    ge (HFReg dst) (HFConstant _) (HFConstant _) = do
-      newNamedLabel "TODO!" >>= defineLabel
-      movss dst dst
+    ge (HFReg dst) (HFConstant c1) (HFConstant c2) = do
+      let f = c1 + c2
+      c <- newNamedLabel ("float constant: " ++ show f)
+      s <- getState
+      setState (M.insert c f s)
+      movss dst c
     ge (HFReg dst) (HFReg src) (HFConstant 0) =
       movss dst src
     ge p1 p2 p3 = error $ "girEmit (add): " ++ show p1 ++ ", " ++ show p2 ++ ", " ++ show p3
@@ -706,11 +718,8 @@ girEmitOO (IROp Sub dst' src1' src2') = do
 girEmitOO (IROp Mul _ _ _) = do
   newNamedLabel "TODO! IROp Mul" >>= defineLabel
   nop
-girEmitOO (IRInvoke _ (Just r)) = do
-  newNamedLabel "TODO! call with return" >>= defineLabel
-  call (0x0 :: Word32)
-girEmitOO (IRInvoke _ Nothing) = do
-  newNamedLabel "TODO! call" >>= defineLabel
+girEmitOO (IRInvoke _ _) = do
+  newNamedLabel "TODO (call)" >>= defineLabel
   call (0x0 :: Word32)
 girEmitOO (IRPush _ (HIReg x)) = push x
 girEmitOO (IRPush argnr (HFReg x)) = movss (XMMReg argnr) x
@@ -731,7 +740,10 @@ pipeline cls jvminsn debug = do
     when debug $ prettyHeader "Register Allocation"
     when debug $ printf "%s\n" (show ra)
     prettyHeader "Code Generation"
-    (_, Right dis) <- runCodeGen (compileLinear lbls ra) () ()
+    (_, res) <- runCodeGen (compileLinear lbls ra) () M.empty
+    dis <- case res of
+            Left err -> error $ "runCodeGen: " ++ show err
+            Right d -> return d
     mapM_ (printf "%s\n" . showIntel) dis
   where
     initstate = LabelLookup { labels = M.empty
