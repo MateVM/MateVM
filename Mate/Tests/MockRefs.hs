@@ -10,6 +10,7 @@ import Foreign.Storable
 import GHC.Int
 import Text.Printf
 import System.IO.Unsafe(unsafePerformIO)
+import Data.IORef
 
 import Control.Monad
 import Control.Monad.State
@@ -19,7 +20,7 @@ import Test.QuickCheck.Monadic
 
 instance RefObj (Ptr a) where
   payload     = return . ptrToIntPtr
-  size a      = fmap ((+ fieldsOff) . length) (refs a)
+  size a      = fmap ((+ fieldsOff) . (*4) . length) (refs a)
   refs        = unpackRefs . castPtr
   marked      = markedRef
   mark        = markRef (0x1::Int32)
@@ -153,7 +154,7 @@ instance Arbitrary ObjectTree where
   arbitrary = resize 8 ( sized $ \n ->
                                      do empty <- choose (0,100) :: Gen Int-- [True,False]
                                         if empty < 80 then return $ Node []
-                                         else do k <- choose (0,n)
+                                         else do k <- choose (1,n)
                                                  liftM Node $ sequence [ arbitrary | _ <- [1..k] ] )
 
 createObjects :: ObjectTree -> IO (Ptr a)
@@ -169,7 +170,24 @@ testObjectTree :: ObjectTree -> Property
 testObjectTree objTree = monadicIO $ run f >>= (assert . (==0))
   where f :: IO Int
         f = do root <- createObjects objTree
-               twoSpace <- initTwoSpace 0x1000
+               twoSpace <- initTwoSpace 0x10000
                let collection = performCollection [root]
                runStateT collection twoSpace
                evalStateT heapSize twoSpace
+
+testObjectTree' :: IO (ObjectTree -> Property)
+testObjectTree' = do
+  memoryManager <- initTwoSpace 0x105000
+  ref <- newIORef memoryManager
+  return ( \objTree -> monadicIO $ run (f ref objTree) >>= (assert . (==0)) )
+  where f :: IORef TwoSpace -> ObjectTree -> IO Int
+        f memRef objTree = do 
+           root <- createObjects objTree
+           twoSpace <- readIORef memRef
+           (space,twoSpace') <- runStateT (performCollection [root] >> heapSize) twoSpace
+           writeIORef memRef twoSpace'
+           --printf "quickcheck performed another iteration. space usage: %d" space
+           return space
+
+testGC :: IO ()
+testGC = testObjectTree' >>= quickCheck

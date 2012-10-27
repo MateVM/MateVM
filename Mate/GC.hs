@@ -57,7 +57,7 @@ patchRefsObj :: (RefObj a) => a -> IO ()
 patchRefsObj obj = do obj' <- getNewRef obj 
                       fields <- refs obj
                       newRefs <- mapM getNewRef fields
-                      print newRefs
+                      --print newRefs
                       patchRefs obj' newRefs                 
 
 patchAllRefs :: (RefObj a) => [a] -> IO ()

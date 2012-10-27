@@ -1,6 +1,6 @@
 {-# LANGUAGE ExistentialQuantification #-}
 module Mate.MemoryManager (evacuateList, AllocationManager(..), 
-                           TwoSpace(..), initTwoSpace, mallocBytes') where
+                           TwoSpace(..), initTwoSpace, mallocBytes',switchSpaces) where
 
 import qualified Foreign.Marshal.Alloc as Alloc
 import Foreign.Ptr
@@ -60,14 +60,12 @@ switchSpaces old = old { fromHeap = toHeap old,
 
 mallocBytes' :: Int -> StateT TwoSpace IO (Ptr b)
 mallocBytes' bytes = do state' <- get
-                        let end = toHeap state' + ptrToIntPtr (nullPtr `plusPtr` bytes) -- not really? FUUU
-                        -- actually i would like to use an existential within TwoSpace but this requires
-                        -- pattern matchingt at call site http://stackoverflow.com/questions/10192663/why-cant-existential-types-use-record-syntax which is i think even slower. 
+                        let end = toHeap state' + (fromIntegral bytes)
                         if end <= toExtreme state' then alloc state' end else failNoSpace
   where alloc :: TwoSpace -> IntPtr -> StateT TwoSpace IO (Ptr b)
         alloc state' end = do let ptr = toHeap state'
                               put $ state' { toHeap = end } 
-                              liftIO (putStrLn $ "Allocated obj: " ++ show ptr)
+                              --liftIO (putStrLn $ "Allocated obj: " ++ show (intPtrToPtr ptr))
                               liftIO (return $ intPtrToPtr ptr)
         failNoSpace = error "no space left in two space (mallocBytes')"
 
@@ -79,7 +77,7 @@ evacuate'' :: (RefObj a, AllocationManager b) => a -> StateT b IO ()
 evacuate'' obj = do (size',payload') <- liftIO ((,) <$> size obj <*> payload obj)
                     -- malloc in TwoSpace
                     newPtr <- mallocBytesT size'
-                    liftIO (putStrLn ("evacuating: " ++ show obj ++ " and set: " ++ show newPtr))
+                    --liftIO (putStrLn ("evacuating: " ++ show obj ++ " and set: " ++ show newPtr ++ " size: " ++ show size'))
                     -- copy data over and leave notice
                     liftIO (copyBytes newPtr (intPtrToPtr payload') size' >> 
                             setNewRef obj (cast newPtr))
