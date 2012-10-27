@@ -1,9 +1,9 @@
-module Mate.StackTrace(
-    StackDescription(..),
-    stackFrames,
-    printStackTrace',
-    printStackTrace,
-    printStackFramesPrecise
+module Mate.StackTrace
+  ( StackDescription(..)
+  , stackFrames
+  , printStackTrace'
+  , printStackTrace
+  , printStackFramesPrecise
   )  where
 
 import Foreign
@@ -35,13 +35,16 @@ stackFrames accum prevRbp rebp = do
      else -- otherwise grab the next frame, put current frame into list and continue
           peek (cPtrToIntPtr (rebp + 4)) >>= stackFrames accum' rebp
 
-printStackTrace' :: CPtrdiff -> CPtrdiff -> IO ()
+-- Prints precice stacktrace to printStr. Furthermore a list
+-- of stackdescriptions is produced
+printStackTrace' :: CPtrdiff -> CPtrdiff -> IO [StackDescription]
 printStackTrace' stackPtr ptr = do 
   printfStr "Stacktrace:\n\n"
   frames <- stackFrames [] stackPtr ptr -- build with cps toget rid of reverse?
   forM_ (reverse frames) (printfStr . printf "---> %s\n" . toString . rsiMethodname . stackinfo)  
   printfStr "End of Stack\n"        
   printStackFramesPrecise frames
+  return frames
 
 printStackFramesPrecise :: [StackDescription] -> IO ()
 printStackFramesPrecise = mapM_ printPrecise

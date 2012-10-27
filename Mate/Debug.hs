@@ -9,6 +9,7 @@ module Mate.Debug
   , printfInfo
   , printfEx
   , mateDEBUG
+  , usePreciseGC
   , printf -- TODO: delete me
   ) where
 
@@ -55,3 +56,8 @@ printfCp   = printString "Cp: "
 printfStr  = printString "Str: "
 printfInfo = printString "Info: "
 printfEx = printString "Ex: "
+
+
+{-# INLINE usePreciseGC #-}
+usePreciseGC :: Bool
+usePreciseGC = False

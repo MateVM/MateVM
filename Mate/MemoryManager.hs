@@ -1,6 +1,6 @@
 {-# LANGUAGE ExistentialQuantification #-}
-module Mate.MemoryManager (evacuateList, AllocationManager(heapSize, performCollection), 
-                           TwoSpace, initTwoSpace) where
+module Mate.MemoryManager (evacuateList, AllocationManager(..), 
+                           TwoSpace(..), initTwoSpace, mallocBytes') where
 
 import qualified Foreign.Marshal.Alloc as Alloc
 import Foreign.Ptr
@@ -15,7 +15,7 @@ import Mate.GC
 class AllocationManager a where
   
   -- | allocates n bytes in current space to space (may be to space or gen0 space)
-  mallocBytes :: Int -> StateT a IO (Ptr b)
+  mallocBytesT :: Int -> StateT a IO (Ptr b)
   
   -- | performs full gc and which is reflected in mem managers state
   performCollection :: (RefObj b) => [b] ->  StateT a IO ()
@@ -30,7 +30,7 @@ data TwoSpace = TwoSpace { fromBase :: IntPtr,
                            toExtreme   :: IntPtr }
 
 instance AllocationManager TwoSpace where
-  mallocBytes = mallocBytes'
+  mallocBytesT = mallocBytes'
   performCollection = performCollection'
   
   heapSize = do space <- get
@@ -78,7 +78,7 @@ evacuate' =  mapM_ evacuate''
 evacuate'' :: (RefObj a, AllocationManager b) => a -> StateT b IO ()
 evacuate'' obj = do (size',payload') <- liftIO ((,) <$> size obj <*> payload obj)
                     -- malloc in TwoSpace
-                    newPtr <- mallocBytes size'
+                    newPtr <- mallocBytesT size'
                     liftIO (putStrLn ("evacuating: " ++ show obj ++ " and set: " ++ show newPtr))
                     -- copy data over and leave notice
                     liftIO (copyBytes newPtr (intPtrToPtr payload') size' >> 

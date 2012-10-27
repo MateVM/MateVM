@@ -1,6 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module Mate.GC 
-  ( RefObj(..), PrintableRef(..), traverseIO, markTree'', patchAllRefs 
+  ( RefObj(..), PrintableRef(..), traverseIO, markTree'', markTree, patchAllRefs 
     {- dont export generic versions for high performance -> remove for production -}) where
 
 import Control.Monad
