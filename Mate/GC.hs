@@ -42,8 +42,8 @@ traverseIO f = void . traverseIO' f S.empty
 traverseIO' ::  RefObj a => (a -> IO ()) -> S.Set a -> a -> IO (S.Set a)
 traverseIO' f ws root = if S.member root ws then f root >> return ws
                            else f root >> refs root >>= cont
-  where cont = foldM (\ws x -> do let ws' = S.insert x ws
-                                  traverseIO' f ws' x) ws'
+  where cont = foldM (\wsAcc x -> do let wsAcc' = S.insert x wsAcc
+                                     traverseIO' f wsAcc' x) ws'
         ws' = S.insert root ws
 
 markTree :: RefObj a => a -> IO ()

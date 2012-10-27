@@ -1,4 +1,10 @@
-module Mate.StackTrace where
+module Mate.StackTrace(
+    StackDescription(..),
+    stackFrames,
+    printStackTrace',
+    printStackTrace,
+    printStackFramesPrecise
+  )  where
 
 import Foreign
 import Foreign.C
@@ -22,9 +28,9 @@ stackFrames :: [StackDescription] -> CPtrdiff -> CPtrdiff -> IO [StackDescriptio
 stackFrames accum prevRbp rebp = do 
     stblptr <- peek (cPtrToIntPtr rebp) :: IO Word32
     let sptr = castPtrToStablePtr $ intPtrToPtr $ fromIntegral stblptr
-    stackinfo <- deRefStablePtr sptr :: IO RuntimeStackInfo
-    let accum' = StackDescription { base = rebp, end = prevRbp, stackinfo = stackinfo } : accum
-    if bottomOfStack stackinfo 
+    stackinfo' <- deRefStablePtr sptr :: IO RuntimeStackInfo
+    let accum' = StackDescription { base = rebp, end = prevRbp, stackinfo = stackinfo' } : accum
+    if bottomOfStack stackinfo'
      then return accum -- done here. bottomOfStack claims that there are no frames left
      else -- otherwise grab the next frame, put current frame into list and continue
           peek (cPtrToIntPtr (rebp + 4)) >>= stackFrames accum' rebp
@@ -71,16 +77,16 @@ printStackTrace :: Int -> CPtrdiff -> IO ()
 printStackTrace depth rebp = do 
     stblptr <- peek (intPtrToPtr . fromIntegral $ rebp) :: IO Word32
     let sptr = castPtrToStablePtr $ intPtrToPtr $ fromIntegral stblptr
-    stackinfo <- deRefStablePtr sptr :: IO RuntimeStackInfo
-    bottomOfStack <- printFrame depth mainOrInit stackinfo
-    unless bottomOfStack continue
+    stackinfo' <- deRefStablePtr sptr :: IO RuntimeStackInfo
+    bottomOfStack' <- printFrame depth mainOrInit stackinfo'
+    unless bottomOfStack' continue
   where continue = peek (intPtrToPtr . fromIntegral $ (rebp + 4)) >>= printStackTrace (depth+1)
 
 -- | Prints stackframe to printStr. Returns True if bottom of the stack (i.e. main)
 -- is reached.
 printFrame :: Int -> (String -> Bool) -> RuntimeStackInfo -> IO Bool
-printFrame d bottomCheck = print . toString . rsiMethodname
-  where print sig  | bottomCheck sig 
+printFrame d bottomCheck = print' . toString . rsiMethodname
+  where print' sig  | bottomCheck sig 
                       = (printfStr $ printf "reached bottom of stack [%d]\n" d) >> return True
-                   | otherwise 
+                    | otherwise 
                       = (printfStr $ printf "stacktrace @ malloc: %s [%d]\n" sig d) >> return False
