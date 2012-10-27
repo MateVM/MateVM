@@ -9,7 +9,7 @@ public class Play {
 		return c;
 	}
 	public static float f4(float a, float b, int c) {
-		return b;
+		return a + b;
 	}
 	public static void main(String []args) {
 		int ia = 0xa;

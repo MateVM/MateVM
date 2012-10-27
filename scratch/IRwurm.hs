@@ -35,7 +35,6 @@ import Text.Printf
 
 {- TODO
 (.) typeclass for codeemitting: http://pastebin.com/RZ9qR3k7 (depricated) || http://pastebin.com/BC3Jr5hG
-(.) getting arguments ("pop"?) in `callee'
 (.) hoopl passes
 -}
 
@@ -141,7 +140,10 @@ instance Show Var where
 data SimStack = SimStack
   { stack :: [Var]
   , regcnt :: Integer
-  , classf :: Class Direct }
+  , classf :: Class Direct
+  , method :: Method Direct
+  , preRegs :: [(Integer, HVar)]
+  }
 
 data LabelLookup = LabelLookup 
   { labels :: M.Map Int32 H.Label
@@ -225,9 +227,7 @@ mkBlock = do
   pc <- pcOffset <$> get
   f' <- IRLabel <$> addLabel pc
   (ms', l') <- toMid
-  let noNop IRNop = False; noNop _ = True
-  let ms'' = filter noNop ms'
-  return $ mkFirst f' <*> mkMiddles ms'' <*> mkLast l'
+  return $ mkFirst f' <*> mkMiddles ms' <*> mkLast l'
 
 addLabel :: Int32 -> LabelState H.Label
 addLabel boff = do
@@ -368,6 +368,15 @@ methodType cls off = (map fieldType2VarType argst, rett)
             Returns ft -> Just (fieldType2VarType ft)
             ReturnsVoid -> Nothing
 
+methodIsStatic :: Method Direct -> Bool
+methodIsStatic = S.member ACC_STATIC . methodAccessFlags
+
+methodArgs :: Num a => Method Direct -> a
+methodArgs meth = isStatic $ L.genericLength args
+  where
+    (MethodSignature args _) = methodSignature meth
+    isStatic = if methodIsStatic meth then (+0) else (+1)
+
 fieldType2VarType :: FieldType -> VarType
 fieldType2VarType IntType = JInt
 fieldType2VarType FloatType = JFloat
@@ -385,11 +394,11 @@ tir FCONST_0 =  do apush $ JFloatValue 0; return []
 tir FCONST_1 =  do apush $ JFloatValue 1; return []
 tir FCONST_2 =  do apush $ JFloatValue 3; return []
 tir (ILOAD_ x) = tir (ILOAD (imm2num x))
-tir (ILOAD x) = do apush $ VReg JInt (fromIntegral x); return []
+tir (ILOAD x) = tirLoad x JInt
 tir (ALOAD_ x) = tir (ALOAD (imm2num x))
-tir (ALOAD x) = do apush $ VReg JRef (fromIntegral x); return []
+tir (ALOAD x) = tirLoad x JRef
 tir (FLOAD_ x) = tir (FLOAD (imm2num x))
-tir (FLOAD x) = do apush $ VReg JFloat (fromIntegral x); return []
+tir (FLOAD x) = tirLoad x JFloat
 tir (ISTORE_ x) = tir (ISTORE (imm2num x))
 tir (ISTORE y) = tirStore y JInt
 tir (FSTORE_ y) = tir (FSTORE (imm2num y))
@@ -436,7 +445,15 @@ tir (INVOKESTATIC ident) = do -- TODO: pop amount of args and make new var if re
   pushes <- forM (reverse $ zip varts [0..]) $ \(x, nr) -> do
     y <- apop
     unless (x == varType y) $ error "invoke: type mismatch"
-    return $ IRPush nr y
+    case x of
+      JInt -> return $ IRPush nr y
+      JRef -> return $ IRPush nr y
+      JFloat -> do
+        let nr8 = fromIntegral nr
+        let nri = fromIntegral nr
+        let assign = preFloats !! nri
+        modify (\s -> s { preRegs = (assign, HFReg $ XMMReg nr8) : (preRegs s) })
+        return $ IROp Add (VReg x assign) y (JFloatValue 0) -- mov
   -- TODO: reverse pushes again, for x86 call conv stuff?
   targetreg <- case mret of
     Just x -> do
@@ -452,6 +469,24 @@ tir (INVOKESTATIC ident) = do -- TODO: pop amount of args and make new var if re
 tir (INVOKESPECIAL ident) = tir (INVOKESTATIC ident)
 tir x = error $ "tir: " ++ show x
 
+tirLoad x t = do
+  meth <- method <$> get
+  vreg <- if x < methodArgs meth
+           then do
+             case t of
+              JFloat -> do
+                let assign = preFloats !! (fromIntegral x)
+                let tup = (assign, HFReg . XMMReg . fromIntegral $ x)
+                modify (\s -> s { preRegs = tup : (preRegs s) })
+                return $ VReg t assign
+              _ -> do
+                let assign = preArgs !! (fromIntegral x)
+                let tup = (assign, SpillIReg . Disp . fromIntegral $ (ptrSize * x))
+                modify (\s -> s { preRegs = tup : (preRegs s) })
+                return $ VReg t assign
+           else return $ VReg t (fromIntegral x)
+  apush vreg
+  return []
 tirStore w8 t = do
   x <- apop
   let nul = case t of
@@ -502,23 +537,38 @@ data MappedRegs = MappedRegs
   , stackCnt :: Word32 }
 
 {- pre assign hardware registers -}
+ptrSize = 4
 preeax = 99999
 prexmm7 = 100000
-preAssignedRegs = M.fromList [ (preeax,  HIReg eax)
-                             , (prexmm7, HFReg xmm7)
-                             ]
+preArgsLength = 6
+preArgsStart = 200000
+preArgs = [preArgsStart .. (preArgsStart + preArgsLength - 1)]
+-- preArgsRegs = zip preArgs
+  --             (map (SpillIReg . Disp . fromIntegral . (*ptrSize))
+    --                [1 .. preArgsLength])
+preAssignedRegs = M.fromList $
+                  [ (preeax,  HIReg eax)
+                  , (prexmm7, HFReg xmm7)
+                  ]
+
+-- calling convention for floats is different: arguments are passed via xmm
+-- registers, while int arguements are passed via stack slots
+preFloatStart = 300000
+preFloats = [preFloatStart .. (preFloatStart + 5)]
+
 emptyRegs = MappedRegs preAssignedRegs 0
 
 -- register usage:
 -- - eax as scratch/int return
 -- - esp/ebp for stack (TODO: maybe we can elimate ebp usage?)
--- - xmm7 as return for float
+-- - xmm7 as scratch/float return
 allIntRegs = map HIReg [ecx, edx, ebx, esi, edi] :: [HVar]
 allFloatRegs = map HFReg [xmm0, xmm1, xmm2, xmm3, xmm4, xmm5, xmm6] :: [HVar]
 
-stupidRegAlloc :: [LinearIns Var] -> [LinearIns HVar]
-stupidRegAlloc linsn = evalState regAlloc' emptyRegs
+stupidRegAlloc :: [(Integer, HVar)] -> [LinearIns Var] -> [LinearIns HVar]
+stupidRegAlloc preAssigned linsn = evalState regAlloc' startmapping
   where
+    startmapping = emptyRegs { regMap = M.union (regMap emptyRegs) (M.fromList preAssigned) }
     regAlloc' = mapM assignReg linsn
     assignReg :: LinearIns Var -> State MappedRegs (LinearIns HVar)
     assignReg lv = case lv of
@@ -619,6 +669,9 @@ stupidRegAlloc linsn = evalState regAlloc' emptyRegs
           return (allregs L.\\ inuse)
 {- /regalloc -}
 
+i32tow32 :: Int32 -> Word32
+i32tow32 = fromIntegral
+
 type CompileState = M.Map Label Float
 {- codegen -}
 compileLinear :: M.Map Int32 H.Label -> [LinearIns HVar]
@@ -637,8 +690,11 @@ compileLinear lbls linsn = do
           let l2 = lmap M.! h2
           case (src1, src2) of
             (HIReg s1, HIReg s2) -> cmp s1 s2
-            (HIConstant c, HIReg s1) -> cmp s1 (fromIntegral c :: Word32)
-            (HIReg s1, HIConstant c) -> cmp s1 (fromIntegral c :: Word32)
+            (HIConstant c, HIReg s1) -> cmp s1 (i32tow32 c)
+            (HIReg s1, HIConstant c) -> cmp s1 (i32tow32 c)
+            (HIConstant c, SpillIReg s1) -> do
+              let se = (s1, ebp)
+              cmp se (i32tow32 c) -- TODO: invert LE/GEresult??
             x -> error $ "IRifelse: not impl. yet" ++ show x
           case jcmp of
             C_EQ -> je  l1; C_NE -> jne l1
@@ -647,10 +703,16 @@ compileLinear lbls linsn = do
           jmp l2
         IRJump h -> jmp (lmap M.! h)
         IRReturn Nothing -> ret
-        IRReturn (Just (HIReg r)) -> do
-          mov eax r
+        IRReturn (Just (HIReg r)) -> do mov eax r; ret
+        IRReturn (Just (HIConstant c)) -> do mov eax (i32tow32 c); ret
+        IRReturn (Just (SpillIReg d)) -> do
+          let src = (d, ebp)
+          mov eax src
           ret
-        IRReturn _ -> error "IRReturn: impl. me"
+        IRReturn (Just (HFReg r)) -> do
+          movss xmm7 r
+          ret
+        IRReturn x -> error $ "IRReturn: impl. me: " ++ show x
   mapM_ compileIns linsn
   floatconstants <- M.toList <$> getState
   forM_ floatconstants $ \(l, f) -> do
@@ -704,6 +766,16 @@ girEmitOO (IROp Add dst' src1' src2') =
       movss dst c
     ge (HFReg dst) (HFReg src) (HFConstant 0) =
       movss dst src
+    ge (SpillFReg d) c1@(HFConstant _) c2@(HFConstant _) = do
+      let dst = (d, ebp)
+      ge (HFReg xmm7) c1 c2
+      movss dst xmm7
+    ge (SpillFReg d) (HFReg src) (HFConstant 0) = do
+      let dst = (d, ebp)
+      movss dst src
+    ge (HFReg dst) (SpillFReg d) (HFConstant 0) = do
+      let src = (d, ebp)
+      movss dst src
     ge p1 p2 p3 = error $ "girEmit (add): " ++ show p1 ++ ", " ++ show p2 ++ ", " ++ show p3
 girEmitOO (IROp Sub dst' src1' src2') = do
     ge dst' src1' src2'
@@ -712,6 +784,9 @@ girEmitOO (IROp Sub dst' src1' src2') = do
     ge (HIReg dst) (HIReg src1) (HIReg src2) = do
       mov dst src2; sub dst src1
     ge (HIReg dst) (HIConstant i32) (HIReg src2) = do
+      mov dst src2; sub dst (i322w32 i32)
+    ge (HIReg dst) (HIConstant i32) (SpillIReg s2) = do
+      let src2 = (s2, ebp)
       mov dst src2; sub dst (i322w32 i32)
     ge _ _ _ = error $ "sub: not impl.: " ++ show dst' ++ ", "
                      ++ show src1' ++ ", " ++ show src2'
@@ -722,13 +797,12 @@ girEmitOO (IRInvoke _ _) = do
   newNamedLabel "TODO (call)" >>= defineLabel
   call (0x0 :: Word32)
 girEmitOO (IRPush _ (HIReg x)) = push x
-girEmitOO (IRPush argnr (HFReg x)) = movss (XMMReg argnr) x
 girEmitOO x = error $ "girEmitOO: insn not implemented: " ++ show x
 {- /codeGen -}
 
 {- sandbox to play -}
-pipeline :: Class Direct -> [J.Instruction] -> Bool -> IO ()
-pipeline cls jvminsn debug = do
+pipeline :: Class Direct -> Method Direct -> [J.Instruction] -> Bool -> IO ()
+pipeline cls meth jvminsn debug = do
     when debug $ prettyHeader "JVM Input"
     when debug $ mapM_ (printf "\t%s\n" . show) jvminsn
     -- when debug $ prettyHeader "Hoopl Graph"
@@ -748,7 +822,7 @@ pipeline cls jvminsn debug = do
   where
     initstate = LabelLookup { labels = M.empty
                             , blockEntries = S.empty
-                            , simStack = SimStack [] 50000 cls
+                            , simStack = SimStack [] 50000 cls meth []
                             , instructions = jvminsn
                             , pcOffset = 0 }
     -- transform = foldl (liftM2 (|*><*|)) (return emptyClosedGraph) mkBlocks
@@ -762,7 +836,7 @@ pipeline cls jvminsn debug = do
       mkMethod g
     lbls = labels transstate
     linear = mkLinear graph
-    ra = stupidRegAlloc linear
+    ra = stupidRegAlloc (preRegs . simStack $ transstate) linear
 
 prettyHeader :: String -> IO ()
 prettyHeader str = do
@@ -774,18 +848,18 @@ prettyHeader str = do
   return ()
 
 compileMethod :: B.ByteString -> String -> Bool -> IO ()
-compileMethod method classfile debug = do
+compileMethod meth classfile debug = do
   cls <- parseClassFile classfile
-  case lookupMethod method cls of
+  case lookupMethod meth cls of
     Just m -> do
       let code = codeInstructions $ decodeMethod $ fromMaybe (error "no code seg") (attrByName m "Code")
-      pipeline cls code debug
-    Nothing -> error $ "lookupMethod: " ++ show method
+      pipeline cls m code debug
+    Nothing -> error $ "lookupMethod: " ++ show meth
 
 
 main :: IO ()
 main = do
   -- compileMethod "fib" "../tests/Fib.class" False
   -- compileMethod "main" "../tests/Instance1.class" True
-  compileMethod "main" "Play.class" True
+  compileMethod "f3" "Play.class" True
 {- /application -}
