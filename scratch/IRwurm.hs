@@ -455,17 +455,22 @@ tir (INVOKESTATIC ident) = do -- TODO: pop amount of args and make new var if re
         modify (\s -> s { preRegs = (assign, HFReg $ XMMReg nr8) : (preRegs s) })
         return $ IROp Add (VReg x assign) y (JFloatValue 0) -- mov
   -- TODO: reverse pushes again, for x86 call conv stuff?
-  targetreg <- case mret of
+  (targetreg, maybemov) <- case mret of
     Just x -> do
       let prereg = case x of
                       JInt -> preeax
                       JFloat -> prexmm7
                       JRef -> preeax
       let nv = VReg x prereg
-      apush nv
-      return $ Just nv
-    Nothing -> return Nothing
-  return $ pushes ++ [IRInvoke (RTPool ident) targetreg]
+      movtarget <- newvar x
+      apush movtarget
+      let movretval = IROp Add movtarget nv (JIntValue 0)
+      return (Just nv, Just movretval)
+    Nothing -> return (Nothing, Nothing)
+  let r = pushes ++ [IRInvoke (RTPool ident) targetreg]
+  case maybemov of
+    Nothing -> return r
+    Just m -> return $ r ++ [m]
 tir (INVOKESPECIAL ident) = tir (INVOKESTATIC ident)
 tir x = error $ "tir: " ++ show x
 
@@ -860,6 +865,6 @@ compileMethod meth classfile debug = do
 main :: IO ()
 main = do
   -- compileMethod "fib" "../tests/Fib.class" False
-  -- compileMethod "main" "../tests/Instance1.class" True
-  compileMethod "f3" "Play.class" True
+  compileMethod "main" "../tests/Instance1.class" True
+  -- compileMethod "f3" "Play.class" True
 {- /application -}
