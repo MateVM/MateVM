@@ -11,6 +11,7 @@ import GHC.Int
 import Text.Printf
 import System.IO.Unsafe(unsafePerformIO)
 import Data.IORef
+import qualified Data.Map as M
 
 import Control.Monad
 import Control.Monad.State
@@ -171,7 +172,7 @@ testObjectTree objTree = monadicIO $ run f >>= (assert . (==0))
   where f :: IO Int
         f = do root <- createObjects objTree
                twoSpace <- initTwoSpace 0x10000
-               let collection = performCollection [root]
+               let collection = performCollection (M.insert root (\_ -> return ()) M.empty)
                runStateT collection twoSpace
                evalStateT heapSize twoSpace
 
@@ -184,7 +185,8 @@ testObjectTree' = do
         f memRef objTree = do 
            root <- createObjects objTree
            twoSpace <- readIORef memRef
-           (space,twoSpace') <- runStateT (performCollection [root] >> heapSize) twoSpace
+           let collection = performCollection (M.insert root (\_ -> return ()) M.empty)
+           (space,twoSpace') <- runStateT (collection  >> heapSize) twoSpace
            writeIORef memRef twoSpace'
            --printf "quickcheck performed another iteration. space usage: %d" space
            return space

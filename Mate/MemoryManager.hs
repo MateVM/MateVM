@@ -1,6 +1,12 @@
 {-# LANGUAGE ExistentialQuantification #-}
-module Mate.MemoryManager (evacuateList, AllocationManager(..), 
-                           TwoSpace(..), initTwoSpace, mallocBytes',switchSpaces) where
+module Mate.MemoryManager   
+    ( evacuateList 
+    ,  AllocationManager(..)
+    , TwoSpace(..)
+    , initTwoSpace
+    , mallocBytes'
+    , switchSpaces
+    , RefUpdateAction )   where
 
 import qualified Foreign.Marshal.Alloc as Alloc
 import Foreign.Ptr
@@ -9,8 +15,11 @@ import Foreign.Marshal.Utils
 import Text.Printf
 import Control.Monad.State
 import Control.Applicative
+import qualified Data.Map as M
 
 import Mate.GC
+
+type RefUpdateAction = IntPtr -> IO () -- the argument is the new location of the refobj
 
 class AllocationManager a where
   
@@ -18,7 +27,7 @@ class AllocationManager a where
   mallocBytesT :: Int -> StateT a IO (Ptr b)
   
   -- | performs full gc and which is reflected in mem managers state
-  performCollection :: (RefObj b) => [b] ->  StateT a IO ()
+  performCollection :: (RefObj b) => M.Map b RefUpdateAction ->  StateT a IO ()
 
   heapSize :: StateT a IO Int
 
@@ -37,12 +46,17 @@ instance AllocationManager TwoSpace where
                 return $ fromIntegral $ toHeap space - fromIntegral (toBase space)
 
 
-performCollection' :: (RefObj a) => [a] -> StateT TwoSpace IO ()
+performCollection' :: (RefObj a) => M.Map a RefUpdateAction -> StateT TwoSpace IO ()
 performCollection' roots = do modify switchSpaces
                               newState <- get
-                              lift (performCollectionIO newState roots)
-                              -- [todo hs]: patch gc roots
-                         
+                              let rootList = map fst $ M.toList roots
+                              lift (performCollectionIO newState rootList)
+                              lift $ patchGCRoots roots
+
+patchGCRoots :: (RefObj a) => M.Map a RefUpdateAction -> IO ()
+patchGCRoots roots = mapM_ fixRef $ M.toList roots
+  where fixRef (obj,fixupAction) = getNewRef obj >>= payload >>= fixupAction
+                        
 -- [todo hs] this is slow. merge phases to eliminate list with refs
 performCollectionIO :: (AllocationManager b, RefObj a) => b -> [a] -> IO ()
 performCollectionIO manager refs' = do lifeRefs <- liftM concat $ mapM (markTree'' marked mark []) refs'
