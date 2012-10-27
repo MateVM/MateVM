@@ -4,6 +4,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Main where
 
 import qualified Data.List as L
@@ -36,6 +37,8 @@ import Text.Printf
 {- TODO
 (.) typeclass for codeemitting: http://pastebin.com/RZ9qR3k7 (depricated) || http://pastebin.com/BC3Jr5hG
 (.) hoopl passes
+    (+) prio argument regs!
+    (+) handle IRLoad and stuff right
 -}
 
 data MateIR t e x where
@@ -78,13 +81,14 @@ data RTPool = RTPool Word16
 instance Show RTPool where
   show (RTPool w16) = printf "RT(%02d)" w16
 
-data VarType = JInt | JFloat | JRef deriving (Show, Eq)
+data VarType = JInt | JFloat | JRef deriving (Show, Eq, Ord)
 
 data Var
   = JIntValue Int32
   | JFloatValue Float
   | VReg VarType Integer
   | JRefNull
+  deriving (Eq, Ord)
 
 varType :: Var -> VarType
 varType (JIntValue _) = JInt
@@ -521,6 +525,69 @@ apop = do
   return s
 {- /make hoopl graph -}
 
+{- sample hoopl pass: usedef analysis -}
+type OneUseDefFact = M.Map Var (WithTop Var)
+
+oneUseDefLattice :: DataflowLattice OneUseDefFact
+oneUseDefLattice = DataflowLattice
+  { fact_name = "Use/Def Analysis"
+  , fact_bot  = M.empty
+  , fact_join = joinMaps (extendJoinDomain factAdd) }
+  where
+    factAdd _ (OldFact old) (NewFact new)
+      | old == new = (NoChange, PElem new)
+      | otherwise  = (SomeChange, Top)
+
+uses :: BwdTransfer (MateIR Var) OneUseDefFact
+uses = mkBTransfer3 usesCO usesOO usesOC
+  where
+    usesCO _ f = f
+    usesOO (IROp Add dst@(VReg _ _) src@(VReg _ _) c) f=
+      if c == JIntValue 0 || c == JFloatValue 0 || c == JRefNull
+        then if M.member src f
+              -- more than one use, so don't look at it any more
+              then M.insert src Top f
+              else M.insert src (PElem dst) f
+        else f
+    usesOO (IRInvoke _ (Just r)) f = M.insert r Top f -- kill it...
+    usesOO _ f = f
+    usesOC (IRReturn _) _ = fact_bot oneUseDefLattice
+    usesOC _ f = foldl (M.unionWith (\_ _ -> Top)) M.empty (mapElems f)
+
+usesId :: BwdTransfer (MateIR Var) OneUseDefFact
+usesId = mkBTransfer3 usesCO usesOO usesOC
+  where
+    usesCO _ f = f
+    usesOO _ f = f
+    usesOC _ f = foldl (M.union) M.empty (mapElems f)
+
+killMoves :: forall m. FuelMonad m => BwdRewrite m (MateIR Var) OneUseDefFact
+killMoves = mkBRewrite rw
+  where
+    rw ::    (MateIR Var) e x
+          -> Fact x OneUseDefFact
+          -> m (Maybe (Graph (MateIR Var) e x))
+    rw (IROp Add dst@(VReg _ _) src@(VReg _ _) c) f =
+      let oprepl = if M.member dst f
+                    then case f M.! dst of
+                          PElem dstnew ->
+                            return $ Just $ mkMiddle $ IROp Add dstnew src c
+                          _ -> return Nothing
+                    else return Nothing
+      in if c == JIntValue 0 || c == JFloatValue 0
+        then case M.lookup src f of
+              Just Top -> oprepl
+              Just _ -> return $ Just emptyGraph
+              Nothing -> oprepl
+        else oprepl
+    rw _ _ = return Nothing
+
+oneUseDefPass = BwdPass
+  { bp_lattice = oneUseDefLattice
+  , bp_transfer = uses
+  , bp_rewrite = noBwdRewrite }
+{- /sample pass -}
+
 {- flatten hoople graph -}
 mkLinear :: Graph (MateIR Var) O x -> [LinearIns Var] -- [Block (MateIR Var) C C]
 mkLinear = concatMap lineariseBlock . postorder_dfs
@@ -823,12 +890,14 @@ pipeline :: Class Direct -> Method Direct -> [J.Instruction] -> Bool -> IO ()
 pipeline cls meth jvminsn debug = do
     when debug $ prettyHeader "JVM Input"
     when debug $ mapM_ (printf "\t%s\n" . show) jvminsn
-    -- when debug $ prettyHeader "Hoopl Graph"
-    -- when debug $ printf "%s\n" (showGraph show graph)
+    when debug $ prettyHeader "Hoopl Graph"
+    when debug $ printf "%s\n" (showGraph show graph)
     when debug $ prettyHeader "Label Map"
     when debug $ printf "%s\n" (show lbls)
-    when debug $ prettyHeader "Flatten Graph"
-    when debug $ printf "%s\n" (show linear)
+    when debug $ prettyHeader "Hoopl Opt-Graph"
+    when debug $ printf "%s\n" (showGraph show optgraph)
+    -- when debug $ prettyHeader "Flatten Graph"
+    -- when debug $ printf "%s\n" (show linear)
     when debug $ prettyHeader "Register Allocation"
     when debug $ printf "%s\n" (show ra)
     prettyHeader "Code Generation"
@@ -848,12 +917,25 @@ pipeline cls meth jvminsn debug = do
     (graph, transstate) = runAll $ do
       resolveReferences
       refs <- blockEntries <$> get
-      trace (printf "refs: %s\n" (show refs)) $ resetPC jvminsn
+      trace (printf "refs: %s\n" (show refs)) $
+        resetPC jvminsn
       gs <- mkBlocks
       let g = L.foldl' (|*><*|) emptyClosedGraph gs
       mkMethod g
+    runFM :: SimpleFuelMonad a -> a
+    runFM = runSimpleUniqueMonad . runWithFuel infiniteFuel
+    runOpts g = runFM $ do
+      let nothingc = NothingC :: MaybeC O H.Label
+      (_, f, _) <- analyzeAndRewriteBwd
+                     oneUseDefPass nothingc g noFacts
+      (gm', _, _) <- analyzeAndRewriteBwd
+                     oneUseDefPass { bp_transfer = usesId
+                                   , bp_rewrite = killMoves }
+                      nothingc g f
+      trace (printf "facts: %s\n" (show f)) $ return gm'
+    optgraph = runOpts graph
     lbls = labels transstate
-    linear = mkLinear graph
+    linear = mkLinear optgraph
     ra = stupidRegAlloc (preRegs . simStack $ transstate) linear
 
 prettyHeader :: String -> IO ()
@@ -877,7 +959,7 @@ compileMethod meth classfile debug = do
 
 main :: IO ()
 main = do
-  -- compileMethod "fib" "../tests/Fib.class" False
+  -- compileMethod "fib" "../tests/Fib.class" True
   -- compileMethod "main" "../tests/Instance1.class" True
   compileMethod "main" "Play.class" True
 {- /application -}
