@@ -617,6 +617,7 @@ stupidRegAlloc preAssigned linsn = evalState regAlloc' startmapping
 
     doAssign :: Var -> State MappedRegs HVar
     doAssign (JIntValue x) = return $ HIConstant x
+    doAssign JRefNull = return $ HIConstant 0
     doAssign (JFloatValue x) = return $ HFConstant x
     doAssign vr = do
       isAssignVr <- hasAssign vr
@@ -661,7 +662,10 @@ stupidRegAlloc preAssigned linsn = evalState regAlloc' startmapping
           let unpackFloatReg :: HVar -> Maybe HVar
               unpackFloatReg x@(HFReg _) = Just x
               unpackFloatReg _ = Nothing
-          let unpacker = case t of JInt -> unpackIntReg; JFloat -> unpackFloatReg
+          let unpacker = case t of
+                           JInt -> unpackIntReg
+                           JRef -> unpackIntReg
+                           JFloat -> unpackFloatReg
           return . mapMaybe unpacker $ mr
 
         availRegs :: VarType -> State MappedRegs [HVar]
@@ -771,6 +775,8 @@ girEmitOO (IROp Add dst' src1' src2') =
       movss dst c
     ge (HFReg dst) (HFReg src) (HFConstant 0) =
       movss dst src
+    ge (HFReg dst) (HFReg src) (HIConstant 0) =
+      movss dst src
     ge (SpillFReg d) c1@(HFConstant _) c2@(HFConstant _) = do
       let dst = (d, ebp)
       ge (HFReg xmm7) c1 c2
@@ -801,6 +807,13 @@ girEmitOO (IROp Mul _ _ _) = do
 girEmitOO (IRInvoke _ _) = do
   newNamedLabel "TODO (call)" >>= defineLabel
   call (0x0 :: Word32)
+girEmitOO (IRLoadRT x (HIReg dst)) = do
+  newNamedLabel ("TODO: RT NEW: " ++ show x) >>= defineLabel
+  mov dst (0 :: Word32)
+girEmitOO (IRLoad (HIReg memsrc) (HIReg dst)) = do
+  mov dst (Disp 0, memsrc)
+girEmitOO (IRStore (HIReg memdst) (HIConstant c)) = do
+  mov (Disp 0, memdst) (i32tow32 c)
 girEmitOO (IRPush _ (HIReg x)) = push x
 girEmitOO x = error $ "girEmitOO: insn not implemented: " ++ show x
 {- /codeGen -}
@@ -865,6 +878,6 @@ compileMethod meth classfile debug = do
 main :: IO ()
 main = do
   -- compileMethod "fib" "../tests/Fib.class" False
-  compileMethod "main" "../tests/Instance1.class" True
-  -- compileMethod "f3" "Play.class" True
+  -- compileMethod "main" "../tests/Instance1.class" True
+  compileMethod "main" "Play.class" True
 {- /application -}
