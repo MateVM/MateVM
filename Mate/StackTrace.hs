@@ -19,7 +19,7 @@ import Mate.Debug
 import Mate.Types
 
 data StackDescription = StackDescription { base :: CPtrdiff, end :: CPtrdiff, 
-                                           stackinfo :: RuntimeStackInfo }
+                                           stackinfo :: RuntimeStackInfo } deriving Show
 
 cPtrToIntPtr :: CPtrdiff -> Ptr a 
 cPtrToIntPtr = intPtrToPtr . fromIntegral

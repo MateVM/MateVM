@@ -30,6 +30,7 @@ instance RefObj (Ptr a) where
   patchRefs   = patchRefsPtr
   cast = castPtr
   getNewRef ptr = peekByteOff ptr newRefOff
+  allocationOffset _ = 0
 
 instance PrintableRef (Ptr a) where
   printRef    = printRef'

@@ -1,6 +1,7 @@
 module Mate.JavaObjectsGC 
     ( gcAllocationOffset
-    , RefObj(..),
+    , RefObj(..)
+    , printRef'
     ) where
 
 import Mate.GC
@@ -9,6 +10,8 @@ import Foreign.Ptr
 import Foreign.Marshal.Array
 import Foreign.Storable
 import GHC.Int
+
+import Text.Printf
 
 import Control.Monad
 
@@ -23,9 +26,10 @@ instance RefObj (Ptr a) where
   patchRefs   = patchRefsPtr
   cast = castPtr
   getNewRef ptr = peekByteOff ptr newPtrOffset
+  allocationOffset _ = gcAllocationOffset
 
-instance PrintableRef (Ptr a) where
-  printRef    = undefined
+  printRef    = printRef'
+
 
 gcAllocationOffset, markByteOffset, newPtrOffset, fieldsOffset, numberOfObjsOffset ::  Int
 gcAllocationOffset = 12
@@ -52,4 +56,18 @@ setNewRefPtr ptr = pokeByteOff ptr newPtrOffset
 
 patchRefsPtr :: Ptr a -> [Ptr a] -> IO ()
 patchRefsPtr ptr = pokeArray (ptr `plusPtr` fieldsOffset) 
+
+
+printRef' :: Ptr a -> IO ()
+printRef' ptr = do 
+    printf "children 0x%08x\n" =<< (peekByteOff ptr numberOfObjsOffset :: IO Int32)                  
+    printf "marked 0x%08x\n" =<< (peekByteOff ptr markByteOffset :: IO Int32) 
+    printf "payload 0x%08x\n" =<< (liftM fromIntegral (getIntPtr ptr) :: IO Int32)
+    printf "newRef 0x%08x\n" =<< (peekByteOff ptr newPtrOffset :: IO Int32)
+    printChildren ptr
+    putStrLn ""
+
+printChildren :: Ptr a -> IO ()
+printChildren ptr = do children <- refs ptr
+                       putStrLn $ "children" ++ show children
 

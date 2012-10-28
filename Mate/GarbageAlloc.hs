@@ -19,13 +19,16 @@ import Control.Monad.State
 
 import qualified Data.ByteString.Internal as BI
 import qualified Data.Set as S
+import Data.String.Utils
 
 import Mate.GC.Boehm
 import Mate.StackTrace
 import Mate.MemoryManager
 import qualified Mate.JavaObjectsGC as Obj
 
+import JVM.ClassFile
 import Mate.Debug
+import Mate.Types
 
 foreign export ccall mallocObjectGC_stackstrace :: CPtrdiff -> CPtrdiff -> Int -> IO CPtrdiff
 foreign export ccall mallocObjectGC :: Int -> IO CPtrdiff
@@ -114,9 +117,16 @@ printGCStats = putStrLn "Should print GC Stats"
 allocObjAndDoGCPrecise :: Maybe (CPtrdiff,CPtrdiff) -> Int -> IO (Ptr a)
 allocObjAndDoGCPrecise regs size = do
   stack <- case regs of 
-        Just(sptr,rebp) -> printStackTrace' sptr rebp
+        Just(sptr,rebp) -> do stack' <- printStackTrace' sptr rebp 
+                              case stack' of
+                               s@(x:xs) -> if startswith "<clinit>" (toString (rsiMethodname $ stackinfo x)) 
+                                            then return []
+                                            else return s
+                               _ -> return stack'
         _ -> return []
 
+  printfStr "look here"
+  print stack
   let gcAction = buildGCAction stack size
  
   memoryManager <- readIORef twoSpaceGC 
@@ -130,7 +140,9 @@ allocObjAndDoGCPrecise regs size = do
   --putStrLn "allocated objs: "
   --printObjsDbg objs
   
-  return $ ptr `plusPtr` Obj.gcAllocationOffset
+  let shifted = ptr `plusPtr` 12
+  --Obj.printRef shifted
+  return shifted
 
 
 printObjsDbg :: S.Set IntPtr -> IO ()

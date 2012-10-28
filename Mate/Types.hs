@@ -66,7 +66,7 @@ type MapBB = M.Map BlockID BasicBlock
 type ExceptionMap a = M.Map (a, a) [(B.ByteString, a)]
 data RuntimeStackInfo = RuntimeStackInfo {
   rsiMethodname :: B.ByteString,
-  rsiExceptionMap :: ExceptionMap NativeWord }
+  rsiExceptionMap :: ExceptionMap NativeWord } deriving Show
 
 -- java byte code PC -> native PC
 type JpcNpcMap = M.Map Int Word32

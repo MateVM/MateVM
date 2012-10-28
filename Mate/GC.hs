@@ -1,6 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module Mate.GC 
-  ( RefObj(..), PrintableRef(..), traverseIO, markTree'', markTree, patchAllRefs 
+  ( RefObj(..), traverseIO, markTree'', markTree, patchAllRefs 
     {- dont export generic versions for high performance -> remove for production -}) where
 
 import Control.Monad
@@ -22,10 +22,14 @@ class (Eq a, Ord a, Show a) => RefObj a where
   marked  :: a -> IO Bool
   mark    :: a -> IO ()
   unmark  :: a -> IO ()
+
+  allocationOffset :: a -> Int
+
+  printRef :: a -> IO ()
   
 
-class PrintableRef a where
-  printRef :: a -> IO ()
+--class PrintableRef a where
+--  printRef :: a -> IO ()
 
 -- | Generically marks a graph (can be used to set mark bit and reset mark bit at the same time
 -- using customized loopcheck and marker funcs (i.e. to set the bit check on ==1 and on ==0 otherwise)
