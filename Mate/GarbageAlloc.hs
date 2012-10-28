@@ -23,6 +23,7 @@ import qualified Data.Set as S
 import Mate.GC.Boehm
 import Mate.StackTrace
 import Mate.MemoryManager
+import qualified Mate.JavaObjectsGC as Obj
 
 import Mate.Debug
 
@@ -117,7 +118,7 @@ allocObjAndDoGCPrecise regs size = do
         _ -> return []
  
   memoryManager <- readIORef twoSpaceGC 
-  (ptr,memoryManager') <- runStateT (mallocBytesT (size+16)) memoryManager 
+  (ptr,memoryManager') <- runStateT (mallocBytesT (size + Obj.gcAllocationOffset)) memoryManager 
   writeIORef twoSpaceGC memoryManager'
   
   let intptr = ptrToIntPtr ptr
@@ -127,7 +128,7 @@ allocObjAndDoGCPrecise regs size = do
   --putStrLn "allocated objs: "
   --printObjsDbg objs
   
-  return $ ptr `plusPtr` 16
+  return $ ptr `plusPtr` Obj.gcAllocationOffset
 
 
 printObjsDbg :: S.Set IntPtr -> IO ()
