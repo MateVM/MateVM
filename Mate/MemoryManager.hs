@@ -1,7 +1,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 module Mate.MemoryManager   
-    ( evacuateList 
-    ,  AllocationManager(..)
+    (  
+     AllocationManager(..)
     , TwoSpace(..)
     , initTwoSpace
     , mallocBytes'
@@ -63,11 +63,11 @@ instance AllocationManager TwoSpace where
 
 
 performCollection' :: (RefObj a) => M.Map a RefUpdateAction -> StateT TwoSpace IO ()
-performCollection' roots = do modify switchSpaces
+performCollection' roots = do --modify switchSpaces
                               newState <- get
                               let rootList = map fst $ M.toList roots
                               lift (putStrLn "rootSet: " >> print rootList)
-                              lift (performCollectionIO newState rootList)
+                              performCollectionIO newState rootList
                               lift $ patchGCRoots roots
                               --modify switchSpaces
 
@@ -76,21 +76,21 @@ patchGCRoots roots = mapM_ fixRef $ M.toList roots
   where fixRef (obj,fixupAction) = getNewRef obj >>= getIntPtr >>= fixupAction
                         
 -- [todo hs] this is slow. merge phases to eliminate list with refs
-performCollectionIO :: (AllocationManager b, RefObj a) => b -> [a] -> IO ()
+performCollectionIO :: (AllocationManager b, RefObj a) => b -> [a] -> StateT TwoSpace IO ()
 performCollectionIO manager refs' = do 
-    putStrLn "before mark"
-    putStrLn "marked"
-    print refs'
-    if length refs' > 0 then Obj.printRef $ head refs' else return ()
-    lifeRefs <- liftM (nub . concat) $ mapM (markTree'' marked mark refs') refs'
-    putStrLn "marked"
-    if length refs' > 0 then Obj.printRef $ head refs' else return ()
-    print lifeRefs
-    putStrLn "go evacuate"
-    evacuateList lifeRefs manager
-    putStrLn "eacuated"
-    patchAllRefs lifeRefs 
-    putStrLn "patched"                      
+    lift $ putStrLn "before mark"
+    lift $ putStrLn "marked"
+    lift $ print refs'
+    lift $ if length refs' > 0 then Obj.printRef $ head refs' else return ()
+    lifeRefs <- lift $ liftM (nub . concat) $ mapM (markTree'' marked mark refs') refs'
+    lift $ putStrLn "marked"
+    lift $ if length refs' > 0 then Obj.printRef $ head refs' else return ()
+    lift $ print lifeRefs
+    lift $ putStrLn "go evacuate"
+    evacuate' lifeRefs 
+    lift $ putStrLn "eacuated"
+    lift $ patchAllRefs lifeRefs 
+    lift $ putStrLn "patched"                      
 
 
 buildGCAction :: AllocationManager a => [T.StackDescription] -> Int -> StateT a IO (Ptr b)
@@ -118,7 +118,7 @@ buildRootPatcher (ptr,obj) = M.insertWith (>>) ptr' patch
 
 switchSpaces :: TwoSpace -> TwoSpace
 switchSpaces old = old { fromHeap = toHeap old,
-                         toHeap = fromBase old, 
+                         toHeap = fromHeap old, 
                          fromBase = toBase old,
                          toBase = fromBase old,
                          fromExtreme = toExtreme old,
@@ -140,7 +140,7 @@ mallocBytes' bytes = do state' <- get
                                failNoSpace used capacity
   where alloc :: TwoSpace -> IntPtr -> StateT TwoSpace IO (Ptr b)
         alloc state' end = do let ptr = toHeap state'
-                              put $ state' { toHeap = end } 
+                              put $ state' { toHeap = end + 100 } 
                               liftIO (putStrLn $ "Allocated obj: " ++ show (intPtrToPtr ptr))
                               liftIO (return $ intPtrToPtr ptr)
         failNoSpace :: Integer -> Integer -> a
@@ -165,8 +165,8 @@ evacuate'' obj = do (size',location) <- liftIO ((,) <$> GC.size obj <*> getIntPt
                     liftIO (copyBytes newPtr ((intPtrToPtr location) `plusPtr` (-12)) (size'+12) >> 
                             setNewRef obj (cast (newPtr `plusPtr` 12)))
 
-evacuateList :: (RefObj a, AllocationManager b) => [a] -> b -> IO ()
-evacuateList objs = evalStateT (evacuate' objs) 
+--evacuateList :: (RefObj a, AllocationManager b) => [a] -> b -> StateT b IO ()
+--evacuateList objs = evacuate' objs
 
 validRef' :: IntPtr -> TwoSpace -> Bool
 validRef' ptr twoSpace = (ptr >= (fst $ validRange twoSpace)) && 
