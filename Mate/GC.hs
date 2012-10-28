@@ -10,9 +10,9 @@ import Foreign.Ptr (IntPtr, Ptr)
 
 class (Eq a, Ord a, Show a) => RefObj a where
   
-  payload :: a -> IO IntPtr
-  size    :: a -> IO Int
-  cast    :: Ptr b -> a
+  getIntPtr :: a -> IO IntPtr
+  size      :: a -> IO Int
+  cast      :: Ptr b -> a
  
   refs      :: a -> IO [a]
   patchRefs :: a -> [a] -> IO ()

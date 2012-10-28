@@ -17,6 +17,7 @@ import Control.Monad.State
 import Control.Applicative
 import qualified Data.Map as M
 
+import Mate.Debug
 import Mate.GC
 
 type RefUpdateAction = IntPtr -> IO () -- the argument is the new location of the refobj
@@ -55,7 +56,7 @@ performCollection' roots = do modify switchSpaces
 
 patchGCRoots :: (RefObj a) => M.Map a RefUpdateAction -> IO ()
 patchGCRoots roots = mapM_ fixRef $ M.toList roots
-  where fixRef (obj,fixupAction) = getNewRef obj >>= payload >>= fixupAction
+  where fixRef (obj,fixupAction) = getNewRef obj >>= getIntPtr >>= fixupAction
                         
 -- [todo hs] this is slow. merge phases to eliminate list with refs
 performCollectionIO :: (AllocationManager b, RefObj a) => b -> [a] -> IO ()
@@ -74,21 +75,37 @@ switchSpaces old = old { fromHeap = toHeap old,
 
 mallocBytes' :: Int -> StateT TwoSpace IO (Ptr b)
 mallocBytes' bytes = do state' <- get
-                        let end = toHeap state' + (fromIntegral bytes)
-                        if end <= toExtreme state' then alloc state' end else failNoSpace
+                        let end = toHeap state' + fromIntegral bytes
+                            
+                            base = fromIntegral $ toBase state'
+                            extreme = fromIntegral $ toExtreme state'
+                            heap = fromIntegral $ toHeap state'
+                            used = heap - base
+                            capacity = extreme - base
+                        if end <= toExtreme state' 
+                          then liftIO (logAllocation bytes used capacity) >> alloc state' end 
+                          else 
+                               failNoSpace used capacity
   where alloc :: TwoSpace -> IntPtr -> StateT TwoSpace IO (Ptr b)
         alloc state' end = do let ptr = toHeap state'
                               put $ state' { toHeap = end } 
                               --liftIO (putStrLn $ "Allocated obj: " ++ show (intPtrToPtr ptr))
                               liftIO (return $ intPtrToPtr ptr)
-        failNoSpace = error "no space left in two space (mallocBytes')"
+        failNoSpace :: Integer -> Integer -> a
+        failNoSpace usage fullSize = 
+            error $ printf "no space left in two space (mallocBytes'). Usage: %d/%d" usage fullSize
+        
+        logAllocation :: Int -> Integer -> Integer -> IO ()
+        logAllocation _ _ _ = return ()
+        --logAllocation fullSize usage capacity = printf "alloc size: %d (%d/%d)\n" fullSize usage capacity
+                          
 
 
 evacuate' :: (RefObj a, AllocationManager b) => [a] -> StateT b IO ()
 evacuate' =  mapM_ evacuate'' 
 
 evacuate'' :: (RefObj a, AllocationManager b) => a -> StateT b IO ()
-evacuate'' obj = do (size',payload') <- liftIO ((,) <$> size obj <*> payload obj)
+evacuate'' obj = do (size',payload') <- liftIO ((,) <$> size obj <*> getIntPtr obj)
                     -- malloc in TwoSpace
                     newPtr <- mallocBytesT size'
                     --liftIO (putStrLn ("evacuating: " ++ show obj ++ " and set: " ++ show newPtr ++ " size: " ++ show size'))
@@ -101,7 +118,7 @@ evacuateList objs = evalStateT (evacuate' objs)
 
 
 initTwoSpace :: Int -> IO TwoSpace
-initTwoSpace size' =  do printf "initializing TwoSpace memory manager with %d bytes.\n" size'
+initTwoSpace size' =  do printfStr $ printf "initializing TwoSpace memory manager with %d bytes.\n" size'
                          fromSpace <- Alloc.mallocBytes size'
                          toSpace   <- Alloc.mallocBytes size'
                          if fromSpace /= nullPtr && toSpace /= nullPtr 

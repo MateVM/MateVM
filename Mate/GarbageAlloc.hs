@@ -117,17 +117,17 @@ allocObjAndDoGCPrecise regs size = do
         _ -> return []
  
   memoryManager <- readIORef twoSpaceGC 
-  (ptr,memoryManager') <- runStateT (mallocBytesT size) memoryManager 
+  (ptr,memoryManager') <- runStateT (mallocBytesT (size+16)) memoryManager 
   writeIORef twoSpaceGC memoryManager'
   
   let intptr = ptrToIntPtr ptr
   modifyIORef allocatedObjsDbg (S.insert intptr)
-  objs <- readIORef allocatedObjsDbg
+  _ <- readIORef allocatedObjsDbg
   
-  putStrLn "allocated objs: "
-  printObjsDbg objs
+  --putStrLn "allocated objs: "
+  --printObjsDbg objs
   
-  return ptr
+  return $ ptr `plusPtr` 16
 
 
 printObjsDbg :: S.Set IntPtr -> IO ()

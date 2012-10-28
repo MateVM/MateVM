@@ -20,7 +20,7 @@ import Test.QuickCheck
 import Test.QuickCheck.Monadic 
 
 instance RefObj (Ptr a) where
-  payload     = return . ptrToIntPtr
+  getIntPtr   = return . ptrToIntPtr
   size a      = fmap ((+ fieldsOff) . (*4) . length) (refs a)
   refs        = unpackRefs . castPtr
   marked      = markedRef
@@ -62,7 +62,7 @@ printRef' :: Ptr a -> IO ()
 printRef' ptr = do printf "obj 0x%08x\n" =<< (peekByteOff ptr idOff :: IO Int32)
                    printf "children 0x%08x\n" =<< (peekByteOff ptr numberOfObjsOff :: IO Int32)                  
                    printf "marked 0x%08x\n" =<< (peekByteOff ptr markedOff :: IO Int32) 
-                   printf "payload 0x%08x\n" =<< (liftM fromIntegral (payload ptr) :: IO Int32)
+                   printf "payload 0x%08x\n" =<< (liftM fromIntegral (getIntPtr ptr) :: IO Int32)
                    printf "newRef 0x%08x\n" =<< (peekByteOff ptr newRefOff :: IO Int32)
                    printChildren ptr
                    putStrLn ""

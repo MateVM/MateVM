@@ -41,7 +41,7 @@ class Big2
 
 	public Big2()
 	{
-		arr = new int[0xF400];
+		arr = new int[0x10];//int[0xF400];
 		//System.out.println("foo");
 	}
         
