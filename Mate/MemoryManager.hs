@@ -63,7 +63,7 @@ instance AllocationManager TwoSpace where
 
 
 performCollection' :: (RefObj a) => M.Map a RefUpdateAction -> StateT TwoSpace IO ()
-performCollection' roots = do --modify switchSpaces
+performCollection' roots = do modify switchSpaces
                               newState <- get
                               let rootList = map fst $ M.toList roots
                               lift (putStrLn "rootSet: " >> print rootList)
