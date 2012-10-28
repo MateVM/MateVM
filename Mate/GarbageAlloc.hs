@@ -26,6 +26,9 @@ import Mate.MemoryManager
 
 import Mate.Debug
 
+foreign export ccall mallocObjectGC_stackstrace :: CPtrdiff -> CPtrdiff -> Int -> IO CPtrdiff
+foreign export ccall mallocObjectGC :: Int -> IO CPtrdiff
+
 -- unified place for allocating Memory
 
 mallocObjectUnmanaged :: Int -> IO CPtrdiff
@@ -57,29 +60,41 @@ mallocStringGC size = do
   BI.memset (castPtr ptr) 0 (fromIntegral size)
   return ptr
 
-foreign export ccall mallocObjectGC :: Int -> IO CPtrdiff
+
+-- | allocates gc tracked obj. for precise gc no gc will take place
+-- use mallocObjectGC_stacktrace instead if gc should take place
 mallocObjectGC :: Int -> IO CPtrdiff
 mallocObjectGC size = do
-  ptr <- mallocBytesGC size
+  ptr <- alloc Nothing size
   BI.memset (castPtr ptr) 0 (fromIntegral size)
   printfStr $ printf "mallocObject: %d\n" size
   return $ fromIntegral $ ptrToIntPtr ptr
 
-foreign export ccall mallocObjectGC_stackstrace :: CPtrdiff -> CPtrdiff -> Int -> IO CPtrdiff
+-- allocates using precise or boehmgc. the first argument describes whether
+-- gc may take place (if nothing, no rebp provided and no precise gc can ever work)
+alloc :: Maybe (CPtrdiff, CPtrdiff) -> Int -> IO (Ptr a)
+alloc regs size = 
+  if usePreciseGC 
+    then allocObjAndDoGCPrecise regs size
+    else allocObjAndDoGC regs size
+
+
+-- | allocates gc tracked obj. sptr and rebp must be given. If now available use
+-- mallocObjectGC instead 
 mallocObjectGC_stackstrace :: CPtrdiff -> CPtrdiff -> Int -> IO CPtrdiff
 mallocObjectGC_stackstrace sptr rebp size = do
   printfStr $ printf "mallocObject: %d\n" size
   printfStr $ printf "ebp @ malloc: 0x%08x\n" (fromIntegral rebp :: Word32)
-  ptr <- if usePreciseGC 
-          then allocObjAndDoGCPrecise sptr rebp size
-          else allocObjAndDoGC  sptr rebp size
+  ptr <- alloc (Just (sptr, rebp)) size
   BI.memset (castPtr ptr) 0 (fromIntegral size)
   return $ fromIntegral $ ptrToIntPtr ptr
 
-allocObjAndDoGC :: CPtrdiff -> CPtrdiff -> Int -> IO (Ptr a) 
-allocObjAndDoGC sptr rebp size = do
+allocObjAndDoGC :: Maybe (CPtrdiff,CPtrdiff) -> Int -> IO (Ptr a) 
+allocObjAndDoGC regs size = do
   --printStackTrace 0 rebp TODO: compare performance of printStackTrace and printStackTrace'?
-  _ <- if mateDEBUG then printStackTrace' sptr rebp else return []
+  _ <- case (mateDEBUG, regs) of
+        (True, Just(sptr,rebp)) -> printStackTrace' sptr rebp
+        _ -> return []
   mallocBytesGC size
 
 getHeapMemory :: IO Int
@@ -95,12 +110,14 @@ printGCStats = putStrLn "Should print GC Stats"
 
 -- from now: very hacky and very very evil test stuff
 
-allocObjAndDoGCPrecise :: CPtrdiff -> CPtrdiff -> Int -> IO (Ptr a)
-allocObjAndDoGCPrecise sptr rebp size = do
-  _ <- printStackTrace' sptr rebp
+allocObjAndDoGCPrecise :: Maybe (CPtrdiff,CPtrdiff) -> Int -> IO (Ptr a)
+allocObjAndDoGCPrecise regs size = do
+  _ <- case regs of 
+        Just(sptr,rebp) -> printStackTrace' sptr rebp
+        _ -> return []
  
   memoryManager <- readIORef twoSpaceGC 
-  (ptr,memoryManager') <- runStateT (performAllocationT sptr rebp size) memoryManager 
+  (ptr,memoryManager') <- runStateT (mallocBytesT size) memoryManager 
   writeIORef twoSpaceGC memoryManager'
   
   let intptr = ptrToIntPtr ptr
@@ -112,10 +129,6 @@ allocObjAndDoGCPrecise sptr rebp size = do
   
   return ptr
 
-performAllocationT :: (AllocationManager a) => CPtrdiff -> CPtrdiff -> Int -> StateT a IO (Ptr b)
-performAllocationT _ _ size = do 
-  --ptr <- liftIO $ mallocBytesGC size
-  mallocBytesT size
 
 printObjsDbg :: S.Set IntPtr -> IO ()
 printObjsDbg = mapM_ print . S.toList
