@@ -6,11 +6,14 @@ module Mate.MemoryManager
     , initTwoSpace
     , mallocBytes'
     , switchSpaces
-    , RefUpdateAction )   where
+    , RefUpdateAction
+    , validRef'
+    , buildGCAction )   where
 
 import qualified Foreign.Marshal.Alloc as Alloc
 import Foreign.Ptr
 import Foreign.Marshal.Utils
+import Foreign.Storable
 
 import Text.Printf
 import Control.Monad.State
@@ -18,9 +21,13 @@ import Control.Applicative
 import qualified Data.Map as M
 
 import Mate.Debug
-import Mate.GC
+import Mate.GC hiding (size)
+import qualified Mate.StackTrace as T
+import qualified Mate.JavaObjectsGC as Obj
+import qualified Mate.GC as GC
 
 type RefUpdateAction = IntPtr -> IO () -- the argument is the new location of the refobj
+type RootSet a = M.Map (Ptr a) RefUpdateAction
 
 class AllocationManager a where
   
@@ -31,6 +38,8 @@ class AllocationManager a where
   performCollection :: (RefObj b) => M.Map b RefUpdateAction ->  StateT a IO ()
 
   heapSize :: StateT a IO Int
+
+  validRef :: IntPtr -> StateT a IO Bool
 
 data TwoSpace = TwoSpace { fromBase :: IntPtr, 
                            toBase   :: IntPtr, 
@@ -46,11 +55,14 @@ instance AllocationManager TwoSpace where
   heapSize = do space <- get
                 return $ fromIntegral $ toHeap space - fromIntegral (toBase space)
 
+  validRef ptr = liftM (validRef' ptr) get
+
 
 performCollection' :: (RefObj a) => M.Map a RefUpdateAction -> StateT TwoSpace IO ()
 performCollection' roots = do modify switchSpaces
                               newState <- get
                               let rootList = map fst $ M.toList roots
+                              lift (putStrLn "rootSet: " >> print rootList)
                               lift (performCollectionIO newState rootList)
                               lift $ patchGCRoots roots
 
@@ -63,6 +75,27 @@ performCollectionIO :: (AllocationManager b, RefObj a) => b -> [a] -> IO ()
 performCollectionIO manager refs' = do lifeRefs <- liftM concat $ mapM (markTree'' marked mark []) refs'
                                        evacuateList lifeRefs manager
                                        patchAllRefs lifeRefs                       
+
+
+buildGCAction :: AllocationManager a => [T.StackDescription] -> Int -> StateT a IO (Ptr a)
+buildGCAction [] size = mallocBytesT (size + Obj.gcAllocationOffset)
+buildGCAction stack size = do roots <- filterM checkRef (concatMap T.possibleRefs stack)
+                              performCollection $ foldr buildRootPatcher M.empty roots
+                              mallocBytesT (size + Obj.gcAllocationOffset)
+  where --checkRef :: IntPtr -> StateT a IO Bool
+        checkRef intPtr = lift (dereference intPtr) >>= validRef
+        dereference :: IntPtr -> IO IntPtr
+        dereference intPtr = do printf "deref stacklocation: 0x%08x\n" (fromIntegral intPtr :: Int)
+                                ref <- peek $ intPtrToPtr intPtr :: IO IntPtr
+                                printf "deref location: "
+                                print $ intPtrToPtr ref
+                                return ref
+
+
+buildRootPatcher :: IntPtr -> RootSet a -> RootSet a
+buildRootPatcher ptr = M.insertWith (>>) ptr' patch 
+  where patch = poke ptr' 
+        ptr' = intPtrToPtr ptr
 
 switchSpaces :: TwoSpace -> TwoSpace
 switchSpaces old = old { fromHeap = toHeap old,
@@ -89,15 +122,15 @@ mallocBytes' bytes = do state' <- get
   where alloc :: TwoSpace -> IntPtr -> StateT TwoSpace IO (Ptr b)
         alloc state' end = do let ptr = toHeap state'
                               put $ state' { toHeap = end } 
-                              --liftIO (putStrLn $ "Allocated obj: " ++ show (intPtrToPtr ptr))
+                              liftIO (putStrLn $ "Allocated obj: " ++ show (intPtrToPtr ptr))
                               liftIO (return $ intPtrToPtr ptr)
         failNoSpace :: Integer -> Integer -> a
         failNoSpace usage fullSize = 
             error $ printf "no space left in two space (mallocBytes'). Usage: %d/%d" usage fullSize
         
         logAllocation :: Int -> Integer -> Integer -> IO ()
-        logAllocation _ _ _ = return ()
-        --logAllocation fullSize usage capacity = printf "alloc size: %d (%d/%d)\n" fullSize usage capacity
+        --logAllocation _ _ _ = return ()
+        logAllocation fullSize usage capacity = printf "alloc size: %d (%d/%d)\n" fullSize usage capacity
                           
 
 
@@ -105,7 +138,7 @@ evacuate' :: (RefObj a, AllocationManager b) => [a] -> StateT b IO ()
 evacuate' =  mapM_ evacuate'' 
 
 evacuate'' :: (RefObj a, AllocationManager b) => a -> StateT b IO ()
-evacuate'' obj = do (size',payload') <- liftIO ((,) <$> size obj <*> getIntPtr obj)
+evacuate'' obj = do (size',payload') <- liftIO ((,) <$> GC.size obj <*> getIntPtr obj)
                     -- malloc in TwoSpace
                     newPtr <- mallocBytesT size'
                     --liftIO (putStrLn ("evacuating: " ++ show obj ++ " and set: " ++ show newPtr ++ " size: " ++ show size'))
@@ -116,11 +149,14 @@ evacuate'' obj = do (size',payload') <- liftIO ((,) <$> size obj <*> getIntPtr o
 evacuateList :: (RefObj a, AllocationManager b) => [a] -> b -> IO ()
 evacuateList objs = evalStateT (evacuate' objs) 
 
+validRef' :: IntPtr -> TwoSpace -> Bool
+validRef' ptr twoSpace = (fromBase twoSpace <= ptr) && (ptr <= toExtreme twoSpace)
+
 
 initTwoSpace :: Int -> IO TwoSpace
 initTwoSpace size' =  do printfStr $ printf "initializing TwoSpace memory manager with %d bytes.\n" size'
-                         fromSpace <- Alloc.mallocBytes size'
-                         toSpace   <- Alloc.mallocBytes size'
+                         fromSpace <- Alloc.mallocBytes (size' * 2)
+                         let toSpace   = fromSpace `plusPtr` size'
                          if fromSpace /= nullPtr && toSpace /= nullPtr 
                             then return $ buildToSpace fromSpace toSpace
                             else error "Could not initialize TwoSpace memory manager (malloc returned null ptr)\n"

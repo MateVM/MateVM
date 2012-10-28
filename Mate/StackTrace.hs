@@ -4,6 +4,7 @@ module Mate.StackTrace
   , printStackTrace'
   , printStackTrace
   , printStackFramesPrecise
+  , possibleRefs
   )  where
 
 import Foreign
@@ -31,7 +32,7 @@ stackFrames accum prevRbp rebp = do
     stackinfo' <- deRefStablePtr sptr :: IO RuntimeStackInfo
     let accum' = StackDescription { base = rebp, end = prevRbp, stackinfo = stackinfo' } : accum
     if bottomOfStack stackinfo'
-     then return accum -- done here. bottomOfStack claims that there are no frames left
+     then return accum' -- done here. bottomOfStack claims that there are no frames left
      else -- otherwise grab the next frame, put current frame into list and continue
           peek (cPtrToIntPtr (rebp + 4)) >>= stackFrames accum' rebp
 
@@ -58,7 +59,9 @@ printStackFramesPrecise = mapM_ printPrecise
         end' = fromIntegral . end :: StackDescription -> Int
 
 possibleRefs :: StackDescription -> [IntPtr]
-possibleRefs f = [fromIntegral $ end f .. fromIntegral $ base f]
+possibleRefs f = [from, from + 4 .. to]
+  where from = fromIntegral $ end f
+        to = fromIntegral $ base f
 
 refsToString :: [IntPtr] -> String
 refsToString ptrs = printf "Reference Candidates: %s\n" (ptrStr ptrs)

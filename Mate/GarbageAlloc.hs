@@ -113,12 +113,14 @@ printGCStats = putStrLn "Should print GC Stats"
 
 allocObjAndDoGCPrecise :: Maybe (CPtrdiff,CPtrdiff) -> Int -> IO (Ptr a)
 allocObjAndDoGCPrecise regs size = do
-  _ <- case regs of 
+  stack <- case regs of 
         Just(sptr,rebp) -> printStackTrace' sptr rebp
         _ -> return []
+
+  let gcAction = buildGCAction stack size
  
   memoryManager <- readIORef twoSpaceGC 
-  (ptr,memoryManager') <- runStateT (mallocBytesT (size + Obj.gcAllocationOffset)) memoryManager 
+  (ptr,memoryManager') <- runStateT gcAction memoryManager 
   writeIORef twoSpaceGC memoryManager'
   
   let intptr = ptrToIntPtr ptr
