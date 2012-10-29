@@ -4,6 +4,7 @@ module Mate.JavaObjects
   ( getUniqueStringAddr
   , allocAndInitObject
   , cloneObject
+  , getObjectSizePtr
   ) where
 
 import Data.Word
@@ -21,7 +22,7 @@ import Mate.Types
 import Mate.NativeSizes
 import Mate.ClassPool
 import Mate.Debug
-import Mate.GarbageAlloc
+import {-# SOURCE #-} Mate.GarbageAlloc
 import {-# SOURCE #-} Mate.MethodPool
 
 
@@ -114,3 +115,26 @@ cloneObject obj_to_clone = do
   let objptr = intPtrToPtr (fromIntegral obj)
   copyBytes objptr ptr (fromIntegral size)
   return obj
+
+
+{-nativeWordToPtr :: NativeWord -> Ptr a
+nativeWordToPtr = intPtrToPtr . fromIntegral 
+
+ptrToNativeWord :: Ptr a -> NativeWord
+ptrToNativeWord = fromIntegral . ptrToIntPtr
+-}
+
+getClassName :: Ptr a -> IO B.ByteString
+getClassName ptr = do
+  method_table <- peek (castPtr ptr) :: IO Word32
+  getMethodTableReverse method_table
+
+getObjectSizePtr :: Ptr a -> IO Int
+getObjectSizePtr ptr = do 
+  clazzName <- getClassName ptr
+  objectSize <- getObjectSize clazzName
+  putStrLn $ toString clazzName
+  print objectSize
+  error $ show clazzName
+
+

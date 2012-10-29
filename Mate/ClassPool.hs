@@ -43,7 +43,7 @@ import Java.JAR
 import {-# SOURCE #-} Mate.MethodPool
 import Mate.Types
 import Mate.Debug
-import Mate.GarbageAlloc
+import {-# SOURCE #-} Mate.GarbageAlloc
 import Mate.NativeSizes
 import {-# SOURCE #-} Mate.ClassHierarchy
 

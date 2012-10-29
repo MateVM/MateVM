@@ -27,8 +27,6 @@ import qualified Mate.StackTrace as T
 import qualified Mate.JavaObjectsGC as Obj
 import qualified Mate.GC as GC
 
-import Debug.Trace
-
 type RefUpdateAction = IntPtr -> IO () -- the argument is the new location of the refobj
 type RootSet a = M.Map (Ptr a) RefUpdateAction
 
@@ -63,11 +61,10 @@ instance AllocationManager TwoSpace where
 
 
 performCollection' :: (RefObj a) => M.Map a RefUpdateAction -> StateT TwoSpace IO ()
-performCollection' roots = do --modify switchSpaces
-                              newState <- get
+performCollection' roots = do modify switchSpaces
                               let rootList = map fst $ M.toList roots
                               lift (putStrLn "rootSet: " >> print rootList)
-                              performCollectionIO newState rootList
+                              performCollectionIO rootList
                               lift $ patchGCRoots roots
                               --modify switchSpaces
 
@@ -76,8 +73,8 @@ patchGCRoots roots = mapM_ fixRef $ M.toList roots
   where fixRef (obj,fixupAction) = getNewRef obj >>= getIntPtr >>= fixupAction
                         
 -- [todo hs] this is slow. merge phases to eliminate list with refs
-performCollectionIO :: (AllocationManager b, RefObj a) => b -> [a] -> StateT TwoSpace IO ()
-performCollectionIO manager refs' = do 
+performCollectionIO :: RefObj a => [a] -> StateT TwoSpace IO ()
+performCollectionIO refs' = do 
     lift $ putStrLn "before mark"
     lift $ putStrLn "marked"
     lift $ print refs'

@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 module Mate.JavaObjectsGC 
     ( gcAllocationOffset
     , RefObj(..)
@@ -14,10 +15,11 @@ import GHC.Int
 import Text.Printf
 
 import Control.Monad
+import Mate.JavaObjects
 
 instance RefObj (Ptr a) where
   getIntPtr   = return . ptrToIntPtr
-  size a      = fmap ((+ fieldsOffset) . (*4) . length) (refs a)
+  size        = getObjectSizePtr
   refs        = unpackRefs 
   marked      = markedRef
   mark        = markRef (0x1::Int32)

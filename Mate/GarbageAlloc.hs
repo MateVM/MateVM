@@ -24,7 +24,7 @@ import Data.String.Utils
 import Mate.GC.Boehm
 import Mate.StackTrace
 import Mate.MemoryManager
-import qualified Mate.JavaObjectsGC as Obj
+--import qualified Mate.JavaObjectsGC as Obj
 
 import JVM.ClassFile
 import Mate.Debug
@@ -119,7 +119,7 @@ allocObjAndDoGCPrecise regs size = do
   stack <- case regs of 
         Just(sptr,rebp) -> do stack' <- printStackTrace' sptr rebp 
                               case stack' of
-                               s@(x:xs) -> if startswith "<clinit>" (toString (rsiMethodname $ stackinfo x)) 
+                               s@(x:_) -> if startswith "<clinit>" (toString (rsiMethodname $ stackinfo x)) 
                                             then return []
                                             else return s
                                _ -> return stack'
@@ -145,8 +145,8 @@ allocObjAndDoGCPrecise regs size = do
   return shifted
 
 
-printObjsDbg :: S.Set IntPtr -> IO ()
-printObjsDbg = mapM_ print . S.toList
+--printObjsDbg :: S.Set IntPtr -> IO ()
+--printObjsDbg = mapM_ print . S.toList
 
 {-# NOINLINE allocatedObjsDbg #-}
 allocatedObjsDbg :: IORef (S.Set IntPtr)
