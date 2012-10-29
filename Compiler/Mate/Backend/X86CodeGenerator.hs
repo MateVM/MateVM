@@ -23,6 +23,7 @@ import Foreign.C.Types
 
 import JVM.Assembler hiding (Instruction)
 import JVM.ClassFile
+import Data.BinaryState
 
 import Harpy
 import Harpy.X86Disassembler
@@ -199,6 +200,16 @@ girEmitOO (IRLoad (RTPool x) (HIConstant 0) (HIReg dst)) = do
       s <- getState
       setState (s { traps = M.insert trapaddr sfi (traps s) })
     e -> error $ "emit: irload: missing impl.: " ++ show e
+girEmitOO (IRLoad (RTArray ta arrlen) (HIConstant 0) (HIReg dst)) = do
+  let tsize = case decodeS (0 :: Integer) (B.pack [ta]) of
+                T_INT -> 4
+                T_CHAR -> 2
+                _ -> error "newarray: type not implemented yet"
+  let len = (arrlen * tsize) + ptrSize
+  push len
+  callMalloc
+  mov (Disp 0, eax) len -- store length at offset 0
+  mov dst eax
 girEmitOO (IRLoad rt (HIReg memsrc) (HIReg dst)) = do
   error "irload: emit: use rt"
   mov dst (Disp 0, memsrc)
@@ -216,7 +227,6 @@ callMalloc = do
   push esp
   call mallocObjectAddr
   add esp ((3 * ptrSize) :: Word32)
-  push eax
 
 
 -- harpy tries to cut immediates (or displacements), if they fit in 8bit.
