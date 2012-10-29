@@ -590,6 +590,13 @@ killMoves = mkBRewrite rw
           trace (printf "rewrote2: \"%s\" to \"%s\"\n" (show ins) (show newins)) $
           newins
       _ -> return Nothing
+    rw ins@(IRLoadRT rt dst@(VReg _ _)) f = case M.lookup dst f of
+      Just (PElem newdst) -> do
+        let newins = IRLoadRT rt newdst
+        return $ Just $ mkMiddle $
+          trace (printf "rewrote3: \"%s\" to \"%s\"\n" (show ins) (show newins)) $
+          newins
+      _ -> return Nothing
     rw _ _ = return Nothing
 
 oneUseDefPass = BwdPass
@@ -970,6 +977,6 @@ compileMethod meth classfile debug = do
 main :: IO ()
 main = do
   -- compileMethod "fib" "../tests/Fib.class" True
-  -- compileMethod "main" "../tests/Instance1.class" True
-  compileMethod "main" "Play.class" True
+  compileMethod "main" "../tests/Instance1.class" True
+  -- compileMethod "main" "Play.class" True
 {- /application -}
