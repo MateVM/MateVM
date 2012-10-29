@@ -45,10 +45,12 @@ foreign import ccall "&mallocObjectGC_stackstrace"
 compileStateInit :: Class Direct -> CompileState
 compileStateInit cls = CompileState
     { floatConsts = M.empty
-    , classf = cls}
+    , traps = M.empty
+    , classf = cls }
 
 data CompileState = CompileState
   { floatConsts :: M.Map Label Float
+  , traps :: TrapMap
   , classf :: Class Direct }
 
 i32tow32 :: Int32 -> Word32
@@ -101,7 +103,8 @@ compileLinear lbls linsn = do
     emit32 (floatToWord f)
   nop; nop; nop; nop -- just some NOPs to fix up the disasm
   d <- disassemble
-  return (d, ep, M.empty)
+  tm <- traps <$> getState
+  return (d, ep, tm)
 
 i322w32 :: Int32 -> Word32
 i322w32 = fromIntegral
@@ -183,11 +186,19 @@ girEmitOO (IRInvoke _ _) = do
 girEmitOO (IRLoad (RTPool x) (HIConstant 0) (HIReg dst)) = do
   newNamedLabel ("TODO: RT `NEW' or `GESTATIC' or `LDC': " ++ show x) >>= defineLabel
   cls <- classf <$> getState
-  value <- case constsPool cls M.! x of
-            (CString s) -> liftIO $ getUniqueStringAddr s
-            (CInteger i) -> liftIO $ return i
-            e -> error $ "emit: irload: missing impl.: " ++ show e
-  mov dst value
+  case constsPool cls M.! x of
+    (CString s) -> do
+      sref <- liftIO $ getUniqueStringAddr s
+      mov dst sref
+    (CInteger i) -> do
+      mov dst i
+    (CField rc fnt) -> do
+      let sfi = StaticField $ StaticFieldInfo rc (ntName fnt)
+      trapaddr <- getCurrentOffset
+      mov dst (0 :: Word32)
+      s <- getState
+      setState (s { traps = M.insert trapaddr sfi (traps s) })
+    e -> error $ "emit: irload: missing impl.: " ++ show e
 girEmitOO (IRLoad rt (HIReg memsrc) (HIReg dst)) = do
   error "irload: emit: use rt"
   mov dst (Disp 0, memsrc)
