@@ -348,7 +348,13 @@ tir IADD = tirOpInt Add JInt
 tir ISUB = tirOpInt Sub JInt
 tir IMUL = tirOpInt Mul JInt
 tir FADD = tirOpInt Add JFloat
-tir (INVOKESTATIC ident) = do -- TODO: pop amount of args and make new var if return value :o
+tir (INVOKESTATIC ident) = tirInvoke ident
+tir (INVOKESPECIAL ident) = tirInvoke ident
+tir (INVOKEVIRTUAL ident) = tirInvoke ident
+tir x = error $ "tir: " ++ show x
+
+tirInvoke :: Word16 -> State SimStack [MateIR Var O O]
+tirInvoke ident = do
   cls <- classf <$> get
   let (varts, mret) = methodType cls ident
   pushes <- forM (reverse $ zip varts [0..]) $ \(x, nr) -> do
@@ -380,8 +386,6 @@ tir (INVOKESTATIC ident) = do -- TODO: pop amount of args and make new var if re
   case maybemov of
     Nothing -> return r
     Just m -> return $ r ++ [m]
-tir (INVOKESPECIAL ident) = tir (INVOKESTATIC ident)
-tir x = error $ "tir: " ++ show x
 
 tirLoad :: Word8 -> VarType -> State SimStack [MateIR Var O O]
 tirLoad x t = do
