@@ -23,6 +23,7 @@ import Foreign.C.Types
 
 import JVM.Assembler hiding (Instruction)
 import JVM.ClassFile
+import Data.Binary
 import Data.BinaryState
 
 import Harpy
@@ -34,9 +35,11 @@ import Compiler.Mate.Frontend hiding (ptrSize, classf)
 import Compiler.Mate.Backend.NativeSizes
 import Compiler.Mate.Runtime.ClassHierarchy
 import Compiler.Mate.Runtime.JavaObjects
+import Compiler.Mate.Runtime.ClassPool
 
 import Compiler.Mate.Debug
 import Compiler.Mate.Types
+import Compiler.Mate.Utilities
 
 
 foreign import ccall "&mallocObjectGC_stackstrace"
@@ -181,9 +184,43 @@ girEmitOO (IROp Sub dst' src1' src2') = do
 girEmitOO (IROp Mul _ _ _) = do
   newNamedLabel "TODO! IROp Mul" >>= defineLabel
   nop
-girEmitOO (IRInvoke _ _) = do
-  newNamedLabel "TODO (call)" >>= defineLabel
-  call (0x0 :: Word32)
+girEmitOO (IRInvoke (RTPool cpidx) haveReturn) = do
+  let isInterface = False -- TODO: ...
+  cls <- classf <$> getState
+  let mi@(MethodInfo methodname objname msig@(MethodSignature args _)) =
+          buildMethodID cls cpidx
+  newNamedLabel (show mi) >>= defineLabel
+  -- get method offset for call @ runtime
+  let offset =
+        if isInterface
+          then getInterfaceMethodOffset objname methodname (encode msig)
+          else getMethodOffset objname (methodname `B.append` encode msig)
+  let argsLen = genericLength args
+  -- objref lives somewhere on the argument stack
+  mov ebx (Disp (argsLen * ptrSize), esp)
+  when isInterface $
+    mov ebx (Disp 0, ebx) -- get method-table-ptr, keep it in ebx
+  -- get method-table-ptr (or interface-table-ptr)
+  mov eax (Disp 0, ebx)
+  -- make actual (indirect) call
+  calladdr <- getCurrentOffset
+  -- will be patched to this: call (Disp 0xXXXXXXXX, eax)
+  emitSigIllTrap 6
+
+  -- discard arguments on stack (`+1' for "this")
+  let argcnt = ptrSize * (1 + methodGetArgsCount (methodNameTypeByIdx cls cpidx))
+  when (argcnt > 0) (add esp argcnt)
+
+  case haveReturn of
+    Just (HIReg dst) -> mov dst eax
+    Nothing -> return ()
+  -- note, that "mi" has the wrong class reference here.
+  -- we figure that out at run-time, in the methodpool,
+  -- depending on the method-table-ptr
+  s <- getState
+  setState (s { traps = M.insert calladdr
+                        (VirtualCall isInterface mi offset)
+                        (traps s) })
 girEmitOO (IRLoad (RTPool x) (HIConstant 0) (HIReg dst)) = do
   newNamedLabel ("TODO: RT `NEW' or `GESTATIC' or `LDC': " ++ show x) >>= defineLabel
   cls <- classf <$> getState
