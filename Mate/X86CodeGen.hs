@@ -250,29 +250,33 @@ emitFromBB cls method = do
     emit IASTORE = do
       pop eax -- value
       pop ebx -- offset
-      add ebx (1 :: Word32)
+      --add ebx (1 :: Word32)
       pop ecx -- aref
+      add ecx (12 :: Word32)
       mov (ecx, ebx, S4) eax
     emit CASTORE = do
       pop eax -- value
       pop ebx -- offset
-      add ebx (1 :: Word32)
+      --add ebx (1 :: Word32)
       pop ecx -- aref
+      add ecx (12 :: Word32)
       mov (ecx, ebx, S1) eax -- TODO(bernhard): char is two byte
     emit AALOAD = emit IALOAD
     emit IALOAD = do
       pop ebx -- offset
-      add ebx (1 :: Word32)
+      --add ebx (1 :: Word32)
       pop ecx -- aref
+      add ecx (12 :: Word32)
       push (ecx, ebx, S4)
     emit CALOAD = do
       pop ebx -- offset
-      add ebx (1 :: Word32)
+      --add ebx (1 :: Word32)
       pop ecx -- aref
+      add ecx (12 :: Word32)
       push (ecx, ebx, S1) -- TODO(bernhard): char is two byte
     emit ARRAYLENGTH = do
       pop eax
-      push (Disp 0, eax)
+      push (Disp 8, eax)
     emit (ANEWARRAY _) = emit (NEWARRAY 10) -- 10 == T_INT
     emit (NEWARRAY typ) = do
       let tsize = case decodeS (0 :: Integer) (B.pack [typ]) of
@@ -284,13 +288,15 @@ emitFromBB cls method = do
       mov ebx (tsize :: Word32)
       -- multiple amount with native size of one element
       mul ebx -- result is in eax
-      add eax (ptrSize :: Word32) -- for "length" entry
+      add eax (ptrSize * 3 :: Word32) -- for "length", "method_table_fake" and "gc_data"
       -- push amount of bytes to allocate
       push eax
       callMalloc
       pop eax -- ref to arraymemory
       pop ebx -- length
-      mov (Disp 0, eax) ebx -- store length at offset 0
+      mov (Disp 0, eax) (0x0 :: Word32) -- null m_table
+      mov (Disp 4, eax) (0x1337babe :: Word32) -- gcinfo
+      mov (Disp 8, eax) ebx -- store length at offset 8
       push eax -- push ref again
 
     emit (CHECKCAST _) = nop -- TODO(bernhard): ...

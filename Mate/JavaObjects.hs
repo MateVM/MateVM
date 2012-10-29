@@ -68,11 +68,15 @@ allocateJavaString str = do
 
   -- build array layout
   let strlen = fromIntegral $ B.length str
+
+  -- array objects have || method_table_fake | gc_data | length | ... \0 (for strings) ||
+  -- [hs] i kept length + \0 and object correction separate for clarity 
+  let arrayObjCorr = 2 * ptrSize 
   -- (+1) for \0, (+4) for length
-  newstr <- mallocStringUnmanaged (strlen + 5) --[TODO hs,bernhard: should be managed right?]
-  BI.memset newstr 0 (fromIntegral $ strlen + 5)
+  newstr <- mallocStringUnmanaged (strlen + 5 + arrayObjCorr) --[TODO hs,bernhard: should be managed right?]
+  BI.memset newstr 0 (fromIntegral $ strlen + 5 + arrayObjCorr)
   arr <- newArray ((map fromIntegral $ B.unpack str) :: [Word8])
-  copyBytes (plusPtr newstr 4) arr strlen
+  copyBytes (plusPtr newstr (4 + arrayObjCorr)) arr strlen
   printfStr $ printf "new str ptr: (%s)@%d\n" (toString str) strlen
 
   let newstr_length = castPtr newstr :: Ptr CPtrdiff

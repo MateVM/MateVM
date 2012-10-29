@@ -59,6 +59,8 @@ struct string {
 };
 
 struct chararray {
+        unsigned int method_table_fake;
+        unsigned int gc_data;
 	unsigned int length;
 	char str;
 };
