@@ -61,16 +61,25 @@ instance AllocationManager TwoSpace where
 
 
 performCollection' :: (RefObj a) => M.Map a RefUpdateAction -> StateT TwoSpace IO ()
-performCollection' roots = do modify switchSpaces
+performCollection' roots = do --modify switchSpaces
                               let rootList = map fst $ M.toList roots
                               lift (putStrLn "rootSet: " >> print rootList)
                               performCollectionIO rootList
-                              lift $ patchGCRoots roots
+                              --lift $ patchGCRoots roots
                               --modify switchSpaces
 
 patchGCRoots :: (RefObj a) => M.Map a RefUpdateAction -> IO ()
 patchGCRoots roots = mapM_ fixRef $ M.toList roots
   where fixRef (obj,fixupAction) = getNewRef obj >>= getIntPtr >>= fixupAction
+
+
+markedOrInvalid :: (RefObj a) => StateT TwoSpace IO (a -> IO Bool)
+markedOrInvalid = do memManager <- get
+                     return $ \obj -> do objAsPtr <- getIntPtr obj
+                                         let valid = validRef' objAsPtr memManager
+                                         if valid 
+                                          then liftM not (marked obj)
+                                          else return True -- not valid reference        
                         
 -- [todo hs] this is slow. merge phases to eliminate list with refs
 performCollectionIO :: RefObj a => [a] -> StateT TwoSpace IO ()
@@ -78,25 +87,27 @@ performCollectionIO refs' = do
     lift $ putStrLn "before mark"
     lift $ putStrLn "marked"
     lift $ print refs'
+
+    objFilter <- markedOrInvalid
+
     lift $ if length refs' > 0 then Obj.printRef $ head refs' else return ()
-    lifeRefs <- lift $ liftM (nub . concat) $ mapM (markTree'' marked mark refs') refs'
+    lifeRefs <- lift $ liftM (nub . concat) $ mapM (markTree'' objFilter mark refs') refs'
     lift $ putStrLn "marked"
-    lift $ if length refs' > 0 then Obj.printRef $ head refs' else return ()
     lift $ print lifeRefs
     lift $ putStrLn "go evacuate"
-    evacuate' lifeRefs 
+    --evacuate' lifeRefs 
     lift $ putStrLn "eacuated"
-    lift $ patchAllRefs lifeRefs 
+    --lift $ patchAllRefs lifeRefs 
     lift $ putStrLn "patched"                      
 
 
 buildGCAction :: AllocationManager a => [T.StackDescription] -> Int -> StateT a IO (Ptr b)
-buildGCAction [] size = mallocBytesT (size + Obj.gcAllocationOffset)
+buildGCAction [] size = mallocBytesT size
 buildGCAction stack size = do let rootsOnStack = concatMap T.possibleRefs stack
                               rootCandidates <- lift $ mapM dereference rootsOnStack
                               realRoots <- filterM (validRef . snd) rootCandidates
                               performCollection $ foldr buildRootPatcher M.empty realRoots
-                              mallocBytesT (size + Obj.gcAllocationOffset)
+                              mallocBytesT size
   where --checkRef :: IntPtr -> StateT a IO Bool
         dereference :: IntPtr -> IO (IntPtr,IntPtr)
         dereference intPtr = do printf "deref stacklocation: 0x%08x\n" (fromIntegral intPtr :: Int)
@@ -154,13 +165,13 @@ evacuate' :: (RefObj a, AllocationManager b) => [a] -> StateT b IO ()
 evacuate' =  mapM_ evacuate'' 
 
 evacuate'' :: (RefObj a, AllocationManager b) => a -> StateT b IO ()
-evacuate'' obj = do (size',location) <- liftIO ((,) <$> GC.size obj <*> getIntPtr obj)
+evacuate'' obj = do (size,location) <- liftIO ((,) <$> GC.size obj <*> getIntPtr obj)
                     -- malloc in TwoSpace
-                    newPtr <- mallocBytesT (size' + 12)
-                    liftIO (putStrLn ("evacuating: " ++ show obj ++ " and set: " ++ show (newPtr `plusPtr` 12) ++ " size: " ++ show size'))
+                    newPtr <- mallocBytesT size
+                    liftIO (putStrLn ("evacuating: " ++ show obj ++ " and set: " ++ show (newPtr `plusPtr` 12) ++ " size: " ++ show size))
                     -- copy data over and leave notice
-                    liftIO (copyBytes newPtr ((intPtrToPtr location) `plusPtr` (-12)) (size'+12) >> 
-                            setNewRef obj (cast (newPtr `plusPtr` 12)))
+                    liftIO (copyBytes newPtr (intPtrToPtr location) size >> 
+                            setNewRef obj (cast newPtr))
 
 --evacuateList :: (RefObj a, AllocationManager b) => [a] -> b -> StateT b IO ()
 --evacuateList objs = evacuate' objs

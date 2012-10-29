@@ -217,15 +217,14 @@ emitFromBB cls method = do
       callMalloc
       -- 0x13371337 is just a placeholder; will be replaced with mtable ptr
       mov (Disp 0, eax) (0x13371337 :: Word32)
-      mov (Disp 4, eax) (0 :: Word32)
+      mov (Disp 4, eax) (0x1337babe :: Word32)
       let patcher wbr = do
             objsize <- liftIO $ getObjectSize objname
             push32 objsize
             callMalloc
             mtable <- liftIO $ getMethodTable objname
             mov (Disp 0, eax) mtable
-            --mov (Disp 4, eax) (0x1337babe :: Word32)
-            mov (Disp 4, eax) (0::Word32)
+            mov (Disp 4, eax) (0x1337babe :: Word32)
             return wbr
       return $ Just (trapaddr, NewObject patcher)
 

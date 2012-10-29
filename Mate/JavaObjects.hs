@@ -5,6 +5,8 @@ module Mate.JavaObjects
   , allocAndInitObject
   , cloneObject
   , getObjectSizePtr
+  , getObjectFieldCountPtr
+  , getClassNamePtr
   ) where
 
 import Data.Word
@@ -12,6 +14,7 @@ import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as B
 import qualified Data.ByteString.Internal as BI
 import Control.Applicative
+import Control.Monad
 
 import JVM.ClassFile
 
@@ -124,17 +127,20 @@ ptrToNativeWord :: Ptr a -> NativeWord
 ptrToNativeWord = fromIntegral . ptrToIntPtr
 -}
 
-getClassName :: Ptr a -> IO B.ByteString
-getClassName ptr = do
+getClassNamePtr :: Ptr a -> IO B.ByteString
+getClassNamePtr ptr = do
   method_table <- peek (castPtr ptr) :: IO Word32
   getMethodTableReverse method_table
 
 getObjectSizePtr :: Ptr a -> IO Int
 getObjectSizePtr ptr = do 
-  clazzName <- getClassName ptr
+  clazzName <- getClassNamePtr ptr
   objectSize <- getObjectSize clazzName
   putStrLn $ toString clazzName
   print objectSize
-  error $ show clazzName
+  return $ fromIntegral objectSize
 
-
+getObjectFieldCountPtr :: Ptr a -> IO Int
+getObjectFieldCountPtr ptr = do 
+  clazzName <- getClassNamePtr ptr
+  liftM fromIntegral $ getFieldCount clazzName

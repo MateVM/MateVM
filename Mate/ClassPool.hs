@@ -8,6 +8,7 @@ module Mate.ClassPool (
   getMethodTableNoInit,
   getMethodTableReverse,
   getObjectSize,
+  getFieldCount,
   getMethodOffset,
   getFieldOffset,
   getStaticFieldAddr,
@@ -108,12 +109,17 @@ getMethodTableReverse mtable = do
 
 getObjectSize :: B.ByteString -> IO NativeWord
 getObjectSize path = do
-  ci <- getClassInfo path
-  -- TODO(bernhard): correct sizes for different types...
-  let fsize = fromIntegral $ M.size $ ciFieldMap ci
+  fsize <- getFieldCount path
   -- one slot for "method-table-ptr"
   -- one slot for GC-data
   return $ (2 + fsize) * ptrSize
+
+getFieldCount :: B.ByteString -> IO NativeWord
+getFieldCount path = do
+  ci <- getClassInfo path
+  -- TODO(bernhard): correct sizes for different types...
+  let fsize = fromIntegral $ M.size $ ciFieldMap ci
+  return fsize
 
 getStaticFieldAddr :: CPtrdiff -> IO CPtrdiff
 getStaticFieldAddr from = do

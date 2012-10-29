@@ -1,7 +1,6 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module Mate.JavaObjectsGC 
-    ( gcAllocationOffset
-    , RefObj(..)
+    ( RefObj(..)
     , printRef'
     ) where
 
@@ -15,6 +14,7 @@ import GHC.Int
 import Text.Printf
 
 import Control.Monad
+import JVM.ClassFile
 import Mate.JavaObjects
 
 instance RefObj (Ptr a) where
@@ -28,23 +28,23 @@ instance RefObj (Ptr a) where
   patchRefs   = patchRefsPtr
   cast = castPtr
   getNewRef ptr = peekByteOff ptr newPtrOffset
-  allocationOffset _ = gcAllocationOffset
+  allocationOffset _ = 0
 
   printRef    = printRef'
 
 
-gcAllocationOffset, markByteOffset, newPtrOffset, fieldsOffset, numberOfObjsOffset ::  Int
-gcAllocationOffset = 12
+markByteOffset, newPtrOffset, fieldsOffset ::  Int
 
-markByteOffset = -8
-newPtrOffset = -4
-numberOfObjsOffset = 4
+markByteOffset = 4
+newPtrOffset = 4
 fieldsOffset = 8
 
 unpackRefs :: Ptr a -> IO [Ptr a]
 unpackRefs ptr = do 
-  numberOfFields <- peekByteOff ptr numberOfObjsOffset
-  peekArray numberOfFields (ptr `plusPtr` fieldsOffset)
+  numberOfFields <- getObjectFieldCountPtr ptr
+  allRefs <- peekArray numberOfFields (ptr `plusPtr` fieldsOffset)
+  -- there may me null reference stuff. 0s are no valid children
+  return $ filter (/=nullPtr) allRefs
 
 
 markedRef :: Ptr a -> IO Bool
@@ -61,10 +61,12 @@ patchRefsPtr ptr = pokeArray (ptr `plusPtr` fieldsOffset)
 
 
 printRef' :: Ptr a -> IO ()
-printRef' ptr = do 
-    printf "children 0x%08x\n" =<< (peekByteOff ptr numberOfObjsOffset :: IO Int32)                  
+printRef' ptr = do
+    className <- getClassNamePtr ptr 
+    printf "type: %s\n" $ toString className
+    printf "children 0x%08x\n" =<< getObjectFieldCountPtr ptr                 
     printf "marked 0x%08x\n" =<< (peekByteOff ptr markByteOffset :: IO Int32) 
-    printf "payload 0x%08x\n" =<< (liftM fromIntegral (getIntPtr ptr) :: IO Int32)
+    printf "address 0x%08x\n" =<< (liftM fromIntegral (getIntPtr ptr) :: IO Int32)
     printf "newRef 0x%08x\n" =<< (peekByteOff ptr newPtrOffset :: IO Int32)
     printChildren ptr
     putStrLn ""

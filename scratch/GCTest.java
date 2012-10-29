@@ -16,6 +16,7 @@ public class GCTest
 
 	public static void main(String[] args)
 	{
+          String something = "something";
           blubber();
 		List myList = new List(3,
 			new List(5,

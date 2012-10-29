@@ -125,8 +125,6 @@ allocObjAndDoGCPrecise regs size = do
                                _ -> return stack'
         _ -> return []
 
-  printfStr "look here"
-  print stack
   let gcAction = buildGCAction stack size
  
   memoryManager <- readIORef twoSpaceGC 
@@ -140,9 +138,7 @@ allocObjAndDoGCPrecise regs size = do
   --putStrLn "allocated objs: "
   --printObjsDbg objs
   
-  let shifted = ptr `plusPtr` 12
-  --Obj.printRef shifted
-  return shifted
+  return ptr
 
 
 --printObjsDbg :: S.Set IntPtr -> IO ()
