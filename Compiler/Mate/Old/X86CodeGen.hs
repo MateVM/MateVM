@@ -433,49 +433,6 @@ emitFromBB cls method = do
   s8_w32 w8 = fromIntegral s8
     where s8 = fromIntegral w8 :: Int8
 
-callMalloc :: CodeGen e s ()
-callMalloc = do
-  push ebp
-  push esp
-  call mallocObjectAddr
-  add esp ((3 * ptrSize) :: Word32)
-  push eax
-
-
--- harpy tries to cut immediates (or displacements), if they fit in 8bit.
--- however, this is bad for patching so we want to put always 32bit.
-
--- push imm32
-push32 :: Word32 -> CodeGen e s ()
-push32 imm32 = emit8 0x68 >> emit32 imm32
-
--- call disp32(%eax)
-call32Eax :: Disp -> CodeGen e s ()
-call32Eax (Disp disp32) = emit8 0xff >> emit8 0x90 >> emit32 disp32
-
--- push disp32(%eax)
-push32RelEax :: Disp -> CodeGen e s ()
-push32RelEax (Disp disp32) = emit8 0xff >> emit8 0xb0 >> emit32 disp32
-
--- mov %ebx, disp32(%eax)
-mov32RelEbxEax :: Disp -> CodeGen e s ()
-mov32RelEbxEax (Disp disp32) = emit8 0x89 >> emit8 0x98 >> emit32 disp32
-
-emitSigIllTrap :: Int -> CodeGen e s NativeWord
-emitSigIllTrap traplen = do
-  when (traplen < 2) (error "emitSigIllTrap: trap len too short")
-  trapaddr <- getCurrentOffset
-  -- 0xffff causes SIGILL
-  emit8 (0xff :: Word8); emit8 (0xff :: Word8)
-  -- fill rest up with NOPs
-  sequence_ [nop | _ <- [1 .. (traplen - 2)]]
-  return trapaddr
-
-getCurrentOffset :: CodeGen e s Word32
-getCurrentOffset = do
-  ep <- (fromIntegral . ptrToIntPtr) <$> getEntryPoint
-  offset <- fromIntegral <$> getCodeOffset
-  return $ ep + offset
 
 handleExceptionPatcher :: ExceptionHandler
 handleExceptionPatcher wbr = do

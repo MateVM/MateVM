@@ -13,6 +13,7 @@ import Java.JAR
 
 import Compiler.Mate.Frontend
 import Compiler.Mate.Backend
+import Compiler.Mate.Pipeline
 
 import Mate.GC.Boehm
 

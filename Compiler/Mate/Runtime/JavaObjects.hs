@@ -25,8 +25,8 @@ import {-# SOURCE #-} Compiler.Mate.Runtime.MethodPool
 import Compiler.Mate.Debug
 import Compiler.Mate.Types
 
-getUniqueStringAddr ::Compiler. B.ByteString -> IO NativeWord
-getUniqueStringAddr stCompiler.r = do
+getUniqueStringAddr :: B.ByteString -> IO NativeWord
+getUniqueStringAddr str = do
   smap <- getStringMap
   case M.lookup str smap of
     Nothing -> do

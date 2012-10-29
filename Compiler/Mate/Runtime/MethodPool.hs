@@ -24,8 +24,9 @@ import Compiler.Mate.Types
 
 import Compiler.Mate.Frontend
 import Compiler.Mate.Backend
+import Compiler.Mate.Backend.NativeSizes
+import Compiler.Mate.Utilities
 import Compiler.Mate.Runtime.ClassPool
-import Compiler.Mate.Runtime.Utilities
 import Compiler.Mate.Runtime.Rts()
 import Compiler.Mate.Runtime.JavaObjects()
 
@@ -83,7 +84,7 @@ getMethodEntry mi@(MethodInfo method cm sig) = do
                     setMethodMap $ M.insert mi nf' mmap
                     return nf'
               else do
-                rawmethod <- parseMethod cls' method sig
+                rawmethod <- undefined -- TODO:parseMethod cls' method sig
                 entry <- compileBB rawmethod (MethodInfo method (thisClass cls') sig)
                 addMethodRef entry mi clsnames
                 return entry
@@ -146,7 +147,7 @@ compileBB rawmethod methodinfo = do
 
   cls <- getClassFile (methClassName methodinfo)
   printfJit $ printf "emit code of \"%s\" from \"%s\":\n" (toString $ methName methodinfo) (toString $ methClassName methodinfo)
-  let ebb = emitFromBB cls rawmethod
+  let ebb = undefined -- TODO: compileLinear cls rawmethod
   let cgconfig = defaultCodeGenConfig { codeBufferSize = fromIntegral $ rawCodeLength rawmethod * 32 }
   (_, Right r) <- runCodeGenWithConfig ebb () M.empty cgconfig
 

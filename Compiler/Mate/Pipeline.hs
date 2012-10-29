@@ -1,9 +1,7 @@
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE OverlappingInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE RankNTypes #-}
-module Main where
+module Compiler.Mate.Pipeline
+  ( compileMethod
+  ) where
 
 import qualified Data.List as L
 import qualified Data.Map as M
@@ -31,14 +29,6 @@ import Text.Printf
 import Compiler.Mate.Frontend
 import Compiler.Mate.Backend
 
-{- TODO
-(.) typeclass for codeemitting: http://pastebin.com/RZ9qR3k7 (depricated) || http://pastebin.com/BC3Jr5hG
-(.) hoopl passes
-    (+) handle IRLoad and stuff right
--}
-
-
-{- sandbox to play -}
 pipeline :: Class Direct -> Method Direct -> [J.Instruction] -> Bool -> IO ()
 pipeline cls meth jvminsn debug = do
     when debug $ prettyHeader "JVM Input"
@@ -49,8 +39,8 @@ pipeline cls meth jvminsn debug = do
     when debug $ printf "%s\n" (show lbls)
     when debug $ prettyHeader "Hoopl Opt-Graph"
     when debug $ printf "%s\n" (showGraph show optgraph)
-    -- when debug $ prettyHeader "Flatten Graph"
-    -- when debug $ printf "%s\n" (show linear)
+    when debug $ prettyHeader "Flatten Graph"
+    when debug $ printf "%s\n" (show linear)
     when debug $ prettyHeader "Register Allocation"
     when debug $ printf "%s\n" (show ra)
     prettyHeader "Code Generation"
@@ -108,11 +98,4 @@ compileMethod meth classfile debug = do
       let code = codeInstructions $ decodeMethod $ fromMaybe (error "no code seg") (attrByName m "Code")
       pipeline cls m code debug
     Nothing -> error $ "lookupMethod: " ++ show meth
-
-
-main :: IO ()
-main = do
-  -- compileMethod "fib" "../tests/Fib.class" True
-  compileMethod "main" "tests/Instance1.class" True
-  -- compileMethod "main" "Play.class" True
 {- /application -}

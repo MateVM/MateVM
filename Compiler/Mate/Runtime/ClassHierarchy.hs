@@ -13,7 +13,7 @@ import Foreign hiding (unsafePerformIO)
 import System.IO.Unsafe
 import Data.IORef
 
-import Compiler.Mate.Runtime.NativeSizes
+import Compiler.Mate.Backend.NativeSizes
 import Compiler.Mate.Runtime.ClassPool
 
 
