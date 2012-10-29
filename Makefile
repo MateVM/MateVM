@@ -87,7 +87,7 @@ tags: mate.static
 	ghc -I. -fforce-recomp -fobject-code $(PACKAGES) Mate.hs -outputdir $(B_STATIC) -e :ctags $(GHC_CPP)
 
 hlint:
-	hlint Mate.hs Mate/
+	hlint Mate.hs Compiler/Mate/
 
 scratch: mate $(wildcard jmate/lang/*.java) scratch/GCTest.java
 	javac $(wildcard jmate/lang/*.java)

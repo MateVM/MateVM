@@ -333,6 +333,10 @@ tir (NEW x) = do
   nv <- newvar JRef
   apush nv
   return [IRLoad (RTPool x) JRefNull nv]
+tir (ANEWARRAY w16) = do
+  nv <- newvar JRef
+  apush nv
+  return [IRLoad (RTArray w16) JRefNull nv]
 tir DUP = do
   x <- apop
   apush x

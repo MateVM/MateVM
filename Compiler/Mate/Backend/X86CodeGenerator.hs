@@ -5,7 +5,7 @@ module Compiler.Mate.Backend.X86CodeGenerator
   , call32Eax
   , push32RelEax
   , mov32RelEbxEax
-  , CompileState(..)
+  , compileStateInit
   ) where
 
 import qualified Data.Map as M
@@ -29,9 +29,10 @@ import Harpy.X86Disassembler
 
 import qualified Compiler.Hoopl as H
 import Compiler.Hoopl hiding (Label)
-import Compiler.Mate.Frontend hiding (ptrSize)
+import Compiler.Mate.Frontend hiding (ptrSize, classf)
 import Compiler.Mate.Backend.NativeSizes
 import Compiler.Mate.Runtime.ClassHierarchy
+import Compiler.Mate.Runtime.JavaObjects
 
 import Compiler.Mate.Debug
 import Compiler.Mate.Types
@@ -41,9 +42,14 @@ foreign import ccall "&mallocObjectGC_stackstrace"
   mallocObjectAddr :: FunPtr (CPtrdiff -> CPtrdiff -> Int -> IO CPtrdiff)
 
 
-data CompileState =
-  { floatConsts = M.Map Label Float
-  , classf = Class Direct }
+compileStateInit :: Class Direct -> CompileState
+compileStateInit cls = CompileState
+    { floatConsts = M.empty
+    , classf = cls}
+
+data CompileState = CompileState
+  { floatConsts :: M.Map Label Float
+  , classf :: Class Direct }
 
 i32tow32 :: Int32 -> Word32
 i32tow32 = fromIntegral
@@ -137,8 +143,8 @@ girEmitOO (IROp Add dst' src1' src2') =
     ge (HFReg dst) (HFConstant c1) (HFConstant c2) = do
       let f = c1 + c2
       c <- newNamedLabel ("float constant: " ++ show f)
-      s <- floatConsts <$> getState
-      setState (s { floatConsts = M.insert c f})
+      s <- getState
+      setState (s { floatConsts = M.insert c f (floatConsts s)})
       movss dst c
     ge (HFReg dst) (HFReg src) (HFConstant 0) =
       movss dst src
@@ -174,7 +180,7 @@ girEmitOO (IROp Mul _ _ _) = do
 girEmitOO (IRInvoke _ _) = do
   newNamedLabel "TODO (call)" >>= defineLabel
   call (0x0 :: Word32)
-girEmitOO (IRLoad x (HIConstant 0) (HIReg dst)) = do
+girEmitOO (IRLoad (RTPool x) (HIConstant 0) (HIReg dst)) = do
   newNamedLabel ("TODO: RT `NEW' or `GESTATIC' or `LDC': " ++ show x) >>= defineLabel
   cls <- classf <$> getState
   value <- case constsPool cls M.! x of
