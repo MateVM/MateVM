@@ -84,7 +84,7 @@ getMethodEntry mi@(MethodInfo method cm sig) = do
                     setMethodMap $ M.insert mi nf' mmap
                     return nf'
               else do
-                rawmethod <- undefined -- TODO:parseMethod cls' method sig
+                rawmethod <- undefined -- TODO: parseMethod cls' method sig
                 entry <- compileBB rawmethod (MethodInfo method (thisClass cls') sig)
                 addMethodRef entry mi clsnames
                 return entry

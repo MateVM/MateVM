@@ -29,8 +29,8 @@ import Harpy.X86Disassembler
 import qualified Compiler.Hoopl as H
 import Compiler.Hoopl hiding (Label)
 import Compiler.Mate.Frontend hiding (ptrSize)
-import Compiler.Mate.Runtime.ClassHierarchy
 import Compiler.Mate.Backend.NativeSizes
+import Compiler.Mate.Runtime.ClassHierarchy
 
 import Compiler.Mate.Debug
 import Compiler.Mate.Types
@@ -46,8 +46,9 @@ i32tow32 :: Int32 -> Word32
 i32tow32 = fromIntegral
 
 compileLinear :: M.Map Int32 H.Label -> [LinearIns HVar]
-              -> CodeGen e CompileState [Instruction]
+              -> CodeGen e CompileState ([Instruction], NativeWord)
 compileLinear lbls linsn = do
+  ep <- fromIntegral <$> ptrToIntPtr <$> getEntryPoint
   bblabels <- forM (M.elems lbls) $ \h -> do
                 l <- newNamedLabel ("Label: " ++ show h)
                 return (h, l)
@@ -90,7 +91,8 @@ compileLinear lbls linsn = do
     defineLabel l
     emit32 (floatToWord f)
   nop; nop; nop; nop -- just some NOPs to fix up the disasm
-  disassemble
+  d <- disassemble
+  return (d, ep)
 
 i322w32 :: Int32 -> Word32
 i322w32 = fromIntegral

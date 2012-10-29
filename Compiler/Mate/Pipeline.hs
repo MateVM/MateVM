@@ -28,8 +28,9 @@ import Text.Printf
 
 import Compiler.Mate.Frontend
 import Compiler.Mate.Backend
+import Compiler.Mate.Backend.NativeSizes
 
-pipeline :: Class Direct -> Method Direct -> [J.Instruction] -> Bool -> IO ()
+pipeline :: Class Direct -> Method Direct -> [J.Instruction] -> Bool -> IO NativeWord
 pipeline cls meth jvminsn debug = do
     when debug $ prettyHeader "JVM Input"
     when debug $ mapM_ (printf "\t%s\n" . show) jvminsn
@@ -45,10 +46,11 @@ pipeline cls meth jvminsn debug = do
     when debug $ printf "%s\n" (show ra)
     prettyHeader "Code Generation"
     (_, res) <- runCodeGen (compileLinear lbls ra) () M.empty
-    dis <- case res of
+    (dis, entry) <- case res of
             Left err -> error $ "runCodeGen: " ++ show err
-            Right d -> return d
+            Right (d, e) -> return (d, e)
     mapM_ (printf "%s\n" . showIntel) dis
+    return entry
   where
     initstate = LabelLookup { labels = M.empty
                             , blockEntries = S.empty
@@ -90,9 +92,8 @@ prettyHeader str = do
   -- putStrLn "press any key to continue..." >> getChar
   return ()
 
-compileMethod :: B.ByteString -> String -> Bool -> IO ()
-compileMethod meth classfile debug = do
-  cls <- parseClassFile classfile
+compileMethod :: B.ByteString -> Class Direct -> Bool -> IO NativeWord
+compileMethod meth cls debug = do
   case lookupMethod meth cls of
     Just m -> do
       let code = codeInstructions $ decodeMethod $ fromMaybe (error "no code seg") (attrByName m "Code")

@@ -15,6 +15,9 @@ import Compiler.Mate.Frontend
 import Compiler.Mate.Backend
 import Compiler.Mate.Pipeline
 
+import Compiler.Mate.Runtime.ClassPool
+import Compiler.Mate.Runtime.MethodPool
+
 import Mate.GC.Boehm
 
 main ::  IO ()
@@ -58,14 +61,5 @@ parseArgs _ _ = parseArgs ["-"] False
 executeMain :: B.ByteString -> Class Direct -> IO ()
 executeMain bclspath cls = do 
   initGC --required on some platforms. [todo bernhard: maybe this should be moved somewhere else - maybe at a global place where vm initialization takes place
-
-  let methods = classMethods cls; methods :: [Method Direct]
-  case find (\x -> methodName x == "main") methods of
-    Just m -> do
-      let mi = MethodInfo "main" bclspath $ methodSignature m
-      rawmethod <- parseMethod cls "main" $ methodSignature m
-      entry <- compileBB rawmethod mi
-      addMethodRef entry mi [bclspath]
-      printfInfo "executing `main' now:\n"
-      executeFuncPtr $ methodEntryPoint entry
-    Nothing -> error "main not found"
+  entry <- compileMethod "main" cls True
+  executeFuncPtr entry
