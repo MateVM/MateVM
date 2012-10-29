@@ -5,6 +5,7 @@ module Compiler.Mate.Backend.X86CodeGenerator
   , call32Eax
   , push32RelEax
   , mov32RelEbxEax
+  , CompileState(..)
   ) where
 
 import qualified Data.Map as M
@@ -40,7 +41,9 @@ foreign import ccall "&mallocObjectGC_stackstrace"
   mallocObjectAddr :: FunPtr (CPtrdiff -> CPtrdiff -> Int -> IO CPtrdiff)
 
 
-type CompileState = M.Map Label Float
+data CompileState =
+  { floatConsts = M.Map Label Float
+  , classf = Class Direct }
 
 i32tow32 :: Int32 -> Word32
 i32tow32 = fromIntegral
@@ -86,7 +89,7 @@ compileLinear lbls linsn = do
           ret
         IRReturn x -> error $ "IRReturn: impl. me: " ++ show x
   mapM_ compileIns linsn
-  floatconstants <- M.toList <$> getState
+  floatconstants <- M.toList <$> floatConsts <$> getState
   forM_ floatconstants $ \(l, f) -> do
     defineLabel l
     emit32 (floatToWord f)
@@ -134,8 +137,8 @@ girEmitOO (IROp Add dst' src1' src2') =
     ge (HFReg dst) (HFConstant c1) (HFConstant c2) = do
       let f = c1 + c2
       c <- newNamedLabel ("float constant: " ++ show f)
-      s <- getState
-      setState (M.insert c f s)
+      s <- floatConsts <$> getState
+      setState (s { floatConsts = M.insert c f})
       movss dst c
     ge (HFReg dst) (HFReg src) (HFConstant 0) =
       movss dst src
@@ -172,8 +175,13 @@ girEmitOO (IRInvoke _ _) = do
   newNamedLabel "TODO (call)" >>= defineLabel
   call (0x0 :: Word32)
 girEmitOO (IRLoad x (HIConstant 0) (HIReg dst)) = do
-  newNamedLabel ("TODO: RT `NEW' or `GESTATIC': " ++ show x) >>= defineLabel
-  mov dst (0 :: Word32)
+  newNamedLabel ("TODO: RT `NEW' or `GESTATIC' or `LDC': " ++ show x) >>= defineLabel
+  cls <- classf <$> getState
+  value <- case constsPool cls M.! x of
+            (CString s) -> liftIO $ getUniqueStringAddr s
+            (CInteger i) -> liftIO $ return i
+            e -> error $ "emit: irload: missing impl.: " ++ show e
+  mov dst value
 girEmitOO (IRLoad rt (HIReg memsrc) (HIReg dst)) = do
   error "irload: emit: use rt"
   mov dst (Disp 0, memsrc)

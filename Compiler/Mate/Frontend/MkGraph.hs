@@ -321,7 +321,12 @@ tir (GETSTATIC x) = do
   return [IRLoad (RTPool x) JRefNull nv]
 tir (LDC1 x) = tir (LDC2 (fromIntegral x))
 tir (LDC2 x) = do
-  nv <- newvar JRef -- TODO: type
+  cls <- classf <$> get
+  let valuetype = case constsPool cls M.! x of
+            (CString _) -> JRef
+            (CInteger _) -> JInt
+            e -> error $ "tir: LDCI... missing impl.: " ++ show e
+  nv <- newvar valuetype
   apush nv
   return [IRLoad (RTPool x) JRefNull nv]
 tir (NEW x) = do

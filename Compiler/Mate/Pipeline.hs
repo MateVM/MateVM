@@ -52,7 +52,8 @@ pipeline cls meth jvminsn = do
 
     let cgconfig = defaultCodeGenConfig
                   { codeBufferSize = fromIntegral $ (length jvminsn) * 32 }
-    (_, res) <- runCodeGenWithConfig (compileLinear lbls ra) () M.empty cgconfig
+    let stinit = CompileState { floatConsts = M.empty, classf = cls }
+    (_, res) <- runCodeGenWithConfig (compileLinear lbls ra) () stinit cgconfig
     (dis, entry, trapmap) <- case res of
             Left err -> error $ "runCodeGen: " ++ show err
             Right (d, e, tm) -> return (d, e, tm)
