@@ -37,6 +37,9 @@ gitinstall git://github.com/MateVM/hs-java.git
 # cabal install harpy $CABAL_OPT
 gitinstall git://github.com/MateVM/harpy.git
 
+# cabal install hoopl $CABAL_OPT
+gitinstall git://github.com/MateVM/hoopl.git
+
 gitinstallWithCustomSetup git://github.com/MateVM/hs-boehmgc.git
 
 echo DONE
