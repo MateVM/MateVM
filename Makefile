@@ -5,8 +5,8 @@ JAVA_FILES := $(wildcard jmate/lang/*.java jmate/io/*.java java/lang/*.java java
 CLASS_FILES := $(JAVA_FILES:.java=.class)
 TEST_JAVA_FILES := $(wildcard tests/*.java)
 TEST_CLASS_FILES := $(TEST_JAVA_FILES:.java=.test)
-HS_FILES := $(wildcard Compiler/Mate/{Frontend,Backend,Runtime,}*.hs)
-HS_BOOT := $(wildcard Compiler/Mate/Runtime/*.hs-boot)
+HS_FILES := $(shell ls Compiler/Mate/{Frontend/,Backend/,Runtime/,}*.hs)
+HS_BOOT := $(shell ls Compiler/Mate/Runtime/*.hs-boot)
 BUILD := build
 B_RELEASE := $(BUILD)/release
 B_STATIC := $(BUILD)/static
