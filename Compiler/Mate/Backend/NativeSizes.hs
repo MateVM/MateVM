@@ -1,5 +1,5 @@
 {-# LANGUAGE CPP #-}
-module Mate.NativeSizes where
+module Compiler.Mate.Backend.NativeSizes where
 
 import Data.Word
 

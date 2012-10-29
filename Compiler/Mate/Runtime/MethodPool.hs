@@ -19,14 +19,15 @@ import JVM.ClassFile
 import Harpy hiding (ret)
 import Harpy.X86Disassembler
 
-import Mate.BasicBlocks
-import Mate.Types
-import Mate.NativeMachine
-import Mate.ClassPool
-import Mate.Debug
-import Mate.Utilities
-import Mate.Rts()
-import Mate.JavaObjects()
+import Compiler.Mate.Debug
+import Compiler.Mate.Types
+
+import Compiler.Mate.Frontend
+import Compiler.Mate.Backend
+import Compiler.Mate.Runtime.ClassPool
+import Compiler.Mate.Runtime.Utilities
+import Compiler.Mate.Runtime.Rts()
+import Compiler.Mate.Runtime.JavaObjects()
 
 foreign import ccall "dynamic"
    code_void :: FunPtr (IO ()) -> IO ()

@@ -40,12 +40,12 @@ import JVM.Converter
 import Java.ClassPath hiding (Directory)
 import Java.JAR
 
-import {-# SOURCE #-} Mate.MethodPool
-import Mate.Types
-import Mate.Debug
-import Mate.GarbageAlloc
-import Mate.NativeSizes
-import {-# SOURCE #-} Mate.ClassHierarchy
+import {-# SOURCE #-} Compiler.Mate.Runtime.MethodPool
+import Compiler.Mate.Types
+import Compiler.Mate.Debug
+import Compiler.Mate.Runtime.GarbageAlloc
+import Compiler.Mate.Backend.NativeSizes
+import {-# SOURCE #-} Compiler.Mate.Runtime.ClassHierarchy
 
 getClassInfo :: B.ByteString -> IO ClassInfo
 getClassInfo path = do

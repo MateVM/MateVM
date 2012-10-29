@@ -21,11 +21,11 @@ import Control.Applicative
 import qualified Data.Map as M
 import Data.List
 
-import Mate.Debug
-import Mate.GC hiding (size)
-import qualified Mate.StackTrace as T
-import qualified Mate.JavaObjectsGC as Obj
-import qualified Mate.GC as GC
+import Compiler.Mate.Debug
+import Compiler.Mate.Runtime.GC hiding (size)
+import qualified Compiler.Mate.Runtime.StackTrace as T
+import qualified Compiler.Mate.Runtime.JavaObjectsGC as Obj
+import qualified Compiler.Mate.Runtime.GC as GC
 
 import Debug.Trace
 

@@ -15,8 +15,8 @@ import Data.String.Utils
 
 import JVM.ClassFile -- because toString
 
-import Mate.Debug
-import Mate.Types
+import Compiler.Mate.Debug
+import Compiler.Mate.Types
 
 data StackDescription = StackDescription { base :: CPtrdiff, end :: CPtrdiff, 
                                            stackinfo :: RuntimeStackInfo } deriving Show

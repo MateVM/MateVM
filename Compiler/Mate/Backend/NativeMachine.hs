@@ -1,5 +1,5 @@
 {-# LANGUAGE CPP #-}
-module Mate.NativeMachine(
+module Compiler.Mate.Backend.NativeMachine(
   emitFromBB,
   mateHandler,
   register_signal,
@@ -8,13 +8,13 @@ module Mate.NativeMachine(
   )where
 
 #ifdef ARCH_X86
-import Mate.X86CodeGen
-import Mate.X86TrapHandling
-import Mate.NativeSizes
+import Compiler.Mate.Backend.X86CodeGenerator
+import Compiler.Mate.Backend.X86TrapHandling
+import Compiler.Mate.Backend.NativeSizes
 #else
 
 -- HACK, for ghc-mod ...
-import Mate.X86CodeGen
-import Mate.X86TrapHandling
-import Mate.NativeSizes
+import Compiler.Mate.Backend.X86CodeGenerator
+import Compiler.Mate.Backend.X86TrapHandling
+import Compiler.Mate.Backend.NativeSizes
 #endif

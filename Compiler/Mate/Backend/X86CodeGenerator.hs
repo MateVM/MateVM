@@ -18,7 +18,7 @@ import Harpy.X86Disassembler
 
 import qualified Compiler.Hoopl as H
 import Compiler.Hoopl hiding (Label)
-import Compiler.Mate.Utils
+import Compiler.Mate.Utilities
 import Compiler.Mate.Frontend.IR
 import Compiler.Mate.Frontend.Linear
 

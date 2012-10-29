@@ -22,13 +22,13 @@ import qualified Data.Set as S
 import Data.String.Utils
 
 import Mate.GC.Boehm
-import Mate.StackTrace
-import Mate.MemoryManager
-import qualified Mate.JavaObjectsGC as Obj
+import Compiler.Mate.Runtime.StackTrace
+import Compiler.Mate.Runtime.MemoryManager
+import qualified Compiler.Mate.Runtime.JavaObjectsGC as Obj
 
 import JVM.ClassFile
-import Mate.Debug
-import Mate.Types
+import Compiler.Mate.Debug
+import Compiler.Mate.Types
 
 foreign export ccall mallocObjectGC_stackstrace :: CPtrdiff -> CPtrdiff -> Int -> IO CPtrdiff
 foreign export ccall mallocObjectGC :: Int -> IO CPtrdiff

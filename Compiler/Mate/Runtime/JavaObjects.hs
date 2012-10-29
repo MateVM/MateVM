@@ -17,16 +17,16 @@ import JVM.ClassFile
 import Foreign
 import Foreign.C.Types
 
-import Mate.Types
-import Mate.NativeSizes
-import Mate.ClassPool
-import Mate.Debug
-import Mate.GarbageAlloc
-import {-# SOURCE #-} Mate.MethodPool
+import Compiler.Mate.Backend.NativeSizes
+import Compiler.Mate.Runtime.ClassPool
+import Compiler.Mate.Runtime.GarbageAlloc
+import {-# SOURCE #-} Compiler.Mate.Runtime.MethodPool
 
+import Compiler.Mate.Debug
+import Compiler.Mate.Types
 
-getUniqueStringAddr :: B.ByteString -> IO NativeWord
-getUniqueStringAddr str = do
+getUniqueStringAddr ::Compiler. B.ByteString -> IO NativeWord
+getUniqueStringAddr stCompiler.r = do
   smap <- getStringMap
   case M.lookup str smap of
     Nothing -> do

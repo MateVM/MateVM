@@ -4,7 +4,7 @@ module Compiler.Mate.Runtime.JavaObjectsGC
     , printRef'
     ) where
 
-import Mate.GC
+import Compiler.Mate.Runtime.GC
 
 import Foreign.Ptr
 import Foreign.Marshal.Array
