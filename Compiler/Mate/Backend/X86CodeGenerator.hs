@@ -18,11 +18,13 @@ import Harpy.X86Disassembler
 
 import qualified Compiler.Hoopl as H
 import Compiler.Hoopl hiding (Label)
-import Compiler.Mate.Utilities
 import Compiler.Mate.Frontend.IR
 import Compiler.Mate.Frontend.Linear
 
 type CompileState = M.Map Label Float
+
+i32tow32 :: Int32 -> Word32
+i32tow32 = fromIntegral
 
 compileLinear :: M.Map Int32 H.Label -> [LinearIns HVar]
               -> CodeGen e CompileState [Instruction]
@@ -68,7 +70,7 @@ compileLinear lbls linsn = do
   forM_ floatconstants $ \(l, f) -> do
     defineLabel l
     emit32 (floatToWord f)
-  forM_ [0..0x3] $ \_ -> nop -- just some NOPs to fix up the disasm
+  nop; nop; nop; nop -- just some NOPs to fix up the disasm
   disassemble
 
 i322w32 :: Int32 -> Word32

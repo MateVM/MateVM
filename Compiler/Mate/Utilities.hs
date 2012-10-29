@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Compiler.Mate.Utilities where
 
-import Data.Int
 import Data.Word
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -11,12 +10,8 @@ import Data.Maybe
 
 import JVM.ClassFile
 
-import Mate.Types
-import Mate.NativeSizes
-
-
-i32tow32 :: Int32 -> Word32
-i32tow32 = fromIntegral
+import Compiler.Mate.Types
+import Compiler.Mate.Backend.NativeSizes
 
 buildMethodID :: Class Direct -> Word16 -> MethodInfo
 buildMethodID cls idx = MethodInfo (ntName nt) rc (ntSignature nt)

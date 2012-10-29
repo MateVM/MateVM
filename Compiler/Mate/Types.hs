@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Mate.Types
+module Compiler.Mate.Types
   ( BlockID
   , BasicBlock(..)
   , BBEnd(..)
@@ -43,7 +43,7 @@ import Foreign.C.Types
 import JVM.ClassFile
 import JVM.Assembler
 
-import Mate.NativeSizes
+import Compiler.Mate.Backend.NativeSizes
 
 
 type BlockID = Int

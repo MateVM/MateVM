@@ -26,17 +26,19 @@ data MappedRegs = MappedRegs
   { regMap :: M.Map Integer HVar
   , stackCnt :: Word32 }
 
-{- pre assign hardware registers -}
 ptrSize :: Num a => a
 ptrSize = 4
+
+{- pre assign hardware registers -}
+preeax, prexmm7, preArgsLength, preArgsStart :: Integer
 preeax = 99999
 prexmm7 = 100000
 preArgsLength = 6
 preArgsStart = 200000
+preArgs :: [Integer]
 preArgs = [preArgsStart .. (preArgsStart + preArgsLength - 1)]
--- preArgsRegs = zip preArgs
-  --             (map (SpillIReg . Disp . fromIntegral . (*ptrSize))
-    --                [1 .. preArgsLength])
+
+preAssignedRegs :: M.Map Integer HVar
 preAssignedRegs = M.fromList $
                   [ (preeax,  HIReg eax)
                   , (prexmm7, HFReg xmm7)
@@ -44,11 +46,16 @@ preAssignedRegs = M.fromList $
 
 -- calling convention for floats is different: arguments are passed via xmm
 -- registers, while int arguements are passed via stack slots
+
+preFloatStart :: Integer
 preFloatStart = 300000
+preFloats :: [Integer]
 preFloats = [preFloatStart .. (preFloatStart + 5)]
 
+emptyRegs :: MappedRegs
 emptyRegs = MappedRegs preAssignedRegs 0
 
+allIntRegs, allFloatRegs :: [HVar]
 -- register usage:
 -- - eax as scratch/int return
 -- - esp/ebp for stack (TODO: maybe we can elimate ebp usage?)
