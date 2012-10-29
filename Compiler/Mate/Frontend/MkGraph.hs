@@ -388,6 +388,8 @@ tirLoad x t = do
            else return $ VReg t (fromIntegral x)
   apush vreg
   return []
+
+tirStore :: Word8 -> VarType -> State SimStack [MateIR Var O O]
 tirStore w8 t = do
   x <- apop
   let nul = case t of
@@ -396,20 +398,26 @@ tirStore w8 t = do
               JRef -> JRefNull
   unless (t == varType x) $ error "tirStore: type mismatch"
   return [IROp Add (VReg t $ fromIntegral w8) x nul]
+
+tirOpInt :: OpType -> VarType -> State SimStack [MateIR Var O O]
 tirOpInt op t = do
   x <- apop; y <- apop
   nv <- newvar t; apush nv
   unless (t == varType x && t == varType y) $ error "tirOpInt: type mismatch"
   return [IROp op nv x y]
 
+newvar :: VarType -> State SimStack Var
 newvar t = do
   sims <- get
   put $ sims { regcnt = regcnt sims + 1 }
   return $ VReg t $ regcnt sims
+
+apush :: Var -> State SimStack ()
 apush x = do
   s <- stack <$> get
   sims <- get
   put $ sims { stack = x : s }
+
 apop :: State SimStack Var
 apop = do
   (s:ss) <- stack <$> get
