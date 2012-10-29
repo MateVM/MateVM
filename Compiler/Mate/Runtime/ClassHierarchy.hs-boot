@@ -1,11 +1,11 @@
-module Mate.ClassHierarchy
+module Compiler.Mate.Runtime.ClassHierarchy
   ( isInstanceOf
   , addClassEntry
   , addInterfaceEntry
   ) where
 
 import qualified Data.ByteString.Lazy as B
-import Mate.NativeSizes
+import Compiler.Mate.Backend.NativeSizes
 
 isInstanceOf :: NativeWord -> B.ByteString -> IO Bool
 addClassEntry :: NativeWord -> NativeWord -> [B.ByteString] -> IO ()

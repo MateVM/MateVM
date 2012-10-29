@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Mate.ClassPool (
+module Compiler.Mate.Runtime.ClassPool (
   getClassInfo,
   getClassInfoNoInit,
   classLoaded,

@@ -1,5 +1,5 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
-module Mate.GarbageAlloc(
+module Compiler.Mate.Runtime.GarbageAlloc(
     mallocClassData,
     mallocStringGC,
     mallocObjectGC,

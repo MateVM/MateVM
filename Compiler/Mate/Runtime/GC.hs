@@ -1,5 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables #-}
-module Mate.GC 
+module Compiler.Mate.Runtime.GC 
   ( RefObj(..), traverseIO, markTree'', markTree, patchAllRefs 
     {- dont export generic versions for high performance -> remove for production -}) where
 

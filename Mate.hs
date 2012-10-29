@@ -11,12 +11,8 @@ import Control.Monad
 import JVM.ClassFile
 import Java.JAR
 
-import Mate.BasicBlocks
-import Mate.MethodPool
-import Mate.Types
-import Mate.ClassPool
-import Mate.NativeMachine
-import Mate.Debug
+import Compiler.Mate.Frontend
+import Compiler.Mate.Backend
 
 import Mate.GC.Boehm
 

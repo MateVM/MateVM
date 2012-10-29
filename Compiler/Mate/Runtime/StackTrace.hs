@@ -1,4 +1,4 @@
-module Mate.StackTrace
+module Compiler.Mate.Runtime.StackTrace
   ( StackDescription(..)
   , stackFrames
   , printStackTrace'

@@ -1,5 +1,5 @@
 {-# LANGUAGE ExistentialQuantification #-}
-module Mate.MemoryManager   
+module Compiler.Mate.Runtime.MemoryManager   
     ( evacuateList 
     ,  AllocationManager(..)
     , TwoSpace(..)

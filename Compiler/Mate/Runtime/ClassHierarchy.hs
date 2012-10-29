@@ -1,4 +1,4 @@
-module Mate.ClassHierarchy
+module Compiler.Mate.Runtime.ClassHierarchy
   ( isInstanceOf
   , addClassEntry
   , addInterfaceEntry

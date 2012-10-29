@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Mate.Debug
+module Compiler.Mate.Runtime.Debug
   ( printfJit
   , printfBb
   , printfMp

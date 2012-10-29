@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
-module Mate.MethodPool where
+module Compiler.Mate.Runtime.MethodPool where
 
 import Data.Binary
 import Data.String.Utils

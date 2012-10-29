@@ -1,11 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
-module Mate.MethodPool where
+module Compiler.Mate.Runtime.MethodPool where
 
 import qualified Data.ByteString.Lazy as B
 
-import Mate.Types
-import Mate.NativeSizes
+import Compiler.Mate.Types
+import Compiler.Mate.Backend.NativeSizes
 import Foreign.C.Types
 
 

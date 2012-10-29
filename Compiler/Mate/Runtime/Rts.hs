@@ -1,4 +1,4 @@
-module Mate.Rts (loadLibrary) where
+module Compiler.Mate.Runtime.Rts (loadLibrary) where
 
 foreign export ccall loadLibrary :: IO ()
 loadLibrary :: IO ()

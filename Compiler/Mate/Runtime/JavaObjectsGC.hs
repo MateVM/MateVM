@@ -1,4 +1,4 @@
-module Mate.JavaObjectsGC 
+module Compiler.Mate.Runtime.JavaObjectsGC 
     ( gcAllocationOffset
     , RefObj(..)
     , printRef'

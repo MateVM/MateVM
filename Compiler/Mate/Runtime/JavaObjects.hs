@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
-module Mate.JavaObjects
+module Compiler.Mate.Runtime.JavaObjects
   ( getUniqueStringAddr
   , allocAndInitObject
   , cloneObject
