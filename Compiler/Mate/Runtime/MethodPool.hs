@@ -22,8 +22,7 @@ import Harpy.X86Disassembler
 import Compiler.Mate.Debug
 import Compiler.Mate.Types
 
-import Compiler.Mate.Frontend
-import Compiler.Mate.Backend
+import Compiler.Mate.Pipeline
 import Compiler.Mate.Backend.NativeSizes
 import Compiler.Mate.Utilities
 import Compiler.Mate.Runtime.ClassPool
@@ -84,8 +83,7 @@ getMethodEntry mi@(MethodInfo method cm sig) = do
                     setMethodMap $ M.insert mi nf' mmap
                     return nf'
               else do
-                rawmethod <- undefined -- TODO: parseMethod cls' method sig
-                entry <- compileBB rawmethod (MethodInfo method (thisClass cls') sig)
+                entry <- compile $ MethodInfo method (thisClass cls') sig
                 addMethodRef entry mi clsnames
                 return entry
         Nothing -> error $ show method ++ " not found. abort"
@@ -141,23 +139,21 @@ addMethodRef entry (MethodInfo mmname _ msig) clsnames = do
   setMethodMap $ mmap `M.union` newmap
 
 
-compileBB :: RawMethod -> MethodInfo -> IO CompiledMethod
-compileBB rawmethod methodinfo = do
+compile :: MethodInfo -> IO CompiledMethod
+compile methodinfo = do
   tmap <- getTrapMap
 
   cls <- getClassFile (methClassName methodinfo)
-  printfJit $ printf "emit code of \"%s\" from \"%s\":\n" (toString $ methName methodinfo) (toString $ methClassName methodinfo)
-  let ebb = undefined -- TODO: compileLinear cls rawmethod
-  let cgconfig = defaultCodeGenConfig { codeBufferSize = fromIntegral $ rawCodeLength rawmethod * 32 }
-  (_, Right r) <- runCodeGenWithConfig ebb () M.empty cgconfig
-
-  let ((entry, _, new_tmap, exmap), _) = r
+  printfJit $ printf "emit code of \"%s\" from \"%s\":\n"
+               (toString $ methName methodinfo)
+               (toString $ methClassName methodinfo)
+  (entry, new_tmap) <- compileMethod (methName methodinfo) cls
   setTrapMap $ tmap `M.union` new_tmap -- prefers elements in tmap
+  printfJit $ printf "generated code of \"%s\" @ \"%s\" from \"%s\". DONE\n"
+               (toString $ methName methodinfo)
+               (show $ methSignature methodinfo)
+               (toString $ methClassName methodinfo)
 
-  printfJit $ printf "generated code of \"%s\" @ \"%s\" from \"%s\":\n" (toString $ methName methodinfo) (show $ methSignature methodinfo) (toString $ methClassName methodinfo)
-  printfJit $ printf "\tstacksize: 0x%04x, locals: 0x%04x\n" (rawStackSize rawmethod) (rawLocals rawmethod)
-  when mateDEBUG $ mapM_ (printfJit . printf "%s\n" . showIntel) (snd r)
-  printfJit $ printf "\n\n"
   -- UNCOMMENT NEXT LINES FOR GDB FUN
   -- if (toString $ methName methodinfo) == "thejavamethodIwant2debug"
   --   then putStrLn "press CTRL+C now for setting a breakpoint. then `c' and ENTER for continue" >> getLine
@@ -167,7 +163,8 @@ compileBB rawmethod methodinfo = do
   -- (2) on getLine, press CTRL+C
   -- (3) `br *0x<addr>'; obtain the address from the disasm above
   -- (4) `cont' and press enter
-  return $ CompiledMethod (fromIntegral $ ptrToIntPtr entry) exmap
+  let exmap = undefined
+  return $ CompiledMethod entry exmap
 
 executeFuncPtr :: NativeWord -> IO ()
 executeFuncPtr entry =

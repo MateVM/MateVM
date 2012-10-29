@@ -8,6 +8,7 @@ module Compiler.Mate.Debug
   , printfStr
   , printfInfo
   , printfEx
+  , printfPipe
   , mateDEBUG
   , usePreciseGC
   , printf -- TODO: delete me
@@ -43,8 +44,9 @@ printString prefix str = do
 {-# INLINE printfStr #-}
 {-# INLINE printfInfo #-}
 {-# INLINE printfEx #-}
+{-# INLINE printfPipe #-}
 printfJit, printfBb, printfMp, printfCp,
-  printfStr, printfInfo, printfEx :: String -> IO ()
+  printfStr, printfInfo, printfEx, printfPipe :: String -> IO ()
 {-
 -- TODO(bernhard):
 -- http://stackoverflow.com/questions/12123082/function-composition-with-text-printf-printf
@@ -56,6 +58,7 @@ printfCp   = printString "Cp: "
 printfStr  = printString "Str: "
 printfInfo = printString "Info: "
 printfEx = printString "Ex: "
+printfPipe = printString "Pipe: "
 
 
 {-# INLINE usePreciseGC #-}

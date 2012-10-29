@@ -46,7 +46,7 @@ i32tow32 :: Int32 -> Word32
 i32tow32 = fromIntegral
 
 compileLinear :: M.Map Int32 H.Label -> [LinearIns HVar]
-              -> CodeGen e CompileState ([Instruction], NativeWord)
+              -> CodeGen e CompileState ([Instruction], NativeWord, TrapMap)
 compileLinear lbls linsn = do
   ep <- fromIntegral <$> ptrToIntPtr <$> getEntryPoint
   bblabels <- forM (M.elems lbls) $ \h -> do
@@ -92,7 +92,7 @@ compileLinear lbls linsn = do
     emit32 (floatToWord f)
   nop; nop; nop; nop -- just some NOPs to fix up the disasm
   d <- disassemble
-  return (d, ep)
+  return (d, ep, M.empty)
 
 i322w32 :: Int32 -> Word32
 i322w32 = fromIntegral
