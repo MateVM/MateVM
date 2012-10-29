@@ -32,6 +32,9 @@ import Harpy hiding (Label)
 import Compiler.Mate.Frontend.IR
 import Compiler.Mate.Frontend.StupidRegisterAllocation
 
+import Debug.Trace
+import Text.Printf
+
 data SimStack = SimStack
   { stack :: [Var]
   , regcnt :: Integer
@@ -276,6 +279,7 @@ fieldType2VarType :: FieldType -> VarType
 fieldType2VarType IntType = JInt
 fieldType2VarType FloatType = JFloat
 fieldType2VarType (ObjectType _) = JRef
+fieldType2VarType (Array _ ty) = fieldType2VarType ty
 fieldType2VarType x = error $ "fieldType2VarType: " ++ show x
 
 tir :: J.Instruction -> State SimStack [MateIR Var O O]
@@ -334,9 +338,13 @@ tir (NEW x) = do
   apush nv
   return [IRLoad (RTPool x) JRefNull nv]
 tir (ANEWARRAY w16) = do
+  len <- apop
+  let len' = case len of
+              JIntValue x -> fromIntegral x
+              x -> error $ "tir: anewarray: len is not constant: " ++ show x
   nv <- newvar JRef
   apush nv
-  return [IRLoad (RTArray w16) JRefNull nv]
+  return [IRLoad (RTArray w16 len') JRefNull nv]
 tir DUP = do
   x <- apop
   apush x
@@ -357,7 +365,8 @@ tirInvoke :: Word16 -> State SimStack [MateIR Var O O]
 tirInvoke ident = do
   cls <- classf <$> get
   let (varts, mret) = methodType cls ident
-  pushes <- forM (reverse $ zip varts [0..]) $ \(x, nr) -> do
+  pushes <- trace (printf "tirInvoke: varts: %s\n" (show varts)) $ 
+            forM (reverse $ zip varts [0..]) $ \(x, nr) -> do
     y <- apop
     unless (x == varType y) $ error "invoke: type mismatch"
     case x of
