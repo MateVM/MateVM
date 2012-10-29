@@ -16,6 +16,8 @@ public class GCTest
 
 	public static void main(String[] args)
 	{
+          Integer.valueOf(12);
+
           String something = "something";
           blubber();
 		List myList = new List(3,
@@ -25,7 +27,8 @@ public class GCTest
 
 		MateRuntime.printGCStats();
 		System.out.println("done.");
-	}
+  
+        }
 } 
 
 class List

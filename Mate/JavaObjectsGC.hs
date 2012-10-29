@@ -61,12 +61,13 @@ patchRefsPtr ptr = pokeArray (ptr `plusPtr` fieldsOffset)
 
 
 printRef' :: Ptr a -> IO ()
-printRef' ptr = do
+printRef' ptr = do 
+    printf "Obj: address 0x%08x\n" =<< (liftM fromIntegral (getIntPtr ptr) :: IO Int32)
+    printf "method_table: 0x%08x\n" =<< (peekByteOff ptr 0 :: IO Int32)
     className <- getClassNamePtr ptr 
     printf "type: %s\n" $ toString className
     printf "children 0x%08x\n" =<< getObjectFieldCountPtr ptr                 
     printf "marked 0x%08x\n" =<< (peekByteOff ptr markByteOffset :: IO Int32) 
-    printf "address 0x%08x\n" =<< (liftM fromIntegral (getIntPtr ptr) :: IO Int32)
     printf "newRef 0x%08x\n" =<< (peekByteOff ptr newPtrOffset :: IO Int32)
     printChildren ptr
     putStrLn ""

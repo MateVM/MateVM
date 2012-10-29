@@ -61,11 +61,11 @@ instance AllocationManager TwoSpace where
 
 
 performCollection' :: (RefObj a) => M.Map a RefUpdateAction -> StateT TwoSpace IO ()
-performCollection' roots = do --modify switchSpaces
+performCollection' roots = do modify switchSpaces
                               let rootList = map fst $ M.toList roots
                               lift (putStrLn "rootSet: " >> print rootList)
                               performCollectionIO rootList
-                              --lift $ patchGCRoots roots
+                              lift $ patchGCRoots roots
                               --modify switchSpaces
 
 patchGCRoots :: (RefObj a) => M.Map a RefUpdateAction -> IO ()
@@ -93,11 +93,11 @@ performCollectionIO refs' = do
     lift $ if length refs' > 0 then Obj.printRef $ head refs' else return ()
     lifeRefs <- lift $ liftM (nub . concat) $ mapM (markTree'' objFilter mark refs') refs'
     lift $ putStrLn "marked"
-    lift $ print lifeRefs
+    lift $ mapM printRef lifeRefs
     lift $ putStrLn "go evacuate"
-    --evacuate' lifeRefs 
+    evacuate' lifeRefs 
     lift $ putStrLn "eacuated"
-    --lift $ patchAllRefs lifeRefs 
+    lift $ patchAllRefs lifeRefs 
     lift $ putStrLn "patched"                      
 
 
@@ -165,13 +165,21 @@ evacuate' :: (RefObj a, AllocationManager b) => [a] -> StateT b IO ()
 evacuate' =  mapM_ evacuate'' 
 
 evacuate'' :: (RefObj a, AllocationManager b) => a -> StateT b IO ()
-evacuate'' obj = do (size,location) <- liftIO ((,) <$> GC.size obj <*> getIntPtr obj)
+evacuate'' obj = do (size,location) <- liftIO ((,) <$> getSizeDebug obj <*> getIntPtr obj)
                     -- malloc in TwoSpace
                     newPtr <- mallocBytesT size
                     liftIO (putStrLn ("evacuating: " ++ show obj ++ " and set: " ++ show (newPtr `plusPtr` 12) ++ " size: " ++ show size))
                     -- copy data over and leave notice
                     liftIO (copyBytes newPtr (intPtrToPtr location) size >> 
                             setNewRef obj (cast newPtr))
+
+getSizeDebug :: RefObj a => a -> IO Int
+getSizeDebug obj = do 
+  intObj <- getIntPtr obj
+  printf "objTo evacuate: 0x%08x\n" (fromIntegral intObj :: Int)
+  size <- GC.size obj
+  printf "size was %i\n" size
+  return size
 
 --evacuateList :: (RefObj a, AllocationManager b) => [a] -> b -> StateT b IO ()
 --evacuateList objs = evacuate' objs
