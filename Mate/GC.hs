@@ -1,11 +1,13 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module Mate.GC 
-  ( RefObj(..), traverseIO, markTree'', markTree, patchAllRefs 
+  ( RefObj(..), traverseIO, markTree'', markTree, patchAllRefs, AllocationManager(..), RefUpdateAction 
     {- dont export generic versions for high performance -> remove for production -}) where
 
 import Control.Monad
+import Control.Monad.State
+import qualified Data.Map as M
 import qualified Data.Set as S
-
+import Text.Printf
 import Foreign.Ptr (IntPtr, Ptr)
 
 class (Eq a, Ord a, Show a) => RefObj a where
@@ -27,6 +29,20 @@ class (Eq a, Ord a, Show a) => RefObj a where
 
   printRef :: a -> IO ()
   
+
+type RefUpdateAction = IntPtr -> IO () -- the argument is the new location of the refobj
+
+class AllocationManager a where
+  
+  -- | allocates n bytes in current space to space (may be to space or gen0 space)
+  mallocBytesT :: Int -> StateT a IO (Ptr b)
+  
+  -- | performs full gc and which is reflected in mem managers state
+  performCollection :: (RefObj b) => M.Map b RefUpdateAction ->  StateT a IO ()
+
+  heapSize :: StateT a IO Int
+
+  validRef :: IntPtr -> StateT a IO Bool
 
 --class PrintableRef a where
 --  printRef :: a -> IO ()
@@ -57,14 +73,25 @@ markTree root = marked root >>= (`unless` continue)
 
 -- | This object is alive. so its children are alive. patch child references to point
 -- to childrens new references
-patchRefsObj :: (RefObj a) => a -> IO ()
-patchRefsObj obj = do obj' <- getNewRef obj 
-                      fields <- refs obj
-                      newRefs <- mapM getNewRef fields
-                      --print newRefs
-                      patchRefs obj' newRefs                 
+patchRefsObj :: (RefObj a) => (a -> IO Bool) -> a -> IO ()
+patchRefsObj predicate obj = do 
+  intptr <- getIntPtr obj
+  printf "patch 0x%08x" (fromIntegral intptr :: Int)
+  printRef obj
+  obj' <- getNewRef obj 
+  fields <- refs obj
+  newRefs <- mapM (getNewRefIfValid predicate) fields
+  print newRefs
+  patchRefs obj' newRefs                 
 
-patchAllRefs :: (RefObj a) => [a] -> IO ()
-patchAllRefs = mapM_ patchRefsObj
+getNewRefIfValid :: (RefObj a) => (a -> IO Bool) -> a -> IO a
+getNewRefIfValid predicate obj = do
+  isValid <- predicate obj
+  if isValid 
+    then getNewRef obj
+    else return obj
+
+patchAllRefs :: (RefObj a) => (a -> IO Bool) -> [a] -> IO ()
+patchAllRefs valid = mapM_ (patchRefsObj valid)
 
 

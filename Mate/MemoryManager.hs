@@ -27,20 +27,8 @@ import qualified Mate.StackTrace as T
 import qualified Mate.JavaObjectsGC as Obj
 import qualified Mate.GC as GC
 
-type RefUpdateAction = IntPtr -> IO () -- the argument is the new location of the refobj
 type RootSet a = M.Map (Ptr a) RefUpdateAction
 
-class AllocationManager a where
-  
-  -- | allocates n bytes in current space to space (may be to space or gen0 space)
-  mallocBytesT :: Int -> StateT a IO (Ptr b)
-  
-  -- | performs full gc and which is reflected in mem managers state
-  performCollection :: (RefObj b) => M.Map b RefUpdateAction ->  StateT a IO ()
-
-  heapSize :: StateT a IO Int
-
-  validRef :: IntPtr -> StateT a IO Bool
 
 data TwoSpace = TwoSpace { fromBase :: IntPtr, 
                            toBase   :: IntPtr, 
@@ -97,7 +85,8 @@ performCollectionIO refs' = do
     lift $ putStrLn "go evacuate"
     evacuate' lifeRefs 
     lift $ putStrLn "eacuated"
-    lift $ patchAllRefs lifeRefs 
+    memoryManager <- get
+    lift $ patchAllRefs (getIntPtr >=> return . flip validRef' memoryManager) lifeRefs 
     lift $ putStrLn "patched"                      
 
 
