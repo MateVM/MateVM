@@ -37,7 +37,6 @@ import Text.Printf
 {- TODO
 (.) typeclass for codeemitting: http://pastebin.com/RZ9qR3k7 (depricated) || http://pastebin.com/BC3Jr5hG
 (.) hoopl passes
-    (+) prio argument regs!
     (+) handle IRLoad and stuff right
 -}
 
@@ -567,19 +566,30 @@ killMoves = mkBRewrite rw
     rw ::    (MateIR Var) e x
           -> Fact x OneUseDefFact
           -> m (Maybe (Graph (MateIR Var) e x))
-    rw (IROp Add dst@(VReg _ _) src@(VReg _ _) c) f =
+    rw ins@(IROp Add dst@(VReg _ _) src@(VReg _ _) c) f =
       let oprepl = if M.member dst f
                     then case f M.! dst of
-                          PElem dstnew ->
-                            return $ Just $ mkMiddle $ IROp Add dstnew src c
+                          PElem dstnew -> do
+                            let newins = IROp Add dstnew src c
+                            return $ Just $ mkMiddle $
+                                   trace (printf "rewrote1: \"%s\" to \"%s\"\n" (show ins) (show newins)) $
+                                   newins
                           _ -> return Nothing
                     else return Nothing
       in if c == JIntValue 0 || c == JFloatValue 0
         then case M.lookup src f of
               Just Top -> oprepl
-              Just _ -> return $ Just emptyGraph
+              Just _ -> return $ trace (printf "killed: %s\n" (show ins)) $
+                                 Just emptyGraph
               Nothing -> oprepl
         else oprepl
+    rw ins@(IROp Add dst@(VReg _ _) c1 c2) f = case M.lookup dst f of
+      Just (PElem newdst) -> do
+        let newins = IROp Add newdst c1 c2
+        return $ Just $ mkMiddle $
+          trace (printf "rewrote2: \"%s\" to \"%s\"\n" (show ins) (show newins)) $
+          newins
+      _ -> return Nothing
     rw _ _ = return Nothing
 
 oneUseDefPass = BwdPass
