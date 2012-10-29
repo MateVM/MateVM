@@ -281,7 +281,7 @@ emitFromBB cls method = do
     emit (NEWARRAY typ) = do
       let tsize = case decodeS (0 :: Integer) (B.pack [typ]) of
                   T_INT -> 4
-                  T_CHAR -> 2
+                  T_CHAR -> 4
                   _ -> error "newarray: type not implemented yet"
       -- get length from stack, but leave it there
       mov eax (Disp 0, esp)

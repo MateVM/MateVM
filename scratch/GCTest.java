@@ -6,7 +6,7 @@ public class GCTest
 {
         public static void gabber(int a)
         {
-          Integer b = Integer.valueOf(a);
+          //Integer b = Integer.valueOf(a);
            Object x = new Object();
            System.out.printf("0x%08x",a);
         }
