@@ -337,14 +337,15 @@ tir (NEW x) = do
   nv <- newvar JRef
   apush nv
   return [IRLoad (RTPool x) JRefNull nv]
-tir (ANEWARRAY w16) = do
+tir (ANEWARRAY w16) = tir (NEWARRAY 10) -- for int. TODO?
+tir (NEWARRAY w8) = do
   len <- apop
   let len' = case len of
               JIntValue x -> fromIntegral x
               x -> error $ "tir: anewarray: len is not constant: " ++ show x
   nv <- newvar JRef
   apush nv
-  return [IRLoad (RTArray w16 len') JRefNull nv]
+  return [IRLoad (RTArray w8 len') JRefNull nv]
 tir DUP = do
   x <- apop
   apush x

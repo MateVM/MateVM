@@ -56,11 +56,11 @@ data HVar
 
 deriving instance Eq Disp
 
-data RTPool = RTPool Word16 | RTArray Word16 Word32
+data RTPool = RTPool Word16 | RTArray Word8 Word32
 
 instance Show RTPool where
   show (RTPool w16) = printf "RT(%02d)" w16
-  show (RTArray w16 len) = printf "Array(%02d, len=%s)" w16 (show len)
+  show (RTArray w8 len) = printf "Array(%02d, len=%s)" w8 (show len)
 
 data VarType = JInt | JFloat | JRef deriving (Show, Eq, Ord)
 
