@@ -78,17 +78,14 @@ stupidRegAlloc preAssigned linsn = evalState regAlloc' startmapping
           src1new <- doAssign src1
           src2new <- doAssign src2
           return $ Mid $ IROp op dstnew src1new src2new
-        IRStore obj src -> do
+        IRStore rt obj src -> do
           objnew <- doAssign obj
           srcnew <- doAssign src
-          return $ Mid $ IRStore objnew srcnew
-        IRLoad obj dst -> do
+          return $ Mid $ IRStore rt objnew srcnew
+        IRLoad rt obj dst -> do
           objnew <- doAssign obj
           dstnew <- doAssign dst
-          return $ Mid $ IRLoad objnew dstnew
-        IRLoadRT rt dst -> do
-          dstnew <- doAssign dst
-          return $ Mid $ IRLoadRT rt dstnew
+          return $ Mid $ IRLoad rt objnew dstnew
         IRNop -> return $ Mid $ IRNop
         IRPush nr src -> do
           srcnew <- doAssign src

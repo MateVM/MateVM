@@ -23,13 +23,13 @@ import Control.Monad
 {-# NOINLINE logHandle #-}
 -- TODO(bernhard): use MVar if threaded
 logHandle :: Handle
-logHandle = if mateDEBUG
+logHandle = if not mateDEBUG
     then unsafePerformIO $ openFile "mate.log" WriteMode
     else stdout
 
 {-# INLINE mateDEBUG #-}
 mateDEBUG :: Bool
-mateDEBUG = False
+mateDEBUG = True
 
 {-# INLINE printString #-}
 printString :: String -> String -> IO ()

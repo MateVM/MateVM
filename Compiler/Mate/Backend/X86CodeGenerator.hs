@@ -171,12 +171,14 @@ girEmitOO (IROp Mul _ _ _) = do
 girEmitOO (IRInvoke _ _) = do
   newNamedLabel "TODO (call)" >>= defineLabel
   call (0x0 :: Word32)
-girEmitOO (IRLoadRT x (HIReg dst)) = do
-  newNamedLabel ("TODO: RT NEW: " ++ show x) >>= defineLabel
+girEmitOO (IRLoad x (HIConstant 0) (HIReg dst)) = do
+  newNamedLabel ("TODO: RT `NEW' or `GESTATIC': " ++ show x) >>= defineLabel
   mov dst (0 :: Word32)
-girEmitOO (IRLoad (HIReg memsrc) (HIReg dst)) = do
+girEmitOO (IRLoad rt (HIReg memsrc) (HIReg dst)) = do
+  error "irload: emit: use rt"
   mov dst (Disp 0, memsrc)
-girEmitOO (IRStore (HIReg memdst) (HIConstant c)) = do
+girEmitOO (IRStore rt (HIReg memdst) (HIConstant c)) = do
+  error "irstore: emit: use rt"
   mov (Disp 0, memdst) (i32tow32 c)
 girEmitOO (IRPush _ (HIReg x)) = push x
 girEmitOO x = error $ "girEmitOO: insn not implemented: " ++ show x

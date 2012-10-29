@@ -23,9 +23,14 @@ import Harpy hiding (Label)
 data MateIR t e x where
   IRLabel :: Label -> MateIR t C O
   IROp :: (Show t) => OpType -> t -> t -> t -> MateIR t O O
-  IRStore :: (Show t) => t {- objectref -} -> t {- src -} -> MateIR t O O
-  IRLoad :: (Show t) => t {- objectref -} -> t {- target -} -> MateIR t O O
-  IRLoadRT :: (Show t) => RTPool -> t -> MateIR t O O
+  IRStore :: (Show t) => RTPool
+                      -> t {- objectref -}
+                      -> t {- src -}
+                      -> MateIR t O O
+  IRLoad :: (Show t) => RTPool
+                     -> t {- objectref -}
+                     -> t {- target -}
+                     -> MateIR t O O
   IRNop :: MateIR t O O
   IRInvoke :: (Show t) => RTPool -> Maybe t -> MateIR t O O
   IRPush :: (Show t) => Word8 -> t -> MateIR t O O
@@ -80,9 +85,8 @@ instance NonLocal (MateIR Var) where
 instance Show (MateIR t e x) where
   show (IRLabel l) = printf "label: %s:\n" (show l)
   show (IROp op vr v1 v2) = printf "\t%s %s,  %s, %s" (show op) (show vr) (show v1) (show v2)
-  show (IRLoad obj dst) = printf "\t%s -> %s" (show obj) (show dst)
-  show (IRLoadRT obj dst) = printf "\t%s -> %s" (show obj) (show dst)
-  show (IRStore obj src) = printf "\t%s <- %s" (show obj) (show src)
+  show (IRLoad rt obj dst) = printf "\t%s(%s) -> %s" (show obj) (show rt) (show dst)
+  show (IRStore rt obj src) = printf "\t%s(%s) <- %s" (show obj) (show rt) (show src)
   show (IRInvoke x r) = printf "\tinvoke %s %s" (show x) (show r)
   show (IRPush argnr x) = printf "\tpush(%d) %s" argnr (show x)
   show (IRJump l) = printf "\tjump %s" (show l)

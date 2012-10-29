@@ -19,7 +19,6 @@ import JVM.ClassFile
 import JVM.Converter
 
 import Compiler.Hoopl hiding (Label)
-import qualified Compiler.Hoopl as H
 
 import Control.Monad.State
 
@@ -79,14 +78,15 @@ pipeline cls meth jvminsn = do
     runFM :: SimpleFuelMonad a -> a
     runFM = runSimpleUniqueMonad . runWithFuel infiniteFuel
     runOpts g = runFM $ do
-      let nothingc = NothingC :: MaybeC O H.Label
-      (_, f, _) <- analyzeAndRewriteBwd
-                     oneUseDefPass nothingc g noFacts
-      (gm', _, _) <- analyzeAndRewriteBwd
-                     oneUseDefPass { bp_transfer = oudTransferID
-                                   , bp_rewrite = oudKill }
-                      nothingc g f
-      trace (printf "facts: %s\n" (show f)) $ return gm'
+      -- let nothingc = NothingC :: MaybeC O H.Label
+      -- (_, f, _) <- analyzeAndRewriteBwd
+      --                oneUseDefPass nothingc g noFacts
+      -- (gm', _, _) <- analyzeAndRewriteBwd
+      --                oneUseDefPass { bp_transfer = oudTransferID
+      --                              , bp_rewrite = oudKill }
+      --                 nothingc g f
+      -- trace (printf "facts: %s\n" (show f)) $ return gm'
+      return g
     optgraph = runOpts graph
     lbls = labels transstate
     linear = mkLinear optgraph

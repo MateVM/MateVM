@@ -8,16 +8,12 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.ByteString.Lazy as B
 import System.Plugins
-import Control.Monad
 
 import Foreign
 import Foreign.C.Types
 import Foreign.C.String
 
 import JVM.ClassFile
-
-import Harpy hiding (ret)
-import Harpy.X86Disassembler
 
 import Compiler.Mate.Debug
 import Compiler.Mate.Types

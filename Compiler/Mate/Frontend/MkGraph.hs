@@ -300,29 +300,34 @@ tir (FSTORE_ y) = tir (FSTORE (imm2num y))
 tir (FSTORE y) = tirStore y JFloat
 tir (ASTORE_ x) = tir (ASTORE (imm2num x))
 tir (ASTORE x) = tirStore x JRef
-tir (PUTFIELD x) = do -- TODO: use x!!11
+tir (PUTFIELD x) = do
   src <- apop
   obj <- apop
   unless (JRef == varType obj) $ error "putfield: type mismatch"
   cls <- classf <$> get
   unless (fieldType cls x == varType src) $ error "putfield: type mismatch2"
-  return [IRStore obj src]
-tir (GETFIELD x) = do -- TODO: use x!!111
+  return [IRStore (RTPool x) obj src]
+tir (GETFIELD x) = do
   obj <- apop
   unless (JRef == varType obj) $ error "getfield: type mismatch"
   cls <- classf <$> get
   nv <- newvar (fieldType cls x)
   apush nv
-  return [IRLoad obj nv]
+  return [IRLoad (RTPool x) obj nv]
+tir (GETSTATIC x) = do
+  cls <- classf <$> get
+  nv <- newvar (fieldType cls x)
+  apush nv
+  return [IRLoad (RTPool x) JRefNull nv]
 tir (LDC1 x) = tir (LDC2 (fromIntegral x))
 tir (LDC2 x) = do
   nv <- newvar JRef -- TODO: type
   apush nv
-  return [IRLoadRT (RTPool x) nv]
+  return [IRLoad (RTPool x) JRefNull nv]
 tir (NEW x) = do
   nv <- newvar JRef
   apush nv
-  return [IRLoadRT (RTPool x) nv]
+  return [IRLoad (RTPool x) JRefNull nv]
 tir DUP = do
   x <- apop
   apush x
