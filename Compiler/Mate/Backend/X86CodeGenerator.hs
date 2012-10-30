@@ -332,17 +332,17 @@ girEmitOO (IRLoad RTNone (SpillIReg d) (HIReg dst)) = do -- arraylength
 girEmitOO (IRLoad (RTIndex (HIConstant i)) (SpillIReg srcd) (SpillIReg dstd)) = do
   mov eax (srcd, ebp)
   -- TODO: ptrSize ...
-  mov eax (Disp (fromIntegral $ i * ptrSize), eax)
+  mov eax (Disp (fromIntegral . (+8) $ i * ptrSize), eax)
   mov (dstd, ebp) eax
 girEmitOO (IRLoad (RTIndex (HIConstant i)) (SpillIReg srcd) (SpillRReg dstd)) = do
   mov eax (srcd, ebp)
   -- TODO: ptrSize ...
-  mov eax (Disp (fromIntegral $ i * ptrSize), eax)
+  mov eax (Disp (fromIntegral . (+8) $ i * ptrSize), eax)
   mov (dstd, ebp) eax
 girEmitOO (IRLoad (RTIndex (HIConstant i)) (SpillIReg srcd) (HIReg dst)) = do
   mov eax (srcd, ebp)
   -- TODO: ptrSize ...
-  mov eax (Disp (fromIntegral $ i * ptrSize), eax)
+  mov eax (Disp (fromIntegral . (+8) $ i * ptrSize), eax)
   mov dst eax
 girEmitOO (IRLoad rt (HIReg memsrc) (HIReg dst)) = do
   error "irload: emit: use rt"
@@ -385,7 +385,7 @@ girEmitOO (IRStore (RTPool x) obj src) = do
     e -> error $ "emit: irstore: missing impl.: " ++ show e
 girEmitOO (IRStore (RTIndex (HIConstant i)) (HIReg dst) (HIReg src)) = do
   -- store array elem
-  mov (Disp ((*4) $ i32tow32 i), dst) src
+  mov (Disp ((+8) . (*4) $ i32tow32 i), dst) src
 girEmitOO ins@(IRStore rt memdst src) = do
   error $ "irstore: emit: " ++ show ins
 girEmitOO (IRPush _ (HIReg x)) = push x
