@@ -320,7 +320,7 @@ girEmitOO (IRLoad (RTPool x) (HIConstant 0) dst) = do
       s <- getState
       setState (s { traps = M.insert trapaddr (NewObject patcher) (traps s) })
     e -> error $ "emit: irload: missing impl.: " ++ show e
-girEmitOO (IRLoad (RTArray ta arrlen) (HIConstant 0) (HIReg dst)) = do
+girEmitOO (IRLoad (RTArray ta arrlen) (HIConstant 0) dst) = do
   let tsize = case decodeS (0 :: Integer) (B.pack [ta]) of
                 T_INT -> 4
                 T_CHAR -> 2
@@ -331,7 +331,11 @@ girEmitOO (IRLoad (RTArray ta arrlen) (HIConstant 0) (HIReg dst)) = do
   callMalloc
   restoreRegs
   mov (Disp 0, eax) arrlen -- store length at offset 0
-  mov dst eax
+  case dst of
+    HIReg d -> mov d eax
+    SpillIReg d -> mov (d, ebp) eax
+    SpillRReg d -> mov (d, ebp) eax
+    x -> error $ "irload: emit: newarray: " ++ show x
 girEmitOO (IRLoad RTNone (SpillIReg d) (HIReg dst)) = do -- arraylength
   mov eax (d, ebp)
   mov dst (Disp 0, eax)
@@ -389,9 +393,19 @@ girEmitOO (IRStore (RTPool x) obj src) = do
           s <- getState
           setState (s { traps = M.insert trapaddr (ObjectField patcher) (traps s)})
     e -> error $ "emit: irstore: missing impl.: " ++ show e
-girEmitOO (IRStore (RTIndex (HIConstant i)) (HIReg dst) (HIReg src)) = do
+girEmitOO (IRStore (RTIndex (HIConstant i)) dst src) = do
+  push ebx
+  case dst of
+    HIReg d -> mov eax d
+    SpillIReg d -> mov eax (d, ebp)
+    SpillRReg d -> mov eax (d, ebp)
   -- store array elem
-  mov (Disp ((+8) . (*4) $ i32tow32 i), dst) src
+  case src of
+    HIReg s -> mov ebx s
+    SpillIReg sd -> mov ebx (sd, ebp)
+    SpillRReg sd -> mov ebx (sd, ebp)
+  mov (Disp ((+8) . (*4) $ i32tow32 i), eax) ebx
+  pop ebx
 girEmitOO ins@(IRStore rt memdst src) = do
   error $ "irstore: emit: " ++ show ins
 girEmitOO (IRPush _ (HIReg x)) = push x
