@@ -65,11 +65,17 @@ compileLinear :: M.Map Int32 H.Label -> [LinearIns HVar]
               -> CodeGen e CompileState ([Instruction], NativeWord, TrapMap)
 compileLinear lbls linsn = do
   ep <- fromIntegral <$> ptrToIntPtr <$> getEntryPoint
+  -- entry sequence
+  push ebp
+  mov ebp esp
+  let stackalloc = 0x100 :: Word32 -- TODO
+  sub esp stackalloc
   bblabels <- forM (M.elems lbls) $ \h -> do
                 l <- newNamedLabel ("Label: " ++ show h)
                 return (h, l)
   let lmap :: M.Map H.Label Label
       lmap = M.fromList bblabels
+  let retseq = do mov esp ebp; pop ebp; ret
   let compileIns (Fst (IRLabel h)) = defineLabel $ lmap M.! h
       compileIns (Mid ins) = girEmitOO ins
       compileIns (Lst ins) = case ins of
@@ -90,16 +96,16 @@ compileLinear lbls linsn = do
             C_GE -> jge l1; C_LE -> jle l1
           jmp l2
         IRJump h -> jmp (lmap M.! h)
-        IRReturn Nothing -> ret
-        IRReturn (Just (HIReg r)) -> do mov eax r; ret
-        IRReturn (Just (HIConstant c)) -> do mov eax (i32tow32 c); ret
+        IRReturn Nothing -> retseq
+        IRReturn (Just (HIReg r)) -> do mov eax r; retseq
+        IRReturn (Just (HIConstant c)) -> do mov eax (i32tow32 c); retseq
         IRReturn (Just (SpillIReg d)) -> do
           let src = (d, ebp)
           mov eax src
-          ret
+          retseq
         IRReturn (Just (HFReg r)) -> do
           movss xmm7 r
-          ret
+          retseq
         IRReturn x -> error $ "IRReturn: impl. me: " ++ show x
   mapM_ compileIns linsn
   floatconstants <- M.toList <$> floatConsts <$> getState
