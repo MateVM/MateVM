@@ -150,6 +150,12 @@ girEmitOO (IROp Add dst' src1' src2') =
       let dst = (disp, ebp)
       mov dst src1
       add dst src2
+    ge (SpillIReg disp) (HIReg src1) (HIConstant c) = do
+      let dst = (disp, ebp)
+      mov dst src1
+      when (c /= 0) $ add dst (i32tow32 c)
+    ge (SpillRReg disp) o1@(HIReg _) o2@(HIConstant _) = do
+      ge (SpillIReg disp) o1 o2
 
     ge (HFReg dst) (HFReg src1) (HFReg src2) = do
       movss dst src2
@@ -330,9 +336,12 @@ girEmitOO (IRStore (RTPool x) (HIConstant 0) (HIReg src)) = do
       s <- getState
       setState (s { traps = M.insert trapaddr sfi (traps s) })
     e -> error $ "emit: irstore: missing impl.: " ++ show e
+girEmitOO (IRStore (RTIndex (HIConstant i)) (HIReg dst) (HIReg src)) = do
+  mov (Disp (i32tow32 i), dst) src
 girEmitOO ins@(IRStore rt memdst src) = do
   error $ "irstore: emit: " ++ show ins
 girEmitOO (IRPush _ (HIReg x)) = push x
+girEmitOO (IRPush _ (HIConstant x)) = push (i32tow32 x)
 girEmitOO (IRPush _ (SpillIReg d)) = push (d, ebp)
 girEmitOO (IRPush _ (SpillRReg d)) = push (d, ebp)
 girEmitOO (IRPrep SaveRegs regs) = do

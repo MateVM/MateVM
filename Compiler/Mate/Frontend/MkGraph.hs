@@ -374,6 +374,14 @@ tir AALOAD = do
   nv <- newvar JRef
   apush nv
   return [IRLoad (RTIndex idx) arr nv]
+tir AASTORE = do
+  value <- apop
+  idx <- apop
+  arr <- apop
+  when (varType arr /= JRef) $ error "tir: aastore: type mismatch1"
+  when (varType idx /= JInt) $ error "tir: aastore: type mismatch2"
+  when (varType value /= JRef) $ error "tir: aastore: type mismatch3"
+  return [IRStore (RTIndex idx) arr value]
 tir DUP = do
   x <- apop
   apush x
