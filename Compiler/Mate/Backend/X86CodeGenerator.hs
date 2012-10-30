@@ -197,7 +197,9 @@ girEmitOO (IRInvoke (RTPool cpidx) haveReturn) = do
           else getMethodOffset objname (methodname `B.append` encode msig)
   let argsLen = genericLength args
   -- objref lives somewhere on the argument stack
-  mov ebx (Disp (argsLen * ptrSize), esp)
+  -- mov ebx (Disp 0, esp) -- (Disp (argsLen * ptrSize), esp)
+  pop ebx
+  push ebx
   when isInterface $
     mov ebx (Disp 0, ebx) -- get method-table-ptr, keep it in ebx
   -- get method-table-ptr (or interface-table-ptr)
@@ -243,8 +245,10 @@ girEmitOO (IRLoad (RTArray ta arrlen) (HIConstant 0) (HIReg dst)) = do
                 T_CHAR -> 2
                 _ -> error "newarray: type not implemented yet"
   let len = (arrlen * tsize) + ptrSize
+  saveRegs
   push len
   callMalloc
+  restoreRegs
   mov (Disp 0, eax) len -- store length at offset 0
   mov dst eax
 girEmitOO (IRLoad rt (HIReg memsrc) (HIReg dst)) = do
@@ -256,6 +260,18 @@ girEmitOO (IRStore rt (HIReg memdst) (HIConstant c)) = do
 girEmitOO (IRPush _ (HIReg x)) = push x
 girEmitOO x = error $ "girEmitOO: insn not implemented: " ++ show x
 
+
+saveRegs :: CodeGen e s ()
+saveRegs = do
+  push ecx; push edx
+  push ebx; push esi
+  push edi
+
+restoreRegs :: CodeGen e s ()
+restoreRegs = do
+  pop edi
+  pop esi; pop ebx
+  pop edx; pop ecx
 
 -- helper
 callMalloc :: CodeGen e s ()
