@@ -51,7 +51,7 @@ instance AllocationManager TwoSpace where
 
 
 performCollection' :: (RefObj a) => M.Map a RefUpdateAction -> StateT TwoSpace IO ()
-performCollection' roots = do --modify switchSpaces
+performCollection' roots = do modify switchSpaces
                               let rootList = map fst $ M.toList roots
                               lift (putStrLn "rootSet: " >> print rootList)
                               performCollectionIO rootList
@@ -115,8 +115,8 @@ buildRootPatcher (ptr,obj) = M.insertWith (both) ptr' patch
                                poke (intPtrToPtr ptr) newLocation   
         ptr' = intPtrToPtr obj
 
-        both new old = \newLocation -> do new newLocation
-                                          old newLocation
+        both newPatch oldPatch = \newLocation -> do newPatch newLocation
+                                                    oldPatch newLocation
 
 switchSpaces :: TwoSpace -> TwoSpace
 switchSpaces old = old { fromHeap = toHeap old,

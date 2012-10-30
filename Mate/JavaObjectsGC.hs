@@ -39,6 +39,8 @@ markByteOffset, newPtrOffset, fieldsOffset ::  Int
 markByteOffset = 4
 newPtrOffset = 4
 fieldsOffset = 8
+
+fieldsOffsetArray :: Int
 fieldsOffsetArray = 12
 
 arrayMagicNumber :: Int32
