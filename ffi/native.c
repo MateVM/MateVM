@@ -63,10 +63,13 @@ struct chararray {
 	char str;
 };
 
-void jmate_io_PrintStream__printf_X___Ljava_lang_String__V
-	(struct string *fmt)
+void jmate_io_PrintStream__printf_X___Ljava_lang_String_Ljava_lang_Object__V
+	(struct string *fmt, struct integer *a1)
 {
-	printf("-EWRONG_PRINTF_ARGS\n");
+	hexdump(fmt, 0x20);
+	hexdump(a1, 0x20);
+	struct integer *wtf = (struct integer*)(a1->value);
+	printf("-EWRONG_PRINTF_ARGS: 0x%08x\n", wtf->value);
 }
 
 void jmate_io_PrintStream__printf_0___Ljava_lang_String__V

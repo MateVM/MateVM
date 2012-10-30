@@ -154,8 +154,16 @@ girEmitOO (IROp Add dst' src1' src2') =
       let dst = (disp, ebp)
       mov dst src1
       when (c /= 0) $ add dst (i32tow32 c)
+    ge (SpillIReg disp) (SpillIReg src1) (HIConstant c) = do
+      let dst = (disp, ebp)
+      let s1 = (src1, ebp)
+      mov eax s1
+      when (c /= 0) $ add dst (i32tow32 c)
+      mov dst eax
     ge (SpillRReg disp) o1@(HIReg _) o2@(HIConstant _) = do
       ge (SpillIReg disp) o1 o2
+    ge (SpillRReg disp) (SpillRReg src1) o2 = do
+      ge (SpillIReg disp) (SpillIReg src1) o2
 
     ge (HFReg dst) (HFReg src1) (HFReg src2) = do
       movss dst src2
@@ -255,21 +263,27 @@ girEmitOO (IRInvoke (RTPool cpidx) haveReturn ct) = do
     Nothing -> return ()
   s <- getState
   setState (s { traps = M.insert calladdr (StaticMethod patcher) (traps s) })
-girEmitOO (IRLoad (RTPool x) (HIConstant 0) (HIReg dst)) = do
+girEmitOO (IRLoad (RTPool x) (HIConstant 0) dst) = do
   newNamedLabel ("TODO: RT `NEW' or `GESTATIC' or `LDC': " ++ show x) >>= defineLabel
   cls <- classf <$> getState
   case constsPool cls M.! x of
     (CString s) -> do
       sref <- liftIO $ getUniqueStringAddr s
-      mov dst sref
+      case dst of
+        HIReg d -> mov d sref
+        SpillIReg d -> mov (d, ebp) sref
     (CInteger i) -> do
-      mov dst i
+      case dst of
+        HIReg d -> mov d i
+        SpillIReg d -> mov (d, ebp) i
     (CField rc fnt) -> do
-      let sfi = StaticField $ StaticFieldInfo rc (ntName fnt)
-      trapaddr <- getCurrentOffset
-      mov dst (Addr 0)
-      s <- getState
-      setState (s { traps = M.insert trapaddr sfi (traps s) })
+      case dst of
+        HIReg d -> do
+          let sfi = StaticField $ StaticFieldInfo rc (ntName fnt)
+          trapaddr <- getCurrentOffset
+          mov d (Addr 0)
+          s <- getState
+          setState (s { traps = M.insert trapaddr sfi (traps s) })
     (CClass objname) -> do
       saveRegs
       trapaddr <- emitSigIllTrap 5
@@ -278,7 +292,11 @@ girEmitOO (IRLoad (RTPool x) (HIConstant 0) (HIReg dst)) = do
       -- 0x13371337 is just a placeholder; will be replaced with mtable ptr
       mov (Disp 0, eax) (0x13371337 :: Word32)
       mov (Disp 4, eax) (0 :: Word32)
-      mov dst eax
+      case dst of
+        HIReg d -> mov d eax
+        SpillIReg d -> mov (d, ebp) eax
+        SpillRReg d -> mov (d, ebp) eax
+        x -> error $ "irload: emit: cclass: " ++ show x
       let patcher wbr = do
             objsize <- liftIO $ getObjectSize objname
             push32 objsize
@@ -288,7 +306,10 @@ girEmitOO (IRLoad (RTPool x) (HIConstant 0) (HIReg dst)) = do
             mov (Disp 0, eax) mtable
             --mov (Disp 4, eax) (0x1337babe :: Word32)
             mov (Disp 4, eax) (0::Word32)
-            mov dst eax
+            case dst of
+              HIReg d -> mov d eax
+              SpillIReg d -> mov (d, ebp) eax
+              SpillRReg d -> mov (d, ebp) eax
             return wbr
       s <- getState
       setState (s { traps = M.insert trapaddr (NewObject patcher) (traps s) })
@@ -303,7 +324,7 @@ girEmitOO (IRLoad (RTArray ta arrlen) (HIConstant 0) (HIReg dst)) = do
   push (len + ptrSize)
   callMalloc
   restoreRegs
-  mov (Disp 0, eax) len -- store length at offset 0
+  mov (Disp 0, eax) arrlen -- store length at offset 0
   mov dst eax
 girEmitOO (IRLoad RTNone (SpillIReg d) (HIReg dst)) = do -- arraylength
   mov eax (d, ebp)
@@ -363,7 +384,8 @@ girEmitOO (IRStore (RTPool x) obj src) = do
           setState (s { traps = M.insert trapaddr (ObjectField patcher) (traps s)})
     e -> error $ "emit: irstore: missing impl.: " ++ show e
 girEmitOO (IRStore (RTIndex (HIConstant i)) (HIReg dst) (HIReg src)) = do
-  mov (Disp (i32tow32 i), dst) src
+  -- store array elem
+  mov (Disp ((*4) $ i32tow32 i), dst) src
 girEmitOO ins@(IRStore rt memdst src) = do
   error $ "irstore: emit: " ++ show ins
 girEmitOO (IRPush _ (HIReg x)) = push x

@@ -23,12 +23,12 @@ public class PrintStream {
 		} else if (len == 5) {
 			this.printf_5(format, args[0], args[1], args[2], args[3], args[4]);
 		} else {
-			this.printf_X(format);
+			this.printf_X(format, len);
 		}
 		return this;
 	}
 
-	public native static void printf_X(String a);
+	public native static void printf_X(String a, Object b);
 	public native static void printf_0(String a);
 	public native static void printf_1(String a, Object b);
 	public native static void printf_2(String a, Object b, Object c);
