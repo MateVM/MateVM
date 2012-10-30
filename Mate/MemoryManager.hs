@@ -14,6 +14,7 @@ import qualified Foreign.Marshal.Alloc as Alloc
 import Foreign.Ptr
 import Foreign.Marshal.Utils
 import Foreign.Storable
+import GHC.Int
 
 import Text.Printf
 import Control.Monad.State
@@ -26,6 +27,7 @@ import Mate.GC hiding (size)
 import qualified Mate.StackTrace as T
 import qualified Mate.JavaObjectsGC as Obj
 import qualified Mate.GC as GC
+import Debug.Trace
 
 type RootSet a = M.Map (Ptr a) RefUpdateAction
 
@@ -49,7 +51,7 @@ instance AllocationManager TwoSpace where
 
 
 performCollection' :: (RefObj a) => M.Map a RefUpdateAction -> StateT TwoSpace IO ()
-performCollection' roots = do modify switchSpaces
+performCollection' roots = do --modify switchSpaces
                               let rootList = map fst $ M.toList roots
                               lift (putStrLn "rootSet: " >> print rootList)
                               performCollectionIO rootList
@@ -107,11 +109,14 @@ buildGCAction stack size = do let rootsOnStack = concatMap T.possibleRefs stack
 
 -- (stackLocation,obj)
 buildRootPatcher :: (IntPtr,IntPtr) -> RootSet a -> RootSet a
-buildRootPatcher (ptr,obj) = M.insertWith (>>) ptr' patch 
+buildRootPatcher (ptr,obj) = M.insertWith (both) ptr' patch 
   where --patch = poke ptr' 
         patch newLocation = do printf "patch new ref: 0x%08x on stackloc: 0x%08x\n" (fromIntegral newLocation :: Int) (fromIntegral ptr :: Int)
                                poke (intPtrToPtr ptr) newLocation   
         ptr' = intPtrToPtr obj
+
+        both new old = \newLocation -> do new newLocation
+                                          old newLocation
 
 switchSpaces :: TwoSpace -> TwoSpace
 switchSpaces old = old { fromHeap = toHeap old,
@@ -137,7 +142,7 @@ mallocBytes' bytes = do state' <- get
                                failNoSpace used capacity
   where alloc :: TwoSpace -> IntPtr -> StateT TwoSpace IO (Ptr b)
         alloc state' end = do let ptr = toHeap state'
-                              put $ state' { toHeap = end + 100 } 
+                              put $ state' { toHeap = end  } 
                               liftIO (putStrLn $ "Allocated obj: " ++ show (intPtrToPtr ptr))
                               liftIO (return $ intPtrToPtr ptr)
         failNoSpace :: Integer -> Integer -> a
@@ -157,10 +162,11 @@ evacuate'' :: (RefObj a, AllocationManager b) => a -> StateT b IO ()
 evacuate'' obj = do (size,location) <- liftIO ((,) <$> getSizeDebug obj <*> getIntPtr obj)
                     -- malloc in TwoSpace
                     newPtr <- mallocBytesT size
-                    liftIO (putStrLn ("evacuating: " ++ show obj ++ " and set: " ++ show (newPtr `plusPtr` 12) ++ " size: " ++ show size))
+                    liftIO (putStrLn ("evacuating: " ++ show obj ++ " and set: " ++ show newPtr ++ " size: " ++ show size))
                     -- copy data over and leave notice
                     liftIO (copyBytes newPtr (intPtrToPtr location) size >> 
-                            setNewRef obj (cast newPtr))
+                            setNewRef obj (cast newPtr) >>
+                            pokeByteOff newPtr 4 (0::Int32))
 
 getSizeDebug :: RefObj a => a -> IO Int
 getSizeDebug obj = do 
@@ -174,8 +180,9 @@ getSizeDebug obj = do
 --evacuateList objs = evacuate' objs
 
 validRef' :: IntPtr -> TwoSpace -> Bool
-validRef' ptr twoSpace = (ptr >= (fst $ validRange twoSpace)) && 
-                         (ptr <= (snd $ validRange twoSpace))
+validRef' ptr twoSpace = let valid = (ptr >= (fst $ validRange twoSpace)) && 
+                                     (ptr <= (snd $ validRange twoSpace))
+                         in trace ("valid: " ++ show valid ++ " (" ++ (show $ intPtrToPtr ptr) ++ ")" ++ " valid range: " ++ (show $  validRange twoSpace)) valid
 
 initTwoSpace :: Int -> IO TwoSpace
 initTwoSpace size' =  do printfStr $ printf "initializing TwoSpace memory manager with %d bytes.\n" size'

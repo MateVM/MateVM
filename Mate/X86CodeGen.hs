@@ -294,9 +294,10 @@ emitFromBB cls method = do
       callMalloc
       pop eax -- ref to arraymemory
       pop ebx -- length
-      mov (Disp 0, eax) (0x0 :: Word32) -- null m_table
+      mov (Disp 0, eax) (0x1227babe :: Word32) -- null m_table
       mov (Disp 4, eax) (0x1337babe :: Word32) -- gcinfo
       mov (Disp 8, eax) ebx -- store length at offset 8
+      mov (Disp 12, eax) (0x1227bab1 :: Word32)
       push eax -- push ref again
 
     emit (CHECKCAST _) = nop -- TODO(bernhard): ...

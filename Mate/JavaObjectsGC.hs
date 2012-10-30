@@ -39,23 +39,26 @@ markByteOffset, newPtrOffset, fieldsOffset ::  Int
 markByteOffset = 4
 newPtrOffset = 4
 fieldsOffset = 8
+fieldsOffsetArray = 12
+
+arrayMagicNumber :: Int32
+arrayMagicNumber = 0x1227babe 
 
 unpackRefs :: Ptr a -> IO [Ptr a]
 unpackRefs ptr = do 
   isarray <- isArray ptr
   if isarray
-    then return [] 
+    then do
+      len <- peekByteOff ptr 8 :: IO Int
+      peekArray len (ptr `plusPtr` 12) 
     else do
       numberOfFields <- getObjectFieldCountPtr ptr
-      allRefs <- peekArray numberOfFields (ptr `plusPtr` fieldsOffset)
-      -- there may me null reference stuff. 0s are no valid children
-      return $ filter (/=nullPtr) allRefs
-
+      peekArray numberOfFields (ptr `plusPtr` fieldsOffset)
 
 isArray :: Ptr a -> IO Bool
 isArray ptr = do
     method_table <- peekByteOff ptr 0 :: IO Int32
-    return $ method_table == 0
+    return $ method_table == arrayMagicNumber
 
 getSize :: Ptr a -> IO Int
 getSize ptr = do
@@ -67,7 +70,7 @@ getSize ptr = do
 getArrayObjectSize :: Ptr a -> IO Int
 getArrayObjectSize ptr = do
  len <- peekByteOff ptr 8 :: IO Int
- return $ 16 + len * 4
+ return $ 12 + len * 4
 
 markedRef :: Ptr a -> IO Bool
 markedRef ptr = liftM (/= (0::Int32)) (peekByteOff ptr markByteOffset  :: IO Int32)
@@ -79,7 +82,12 @@ setNewRefPtr :: Ptr a -> Ptr a -> IO ()
 setNewRefPtr ptr = pokeByteOff ptr newPtrOffset 
 
 patchRefsPtr :: Ptr a -> [Ptr a] -> IO ()
-patchRefsPtr ptr = pokeArray (ptr `plusPtr` fieldsOffset) 
+patchRefsPtr ptr xs = do
+  isarray <- isArray ptr
+  if isarray
+    then pokeArray (ptr `plusPtr` fieldsOffsetArray) xs 
+    else pokeArray (ptr `plusPtr` fieldsOffset) xs
+
 
 
 printRef' :: Ptr a -> IO ()
@@ -102,8 +110,12 @@ printRef' ptr = do
         printf "we got an array\n"
         len <- peekByteOff ptr 8 :: IO Int32
         printf "length: 0x%08x\n" len
+        printChildren ptr
+        printf "dump"
+        blubber <- peekArray 16 (castPtr ptr) :: IO [Ptr b]
+        print blubber
 
-    if method_table == 0
+    if method_table == arrayMagicNumber
       then printArray
       else printObj
 
