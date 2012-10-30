@@ -150,6 +150,12 @@ girEmitOO (IROp Add dst' src1' src2') =
       let dst = (disp, ebp)
       mov dst src1
       add dst src2
+    ge (SpillIReg disp) (HIReg src1) (SpillIReg s2) = do
+      let dst = (disp, ebp)
+      let src2 = (s2, ebp)
+      mov eax src2
+      add eax src1
+      mov dst eax
     ge (SpillIReg disp) (HIReg src1) (HIConstant c) = do
       let dst = (disp, ebp)
       mov dst src1
@@ -200,6 +206,19 @@ girEmitOO (IROp Sub dst' src1' src2') = do
     ge (HIReg dst) (HIConstant i32) (SpillIReg s2) = do
       let src2 = (s2, ebp)
       mov dst src2; sub dst (i322w32 i32)
+    ge (HIReg dst) (HIReg src1) (SpillIReg s2) = do
+      let src2 = (s2, ebp)
+      mov dst src2
+      sub dst src1
+    ge (HIReg dst) (SpillIReg s1) (SpillIReg s2) = do
+      let src1 = (s1, ebp)
+      let src2 = (s2, ebp)
+      mov dst src2
+      sub dst src1
+    ge (HIReg dst) (SpillIReg s1) (HIReg src2) = do
+      let src1 = (s1, ebp)
+      mov dst src2
+      sub dst src1
     ge _ _ _ = error $ "sub: not impl.: " ++ show dst' ++ ", "
                      ++ show src1' ++ ", " ++ show src2'
 girEmitOO (IROp Mul _ _ _) = do
