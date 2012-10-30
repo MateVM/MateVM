@@ -9,6 +9,7 @@ module Compiler.Mate.Debug
   , printfInfo
   , printfEx
   , printfPipe
+  , tracePipe
   , mateDEBUG
   , usePreciseGC
   , printf -- TODO: delete me
@@ -23,7 +24,7 @@ import Control.Monad
 {-# NOINLINE logHandle #-}
 -- TODO(bernhard): use MVar if threaded
 logHandle :: Handle
-logHandle = if not mateDEBUG
+logHandle = if mateDEBUG
     then unsafePerformIO $ openFile "mate.log" WriteMode
     else stdout
 
@@ -60,6 +61,11 @@ printfInfo = printString "Info: "
 printfEx = printString "Ex: "
 printfPipe = printString "Pipe: "
 
+{-# NOINLINE tracePipe #-}
+tracePipe :: String -> a -> a
+tracePipe string expr = unsafePerformIO $ do
+  printfPipe string
+  return expr
 
 {-# INLINE usePreciseGC #-}
 usePreciseGC :: Bool

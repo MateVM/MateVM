@@ -29,10 +29,10 @@ import JVM.ClassFile
 import Compiler.Hoopl
 import Harpy hiding (Label)
 
+import Compiler.Mate.Debug
 import Compiler.Mate.Frontend.IR
 import Compiler.Mate.Frontend.StupidRegisterAllocation
 
-import Debug.Trace
 import Text.Printf
 
 data SimStack = SimStack
@@ -159,7 +159,7 @@ toMid = do
   where
     normalIns ins = do
       st <- get
-      -- st <- (trace $ printf "tir': %s\n" (show x)) get
+      -- st <- (tracePipe $ printf "tir': %s\n" (show x)) get
       let (insIR, state') = runState (tir ins) (simStack st)
       put $ st { simStack = state'}
       incrementPC ins
@@ -402,7 +402,7 @@ tirInvoke :: CallType -> Word16 -> State SimStack [MateIR Var O O]
 tirInvoke ct ident = do
   cls <- classf <$> get
   let (varts, mret) = methodType (ct /= CallStatic) cls ident
-  pushes <- trace (printf "tirInvoke: varts: %s\n" (show varts)) $ 
+  pushes <- tracePipe (printf "tirInvoke: varts: %s\n" (show varts)) $ 
             forM (reverse $ zip varts [0..]) $ \(x, nr) -> do
     y <- apop
     unless (x == varType y) $ error "invoke: type mismatch"

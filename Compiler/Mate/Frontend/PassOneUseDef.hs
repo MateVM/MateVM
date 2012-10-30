@@ -10,7 +10,6 @@ module Compiler.Mate.Frontend.PassOneUseDef
 
 import qualified Data.Map as M
 
-import Debug.Trace
 import Text.Printf
 
 import Compiler.Hoopl
@@ -64,14 +63,14 @@ oudKill = mkBRewrite rw
                           PElem dstnew -> do
                             let newins = IROp Add dstnew src c
                             return $ Just $ mkMiddle $
-                                   trace (printf "rewrote1: \"%s\" to \"%s\"\n" (show ins) (show newins)) $
+                                   tracePipe (printf "rewrote1: \"%s\" to \"%s\"\n" (show ins) (show newins)) $
                                    newins
                           _ -> return Nothing
                     else return Nothing
       in if c == JIntValue 0 || c == JFloatValue 0
         then case M.lookup src f of
               Just Top -> oprepl
-              Just _ -> return $ trace (printf "killed: %s\n" (show ins)) $
+              Just _ -> return $ tracePipe (printf "killed: %s\n" (show ins)) $
                                  Just emptyGraph
               Nothing -> oprepl
         else oprepl
@@ -79,14 +78,14 @@ oudKill = mkBRewrite rw
       Just (PElem newdst) -> do
         let newins = IROp Add newdst c1 c2
         return $ Just $ mkMiddle $
-          trace (printf "rewrote2: \"%s\" to \"%s\"\n" (show ins) (show newins)) $
+          tracePipe (printf "rewrote2: \"%s\" to \"%s\"\n" (show ins) (show newins)) $
           newins
       _ -> return Nothing
     rw ins@(IRLoadRT rt dst@(VReg _ _)) f = case M.lookup dst f of
       Just (PElem newdst) -> do
         let newins = IRLoadRT rt newdst
         return $ Just $ mkMiddle $
-          trace (printf "rewrote3: \"%s\" to \"%s\"\n" (show ins) (show newins)) $
+          tracePipe (printf "rewrote3: \"%s\" to \"%s\"\n" (show ins) (show newins)) $
           newins
       _ -> return Nothing
     rw _ _ = return Nothing

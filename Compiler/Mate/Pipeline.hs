@@ -22,7 +22,6 @@ import Compiler.Hoopl hiding (Label)
 
 import Control.Monad.State
 
-import Debug.Trace
 import Text.Printf
 import Compiler.Mate.Debug
 
@@ -71,7 +70,7 @@ pipeline cls meth jvminsn = do
     (graph, transstate) = runAll $ do
       resolveReferences
       refs <- blockEntries <$> get
-      trace (printf "refs: %s\n" (show refs)) $
+      tracePipe (printf "refs: %s\n" (show refs)) $
         resetPC jvminsn
       gs <- mkBlocks
       let g = L.foldl' (|*><*|) emptyClosedGraph gs
@@ -86,7 +85,7 @@ pipeline cls meth jvminsn = do
       --                oneUseDefPass { bp_transfer = oudTransferID
       --                              , bp_rewrite = oudKill }
       --                 nothingc g f
-      -- trace (printf "facts: %s\n" (show f)) $ return gm'
+      -- tracePipe (printf "facts: %s\n" (show f)) $ return gm'
       return g
     optgraph = runOpts graph
     lbls = labels transstate
@@ -96,11 +95,9 @@ pipeline cls meth jvminsn = do
 prettyHeader :: String -> IO ()
 prettyHeader str = do
   let len = length str + 6
-  when mateDEBUG (do replicateM_ len (putChar '-'); putStrLn "")
+  printfPipe $ printf "%s\n" (replicate len ' ')
   printfPipe $ printf "-- %s --\n" str
-  when mateDEBUG (do replicateM_ len (putChar '-'); putStrLn "")
-  -- putStrLn "press any key to continue..." >> getChar
-  return ()
+  printfPipe $ printf "%s\n" (replicate len ' ')
 
 compileMethod :: B.ByteString -> Class Direct -> IO (NativeWord, TrapMap)
 compileMethod meth cls = do
