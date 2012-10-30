@@ -292,14 +292,14 @@ girEmitOO (IRLoad (RTArray ta arrlen) (HIConstant 0) (HIReg dst)) = do
                 T_INT -> 4
                 T_CHAR -> 2
                 _ -> error "newarray: type not implemented yet"
-  let len = (arrlen * tsize) + ptrSize
+  let len = arrlen * tsize
   saveRegs
-  push len
+  push (len + ptrSize)
   callMalloc
   restoreRegs
   mov (Disp 0, eax) len -- store length at offset 0
   mov dst eax
-girEmitOO (IRLoad RTNone (SpillIReg d) (HIReg dst)) = do
+girEmitOO (IRLoad RTNone (SpillIReg d) (HIReg dst)) = do -- arraylength
   mov eax (d, ebp)
   mov dst (Disp 0, eax)
 girEmitOO (IRLoad (RTIndex (HIConstant i)) (SpillIReg srcd) (SpillIReg dstd)) = do

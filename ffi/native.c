@@ -63,9 +63,17 @@ struct chararray {
 	char str;
 };
 
+void jmate_io_PrintStream__printf_X___Ljava_lang_String__V
+	(struct string *fmt)
+{
+	printf("-EWRONG_PRINTF_ARGS\n");
+}
+
 void jmate_io_PrintStream__printf_0___Ljava_lang_String__V
 	(struct string *fmt)
 {
+	printf("DAFUQ0\n");
+	hexdump(fmt, 0x20);
 	printf("%s", &fmt->value->str);
 }
 
@@ -79,12 +87,14 @@ void jmate_io_PrintStream__printf_1___Ljava_lang_String_Ljava_lang_Object__V
 	printf("first: %d\n", fmt->value->length);
 	printf("*fmt: %s\n", &fmt->value->str);
 #endif
+	printf("DAFUQ1\n");
 	printf(&fmt->value->str, a1->value);
 }
 
 void jmate_io_PrintStream__printf_2___Ljava_lang_String_Ljava_lang_Object_Ljava_lang_Object__V
 	(struct integer *a2, struct integer *a1, struct string *fmt)
 {
+	printf("DAFUQ2\n");
 	printf(&fmt->value->str, a1->value, a2->value);
 }
 
@@ -92,18 +102,42 @@ void
 jmate_io_PrintStream__printf_3___Ljava_lang_String_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object__V
 	(struct integer *a3, struct integer *a2, struct integer *a1, struct string *fmt)
 {
+	printf("DAFUQ3\n");
+	printf("arg1: 0x%08x\n", fmt);
+	printf("arg2: 0x%08x\n", a1);
+	printf("arg3: 0x%08x\n", a2);
+	printf("arg4: 0x%08x\n", a3);
+	printf("arg1\n");
+	hexdump(fmt, 0x20);
+	printf("arg2\n");
+	hexdump(a1, 0x20);
+	printf("arg3\n");
+	hexdump(a2, 0x20);
+	printf("arg4\n");
+	hexdump(a3, 0x20);
 	printf(&fmt->value->str, a1->value, a2->value, a3->value);
 }
 
 void jmate_io_PrintStream__printf_4___Ljava_lang_String_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object__V
 	(struct integer *a4, struct integer *a3, struct integer *a2, struct integer *a1, struct string *fmt)
 {
+	printf("DAFUQ4\n");
+	printf("arg1: 0x%08x\n", fmt);
+	printf("arg2: 0x%08x\n", a1);
+	printf("arg3: 0x%08x\n", a2);
+	printf("arg1\n");
+	hexdump(fmt, 0x20);
+	printf("arg2\n");
+	hexdump(a1, 0x20);
+	printf("arg3\n");
+	hexdump(a2, 0x20);
 	printf(&fmt->value->str, a1->value, a2->value, a3->value, a4->value);
 }
 
 void jmate_io_PrintStream__printf_5___Ljava_lang_String_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object__V
 	(struct integer *a5, struct integer *a4, struct integer *a3, struct integer *a2, struct integer *a1, struct string *fmt)
 {
+	printf("DAFUQ5\n");
 	printf(&fmt->value->str, a1->value, a2->value, a3->value, a4->value, a5->value);
 }
 

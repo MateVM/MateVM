@@ -22,14 +22,17 @@ public class PrintStream {
 			this.printf_4(format, args[0], args[1], args[2], args[3]);
 		} else if (len == 5) {
 			this.printf_5(format, args[0], args[1], args[2], args[3], args[4]);
+		} else {
+			this.printf_X(format);
 		}
 		return this;
 	}
 
-	public native void printf_0(String a);
-	public native void printf_1(String a, Object b);
-	public native void printf_2(String a, Object b, Object c);
-	public native void printf_3(String a, Object b, Object c, Object d);
-	public native void printf_4(String a, Object b, Object c, Object d, Object e);
-	public native void printf_5(String a, Object b, Object c, Object d, Object e, Object f);
+	public native static void printf_X(String a);
+	public native static void printf_0(String a);
+	public native static void printf_1(String a, Object b);
+	public native static void printf_2(String a, Object b, Object c);
+	public native static void printf_3(String a, Object b, Object c, Object d);
+	public native static void printf_4(String a, Object b, Object c, Object d, Object e);
+	public native static void printf_5(String a, Object b, Object c, Object d, Object e, Object f);
 }

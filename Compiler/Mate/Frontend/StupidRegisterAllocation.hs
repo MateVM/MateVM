@@ -53,7 +53,7 @@ preFloats :: [Integer]
 preFloats = [preFloatStart .. (preFloatStart + 5)]
 
 emptyRegs :: MappedRegs
-emptyRegs = MappedRegs preAssignedRegs 0
+emptyRegs = MappedRegs preAssignedRegs 0x30 -- TODO: stack space...
 
 allIntRegs, allFloatRegs :: [HVar]
 -- register usage:
