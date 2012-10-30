@@ -93,10 +93,10 @@ stupidRegAlloc preAssigned linsn = evalState regAlloc' startmapping
         IRPush nr src -> do
           srcnew <- doAssign src
           return $ Mid $ IRPush nr srcnew
-        IRInvoke b (Just r) -> do
+        IRInvoke b (Just r) ct -> do
           rnew <- Just <$> doAssign r
-          return $ Mid $ IRInvoke b rnew
-        IRInvoke b Nothing -> return $ Mid $ IRInvoke b Nothing
+          return $ Mid $ IRInvoke b rnew ct
+        IRInvoke b Nothing ct -> return $ Mid $ IRInvoke b Nothing ct
       Lst ins -> case ins of
         IRJump l -> return $ Lst $ IRJump l
         IRIfElse jcmp cmp1 cmp2 l1 l2 -> do

@@ -36,6 +36,7 @@ import Compiler.Mate.Backend.NativeSizes
 import Compiler.Mate.Runtime.ClassHierarchy
 import Compiler.Mate.Runtime.JavaObjects
 import Compiler.Mate.Runtime.ClassPool
+import Compiler.Mate.Runtime.MethodPool
 
 import Compiler.Mate.Debug
 import Compiler.Mate.Types
@@ -184,7 +185,7 @@ girEmitOO (IROp Sub dst' src1' src2') = do
 girEmitOO (IROp Mul _ _ _) = do
   newNamedLabel "TODO! IROp Mul" >>= defineLabel
   nop
-girEmitOO (IRInvoke (RTPool cpidx) haveReturn) = do
+girEmitOO (IRInvoke (RTPool cpidx) haveReturn CallVirtual) = do
   let isInterface = False -- TODO: ...
   cls <- classf <$> getState
   let mi@(MethodInfo methodname objname msig@(MethodSignature args _)) =
@@ -222,6 +223,26 @@ girEmitOO (IRInvoke (RTPool cpidx) haveReturn) = do
   setState (s { traps = M.insert calladdr
                         (VirtualCall isInterface mi offset)
                         (traps s) })
+girEmitOO (IRInvoke (RTPool cpidx) haveReturn ct) = do
+  cls <- classf <$> getState
+  let hasThis = ct == CallSpecial
+  let l = buildMethodID cls cpidx
+  newNamedLabel (show l) >>= defineLabel
+  -- like: call $0x01234567
+  calladdr <- emitSigIllTrap 5
+  let patcher wbr = do
+        (entryAddr, _) <- liftIO $ getMethodEntry l
+        call (fromIntegral (entryAddr - (wbEip wbr + 5)) :: NativeWord)
+        return wbr
+  -- discard arguments on stack
+  let argcnt = ((if hasThis then 1 else 0) + methodGetArgsCount (methodNameTypeByIdx cls cpidx)) * ptrSize
+  when (argcnt > 0) (add esp argcnt)
+
+  case haveReturn of
+    Just (HIReg dst) -> mov dst eax
+    Nothing -> return ()
+  s <- getState
+  setState (s { traps = M.insert calladdr (StaticMethod patcher) (traps s) })
 girEmitOO (IRLoad (RTPool x) (HIConstant 0) (HIReg dst)) = do
   newNamedLabel ("TODO: RT `NEW' or `GESTATIC' or `LDC': " ++ show x) >>= defineLabel
   cls <- classf <$> getState
@@ -288,6 +309,7 @@ girEmitOO (IRStore (RTPool x) (HIConstant 0) (HIReg src)) = do
 girEmitOO ins@(IRStore rt memdst src) = do
   error $ "irstore: emit: " ++ show ins
 girEmitOO (IRPush _ (HIReg x)) = push x
+girEmitOO (IRPush _ (SpillIReg d)) = push (d, ebp)
 girEmitOO (IRPrep SaveRegs regs) = do
   forM_ regs $ \(HIReg x) -> push x
 girEmitOO (IRPrep RestoreRegs regs) = do

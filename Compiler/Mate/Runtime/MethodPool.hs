@@ -18,7 +18,7 @@ import JVM.ClassFile
 import Compiler.Mate.Debug
 import Compiler.Mate.Types
 
-import Compiler.Mate.Pipeline
+import {-# SOURCE #-} Compiler.Mate.Pipeline
 import Compiler.Mate.Backend.NativeSizes
 import Compiler.Mate.Utilities
 import Compiler.Mate.Runtime.ClassPool

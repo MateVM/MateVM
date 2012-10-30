@@ -5,6 +5,7 @@
 module Compiler.Mate.Frontend.IR
  ( MateIR(..)
  , CallingConv(..)
+ , CallType(..)
  , OpType(..)
  , HVar(..)
  , Var(..)
@@ -36,13 +37,17 @@ data MateIR t e x where
   IRPrep :: (Show t) => CallingConv
                      -> [t] {- regs in use -}
                      -> MateIR t O O
-  IRInvoke :: (Show t) => RTPool -> Maybe t -> MateIR t O O
+  IRInvoke :: (Show t) => RTPool
+                       -> Maybe t
+                       -> CallType
+                       -> MateIR t O O
   IRPush :: (Show t) => Word8 -> t -> MateIR t O O
   IRJump :: Label -> MateIR t O C
   IRIfElse :: (Show t) => CMP -> t -> t -> Label -> Label -> MateIR t O C
   IRReturn :: (Show t) => Maybe t -> MateIR t O C
 
 data CallingConv = SaveRegs | RestoreRegs deriving (Show, Eq)
+data CallType = CallStatic | CallSpecial | CallVirtual deriving (Show, Eq)
 
 data OpType
   = Add
@@ -95,7 +100,7 @@ instance Show (MateIR t e x) where
   show (IROp op vr v1 v2) = printf "\t%s %s,  %s, %s" (show op) (show vr) (show v1) (show v2)
   show (IRLoad rt obj dst) = printf "\t%s(%s) -> %s" (show obj) (show rt) (show dst)
   show (IRStore rt obj src) = printf "\t%s(%s) <- %s" (show obj) (show rt) (show src)
-  show (IRInvoke x r) = printf "\tinvoke %s %s" (show x) (show r)
+  show (IRInvoke x r typ) = printf "\tinvoke %s %s [%s]" (show x) (show r) (show typ)
   show (IRPush argnr x) = printf "\tpush(%d) %s" argnr (show x)
   show (IRJump l) = printf "\tjump %s" (show l)
   show (IRIfElse jcmp v1 v2 l1 l2) = printf "\tif (%s `%s` %s) then %s else %s" (show v1) (show jcmp) (show v2) (show l1) (show l2)

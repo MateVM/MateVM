@@ -361,15 +361,15 @@ tir IADD = tirOpInt Add JInt
 tir ISUB = tirOpInt Sub JInt
 tir IMUL = tirOpInt Mul JInt
 tir FADD = tirOpInt Add JFloat
-tir (INVOKESTATIC ident) = tirInvoke False ident
-tir (INVOKESPECIAL ident) = tirInvoke False ident
-tir (INVOKEVIRTUAL ident) = tirInvoke True ident
+tir (INVOKESTATIC ident) = tirInvoke CallStatic ident
+tir (INVOKESPECIAL ident) = tirInvoke CallSpecial ident
+tir (INVOKEVIRTUAL ident) = tirInvoke CallVirtual ident
 tir x = error $ "tir: " ++ show x
 
-tirInvoke :: Bool -> Word16 -> State SimStack [MateIR Var O O]
-tirInvoke isVirtual ident = do
+tirInvoke :: CallType -> Word16 -> State SimStack [MateIR Var O O]
+tirInvoke ct ident = do
   cls <- classf <$> get
-  let (varts, mret) = methodType isVirtual cls ident
+  let (varts, mret) = methodType (ct /= CallStatic) cls ident
   pushes <- trace (printf "tirInvoke: varts: %s\n" (show varts)) $ 
             forM (reverse $ zip varts [0..]) $ \(x, nr) -> do
     y <- apop
@@ -397,7 +397,7 @@ tirInvoke isVirtual ident = do
       return (Just nv, Just movretval)
     Nothing -> return (Nothing, Nothing)
   let r = (IRPrep SaveRegs []) : pushes ++
-          [IRInvoke (RTPool ident) targetreg, IRPrep RestoreRegs []]
+          [IRInvoke (RTPool ident) targetreg ct, IRPrep RestoreRegs []]
   case maybemov of
     Nothing -> return r
     Just m -> return $ r ++ [m]
