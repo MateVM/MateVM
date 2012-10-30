@@ -245,6 +245,7 @@ girEmitOO (IRLoad (RTPool x) (HIConstant 0) (HIReg dst)) = do
       -- 0x13371337 is just a placeholder; will be replaced with mtable ptr
       mov (Disp 0, eax) (0x13371337 :: Word32)
       mov (Disp 4, eax) (0 :: Word32)
+      mov dst eax
       let patcher wbr = do
             objsize <- liftIO $ getObjectSize objname
             push32 objsize
@@ -254,6 +255,7 @@ girEmitOO (IRLoad (RTPool x) (HIConstant 0) (HIReg dst)) = do
             mov (Disp 0, eax) mtable
             --mov (Disp 4, eax) (0x1337babe :: Word32)
             mov (Disp 4, eax) (0::Word32)
+            mov dst eax
             return wbr
       s <- getState
       setState (s { traps = M.insert trapaddr (NewObject patcher) (traps s) })
@@ -286,6 +288,10 @@ girEmitOO (IRStore (RTPool x) (HIConstant 0) (HIReg src)) = do
 girEmitOO ins@(IRStore rt memdst src) = do
   error $ "irstore: emit: " ++ show ins
 girEmitOO (IRPush _ (HIReg x)) = push x
+girEmitOO (IRPrep SaveRegs regs) = do
+  forM_ regs $ \(HIReg x) -> push x
+girEmitOO (IRPrep RestoreRegs regs) = do
+  forM_ (reverse regs) $ \(HIReg x) -> pop x
 girEmitOO x = error $ "girEmitOO: insn not implemented: " ++ show x
 
 

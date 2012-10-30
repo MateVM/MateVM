@@ -87,6 +87,9 @@ stupidRegAlloc preAssigned linsn = evalState regAlloc' startmapping
           dstnew <- doAssign dst
           return $ Mid $ IRLoad rt objnew dstnew
         IRNop -> return $ Mid $ IRNop
+        IRPrep typ [] -> do
+          intuse <- regsInUse JInt -- TODO: float
+          return $ Mid $ IRPrep typ (intuse `L.intersect` allIntRegs)
         IRPush nr src -> do
           srcnew <- doAssign src
           return $ Mid $ IRPush nr srcnew
@@ -104,6 +107,21 @@ stupidRegAlloc preAssigned linsn = evalState regAlloc' startmapping
           bnew <- Just <$> doAssign b
           return $ Lst $ IRReturn bnew
         IRReturn Nothing -> return $ Lst $ IRReturn Nothing
+
+    regsInUse :: VarType -> State MappedRegs [HVar]
+    regsInUse t = do
+      mr <- M.elems <$> regMap <$> get
+      let unpackIntReg :: HVar -> Maybe HVar
+          unpackIntReg x@(HIReg _) = Just x
+          unpackIntReg _ = Nothing
+      let unpackFloatReg :: HVar -> Maybe HVar
+          unpackFloatReg x@(HFReg _) = Just x
+          unpackFloatReg _ = Nothing
+      let unpacker = case t of
+                       JInt -> unpackIntReg
+                       JRef -> unpackIntReg
+                       JFloat -> unpackFloatReg
+      return . mapMaybe unpacker $ mr
 
     doAssign :: Var -> State MappedRegs HVar
     doAssign (JIntValue x) = return $ HIConstant x
@@ -142,21 +160,6 @@ stupidRegAlloc preAssigned linsn = evalState regAlloc' startmapping
               put (mr { regMap = imap })
               return x
         nextAvailReg _ = error "intNextReg: dafuq"
-
-        regsInUse :: VarType -> State MappedRegs [HVar]
-        regsInUse t = do
-          mr <- M.elems <$> regMap <$> get
-          let unpackIntReg :: HVar -> Maybe HVar
-              unpackIntReg x@(HIReg _) = Just x
-              unpackIntReg _ = Nothing
-          let unpackFloatReg :: HVar -> Maybe HVar
-              unpackFloatReg x@(HFReg _) = Just x
-              unpackFloatReg _ = Nothing
-          let unpacker = case t of
-                           JInt -> unpackIntReg
-                           JRef -> unpackIntReg
-                           JFloat -> unpackFloatReg
-          return . mapMaybe unpacker $ mr
 
         availRegs :: VarType -> State MappedRegs [HVar]
         availRegs t = do

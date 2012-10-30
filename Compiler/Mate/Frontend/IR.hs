@@ -4,6 +4,7 @@
 {-# LANGUAGE StandaloneDeriving #-}
 module Compiler.Mate.Frontend.IR
  ( MateIR(..)
+ , CallingConv(..)
  , OpType(..)
  , HVar(..)
  , Var(..)
@@ -32,11 +33,16 @@ data MateIR t e x where
                      -> t {- target -}
                      -> MateIR t O O
   IRNop :: MateIR t O O
+  IRPrep :: (Show t) => CallingConv
+                     -> [t] {- regs in use -}
+                     -> MateIR t O O
   IRInvoke :: (Show t) => RTPool -> Maybe t -> MateIR t O O
   IRPush :: (Show t) => Word8 -> t -> MateIR t O O
   IRJump :: Label -> MateIR t O C
   IRIfElse :: (Show t) => CMP -> t -> t -> Label -> Label -> MateIR t O C
   IRReturn :: (Show t) => Maybe t -> MateIR t O C
+
+data CallingConv = SaveRegs | RestoreRegs deriving (Show, Eq)
 
 data OpType
   = Add
@@ -95,6 +101,7 @@ instance Show (MateIR t e x) where
   show (IRIfElse jcmp v1 v2 l1 l2) = printf "\tif (%s `%s` %s) then %s else %s" (show v1) (show jcmp) (show v2) (show l1) (show l2)
   show (IRReturn b) = printf "\treturn (%s)" (show b)
   show IRNop = printf "\tnop"
+  show (IRPrep typ regs) = printf "\tcall preps (%s): %s" (show typ) (show regs)
 
 instance Show HVar where
   show (HIReg r32) = printf "%s" (show r32)

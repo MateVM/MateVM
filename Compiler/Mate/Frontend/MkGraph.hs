@@ -396,7 +396,8 @@ tirInvoke isVirtual ident = do
       let movretval = IROp Add movtarget nv (JIntValue 0)
       return (Just nv, Just movretval)
     Nothing -> return (Nothing, Nothing)
-  let r = pushes ++ [IRInvoke (RTPool ident) targetreg]
+  let r = (IRPrep SaveRegs []) : pushes ++
+          [IRInvoke (RTPool ident) targetreg, IRPrep RestoreRegs []]
   case maybemov of
     Nothing -> return r
     Just m -> return $ r ++ [m]
