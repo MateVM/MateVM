@@ -185,7 +185,11 @@ toMid = do
         LRETURN -> error "toLast: LReturn"
         FRETURN -> returnSomething JFloat
         DRETURN -> error "toLast: DReturn"
-        (IF _ _) -> error "toLast: IF _ _)"
+        (IF jcmp rel) -> do
+          op1 <- apop2
+          let op2 = JIntValue 0
+          unless (varType op1 == JInt) $ error "toLast IF: type mismatch"
+          ifstuff jcmp rel op1 op2
         (IFNULL _) -> error "toLast: IFNULL"
         (IFNONNULL _) -> error "toLast: IFNONNULL"
         (IF_ICMP jcmp rel) -> do
@@ -196,9 +200,13 @@ toMid = do
         (IF_ACMP jcmp rel) -> do
           op1 <- apop2
           op2 <- apop2
-          unless (varType op1 == varType op2) $ error "toLast IF_ICMP: type mismatch"
+          unless (varType op1 == varType op2) $ error "toLast IF_ACMP: type mismatch"
           ifstuff jcmp rel op1 op2
-        (GOTO _) -> do error "toLast: goto"
+        (GOTO rel) -> do
+          jmp <- addLabel (pc + w162i32 rel)
+          incrementPC ins
+          popInstruction
+          return $ ([], IRJump jmp)
         _ -> do -- fallthrough case
           next <- addLabel (pc + insnLength ins)
           insIR <- normalIns ins
@@ -350,6 +358,12 @@ tir (NEWARRAY w8) = do
   nv <- newvar JRef
   apush nv
   return [IRLoad (RTArray w8 len') JRefNull nv]
+tir ARRAYLENGTH = do
+  arr <- apop
+  when (varType arr /= JRef) $ error "tir: arraylength: type mismatch"
+  nv <- newvar JInt
+  apush nv
+  return [IRLoad RTNone arr nv]
 tir DUP = do
   x <- apop
   apush x
@@ -453,6 +467,8 @@ apush x = do
 
 apop :: State SimStack Var
 apop = do
+  simstack <- stack <$> get
+  when (null simstack) $ error "apop: stack is empty"
   (s:ss) <- stack <$> get
   modify (\m -> m { stack = ss })
   return s
