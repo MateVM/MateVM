@@ -272,18 +272,24 @@ girEmitOO (IRLoad (RTPool x) (HIConstant 0) dst) = do
       case dst of
         HIReg d -> mov d sref
         SpillIReg d -> mov (d, ebp) sref
+        SpillRReg d -> mov (d, ebp) sref
+        x -> error $ "irload: emit: cstring: " ++ show x
     (CInteger i) -> do
       case dst of
         HIReg d -> mov d i
         SpillIReg d -> mov (d, ebp) i
+        x -> error $ "irload: emit: cinteger: " ++ show x
     (CField rc fnt) -> do
+      let sfi = StaticField $ StaticFieldInfo rc (ntName fnt)
+      trapaddr <- getCurrentOffset
+      mov eax (Addr 0)
       case dst of
-        HIReg d -> do
-          let sfi = StaticField $ StaticFieldInfo rc (ntName fnt)
-          trapaddr <- getCurrentOffset
-          mov d (Addr 0)
-          s <- getState
-          setState (s { traps = M.insert trapaddr sfi (traps s) })
+        HIReg d -> mov d eax
+        SpillIReg d -> mov (d, ebp) eax
+        SpillRReg d -> mov (d, ebp) eax
+        x -> error $ "irload: emit: cfield: " ++ show x
+      s <- getState
+      setState (s { traps = M.insert trapaddr sfi (traps s) })
     (CClass objname) -> do
       saveRegs
       trapaddr <- emitSigIllTrap 5
