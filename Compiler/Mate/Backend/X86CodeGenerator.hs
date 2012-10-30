@@ -326,15 +326,41 @@ girEmitOO (IRLoad (RTIndex (HIConstant i)) (SpillIReg srcd) (HIReg dst)) = do
 girEmitOO (IRLoad rt (HIReg memsrc) (HIReg dst)) = do
   error "irload: emit: use rt"
   mov dst (Disp 0, memsrc)
-girEmitOO (IRStore (RTPool x) (HIConstant 0) (HIReg src)) = do
+girEmitOO (IRStore (RTPool x) obj src) = do
   cls <- classf <$> getState
   case constsPool cls M.! x of
     (CField rc fnt) -> do
-      let sfi = StaticField $ StaticFieldInfo rc (ntName fnt)
-      trapaddr <- getCurrentOffset
-      mov (Addr 0) src
-      s <- getState
-      setState (s { traps = M.insert trapaddr sfi (traps s) })
+      if obj == HIConstant 0
+        then do
+          let sfi = StaticField $ StaticFieldInfo rc (ntName fnt)
+          trapaddr <- getCurrentOffset
+          case src of
+            HIReg s1 -> mov (Addr 0) s1
+            _ -> error "girEmitOO: IRStore: static field"
+          s <- getState
+          setState (s { traps = M.insert trapaddr sfi (traps s) })
+        else do
+          push ebx
+          case obj of
+            HIReg dst -> do
+              mov eax dst
+            SpillIReg d -> do
+              mov eax (d, ebp)
+            _ -> error "girEmitOO: IRStore: putfield"
+          case src of
+            HIReg s1 -> mov ebx s1
+            SpillIReg d -> mov ebx (d, ebp)
+          -- like: 4581fc6b  89 98 30 7b 00 00 movl   %ebx,31536(%eax)
+          trapaddr <- emitSigIllTrap 6
+          let patcher wbr = do
+                let (cname, fname) = buildFieldOffset cls x
+                offset <- liftIO $ fromIntegral <$> getFieldOffset cname fname
+                -- mov32RelEbxEax (Disp offset) -- set field
+                mov (Disp offset, eax) ebx
+                return wbr
+          pop ebx
+          s <- getState
+          setState (s { traps = M.insert trapaddr (ObjectField patcher) (traps s)})
     e -> error $ "emit: irstore: missing impl.: " ++ show e
 girEmitOO (IRStore (RTIndex (HIConstant i)) (HIReg dst) (HIReg src)) = do
   mov (Disp (i32tow32 i), dst) src
