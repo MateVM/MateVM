@@ -25,11 +25,11 @@ import Harpy hiding (Label)
 data MateIR t e x where
   IRLabel :: Label -> MateIR t C O
   IROp :: (Show t) => OpType -> t -> t -> t -> MateIR t O O
-  IRStore :: (Show t) => RTPool
+  IRStore :: (Show t) => RTPool t
                       -> t {- objectref -}
                       -> t {- src -}
                       -> MateIR t O O
-  IRLoad :: (Show t) => RTPool
+  IRLoad :: (Show t) => RTPool t
                      -> t {- objectref -}
                      -> t {- target -}
                      -> MateIR t O O
@@ -37,7 +37,7 @@ data MateIR t e x where
   IRPrep :: (Show t) => CallingConv
                      -> [t] {- regs in use -}
                      -> MateIR t O O
-  IRInvoke :: (Show t) => RTPool
+  IRInvoke :: (Show t) => RTPool t
                        -> Maybe t
                        -> CallType
                        -> MateIR t O O
@@ -67,10 +67,15 @@ data HVar
 
 deriving instance Eq Disp
 
-data RTPool = RTPool Word16 | RTArray Word8 Word32 | RTNone
+data RTPool t
+  = RTPool Word16
+  | RTArray Word8 Word32
+  | RTIndex t
+  | RTNone
 
-instance Show RTPool where
+instance Show t => Show (RTPool t) where
   show (RTPool w16) = printf "RT(%02d)" w16
+  show (RTIndex t) = printf "RTIdx(%s)" (show t)
   show RTNone = ""
   show (RTArray w8 len) = printf "Array(%02d, len=%s)" w8 (show len)
 

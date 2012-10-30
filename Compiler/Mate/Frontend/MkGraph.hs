@@ -296,6 +296,8 @@ tir ICONST_0 = tir (BIPUSH 0)
 tir ICONST_1 = tir (BIPUSH 1)
 tir ICONST_2 = tir (BIPUSH 2)
 tir ICONST_3 = tir (BIPUSH 3)
+tir ICONST_4 = tir (BIPUSH 4)
+tir ICONST_5 = tir (BIPUSH 5)
 tir (BIPUSH x) = do apush $ JIntValue (fromIntegral x); return []
 tir (SIPUSH x) = do apush $ JIntValue (fromIntegral x); return []
 tir FCONST_0 =  do apush $ JFloatValue 0; return []
@@ -364,6 +366,14 @@ tir ARRAYLENGTH = do
   nv <- newvar JInt
   apush nv
   return [IRLoad RTNone arr nv]
+tir AALOAD = do
+  idx <- apop
+  arr <- apop
+  when (varType arr /= JRef) $ error "tir: aaload: type mismatch1"
+  when (varType idx /= JInt) $ error "tir: aaload: type mismatch2"
+  nv <- newvar JRef
+  apush nv
+  return [IRLoad (RTIndex idx) arr nv]
 tir DUP = do
   x <- apop
   apush x

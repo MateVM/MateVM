@@ -68,6 +68,15 @@ stupidRegAlloc preAssigned linsn = evalState regAlloc' startmapping
   where
     startmapping = emptyRegs { regMap = M.union (regMap emptyRegs) (M.fromList preAssigned) }
     regAlloc' = mapM assignReg linsn
+
+    rtRepack :: RTPool Var -> State MappedRegs (RTPool HVar)
+    rtRepack (RTPool w16) = return $ RTPool w16
+    rtRepack (RTArray w8 w32) = return $ RTArray w8 w32
+    rtRepack (RTIndex vreg) = do
+      newreg <- doAssign vreg
+      return $ RTIndex newreg
+    rtRepack RTNone = return RTNone
+
     assignReg :: LinearIns Var -> State MappedRegs (LinearIns HVar)
     assignReg lv = case lv of
       Fst x -> case x of
@@ -81,11 +90,13 @@ stupidRegAlloc preAssigned linsn = evalState regAlloc' startmapping
         IRStore rt obj src -> do
           objnew <- doAssign obj
           srcnew <- doAssign src
-          return $ Mid $ IRStore rt objnew srcnew
+          nrt <- rtRepack rt
+          return $ Mid $ IRStore nrt objnew srcnew
         IRLoad rt obj dst -> do
           objnew <- doAssign obj
           dstnew <- doAssign dst
-          return $ Mid $ IRLoad rt objnew dstnew
+          nrt <- rtRepack rt
+          return $ Mid $ IRLoad nrt objnew dstnew
         IRNop -> return $ Mid $ IRNop
         IRPrep typ [] -> do
           intuse <- regsInUse JInt -- TODO: float
@@ -93,10 +104,13 @@ stupidRegAlloc preAssigned linsn = evalState regAlloc' startmapping
         IRPush nr src -> do
           srcnew <- doAssign src
           return $ Mid $ IRPush nr srcnew
-        IRInvoke b (Just r) ct -> do
+        IRInvoke rt (Just r) ct -> do
           rnew <- Just <$> doAssign r
-          return $ Mid $ IRInvoke b rnew ct
-        IRInvoke b Nothing ct -> return $ Mid $ IRInvoke b Nothing ct
+          nrt <- rtRepack rt
+          return $ Mid $ IRInvoke nrt rnew ct
+        IRInvoke rt Nothing ct -> do
+          nrt <- rtRepack rt
+          return $ Mid $ IRInvoke nrt Nothing ct
       Lst ins -> case ins of
         IRJump l -> return $ Lst $ IRJump l
         IRIfElse jcmp cmp1 cmp2 l1 l2 -> do

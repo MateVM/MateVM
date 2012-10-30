@@ -293,6 +293,24 @@ girEmitOO (IRLoad (RTArray ta arrlen) (HIConstant 0) (HIReg dst)) = do
   restoreRegs
   mov (Disp 0, eax) len -- store length at offset 0
   mov dst eax
+girEmitOO (IRLoad RTNone (SpillIReg d) (HIReg dst)) = do
+  mov eax (d, ebp)
+  mov dst (Disp 0, eax)
+girEmitOO (IRLoad (RTIndex (HIConstant i)) (SpillIReg srcd) (SpillIReg dstd)) = do
+  mov eax (srcd, ebp)
+  -- TODO: ptrSize ...
+  mov eax (Disp (fromIntegral $ i * ptrSize), eax)
+  mov (dstd, ebp) eax
+girEmitOO (IRLoad (RTIndex (HIConstant i)) (SpillIReg srcd) (SpillRReg dstd)) = do
+  mov eax (srcd, ebp)
+  -- TODO: ptrSize ...
+  mov eax (Disp (fromIntegral $ i * ptrSize), eax)
+  mov (dstd, ebp) eax
+girEmitOO (IRLoad (RTIndex (HIConstant i)) (SpillIReg srcd) (HIReg dst)) = do
+  mov eax (srcd, ebp)
+  -- TODO: ptrSize ...
+  mov eax (Disp (fromIntegral $ i * ptrSize), eax)
+  mov dst eax
 girEmitOO (IRLoad rt (HIReg memsrc) (HIReg dst)) = do
   error "irload: emit: use rt"
   mov dst (Disp 0, memsrc)
@@ -310,6 +328,7 @@ girEmitOO ins@(IRStore rt memdst src) = do
   error $ "irstore: emit: " ++ show ins
 girEmitOO (IRPush _ (HIReg x)) = push x
 girEmitOO (IRPush _ (SpillIReg d)) = push (d, ebp)
+girEmitOO (IRPush _ (SpillRReg d)) = push (d, ebp)
 girEmitOO (IRPrep SaveRegs regs) = do
   forM_ regs $ \(HIReg x) -> push x
 girEmitOO (IRPrep RestoreRegs regs) = do
