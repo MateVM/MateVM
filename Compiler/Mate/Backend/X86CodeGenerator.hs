@@ -197,9 +197,8 @@ girEmitOO (IRInvoke (RTPool cpidx) haveReturn) = do
           else getMethodOffset objname (methodname `B.append` encode msig)
   let argsLen = genericLength args
   -- objref lives somewhere on the argument stack
-  -- mov ebx (Disp 0, esp) -- (Disp (argsLen * ptrSize), esp)
-  pop ebx
-  push ebx
+  -- mov ebx (Disp (argsLen * ptrSize), esp)
+  pop ebx; push ebx
   when isInterface $
     mov ebx (Disp 0, ebx) -- get method-table-ptr, keep it in ebx
   -- get method-table-ptr (or interface-table-ptr)
@@ -235,7 +234,7 @@ girEmitOO (IRLoad (RTPool x) (HIConstant 0) (HIReg dst)) = do
     (CField rc fnt) -> do
       let sfi = StaticField $ StaticFieldInfo rc (ntName fnt)
       trapaddr <- getCurrentOffset
-      mov dst (0 :: Word32)
+      mov dst (Addr 0)
       s <- getState
       setState (s { traps = M.insert trapaddr sfi (traps s) })
     e -> error $ "emit: irload: missing impl.: " ++ show e

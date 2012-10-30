@@ -11,6 +11,8 @@ import Control.Monad
 import Foreign
 import Foreign.C.Types
 
+import JVM.ClassFile
+
 import Harpy hiding (fst)
 
 import Compiler.Mate.Types
@@ -112,7 +114,9 @@ patchInvoke (MethodInfo methname _ msig)  method_table table2patch io_offset wbr
   vmap <- liftIO getVirtualMap
   liftIO $ printfJit $ printf "patched virtual call: issued from 0x%08x\n" (fromIntegral (wbEip wbr) :: Word32)
   when (method_table == 0) $ error "patchInvoke: method_table is null.  abort."
-  let newmi = MethodInfo methname (vmap M.! fromIntegral method_table) msig
+  let cls = vmap M.! fromIntegral method_table
+  liftIO $ printfJit $ printf "cls stuff: %s\n" (toString cls)
+  let newmi = MethodInfo methname cls msig
   offset <- liftIO io_offset
   (entryAddr, _) <- liftIO $ getMethodEntry newmi
   call32Eax (Disp offset)

@@ -82,7 +82,7 @@ getMethodEntry mi@(MethodInfo method cm sig) = do
                 entry <- compile $ MethodInfo method (thisClass cls') sig
                 addMethodRef entry mi clsnames
                 return entry
-        Nothing -> error $ show method ++ " not found. abort"
+        Nothing -> error $ printf "\"%s\" not found. abort" (toString method)
     Just w32 -> return w32
   return (fromIntegral entrypoint, exmap)
 
@@ -91,7 +91,8 @@ funPtrToAddr = fromIntegral . ptrToIntPtr . castFunPtrToPtr
 
 lookupMethodRecursive :: B.ByteString -> MethodSignature -> [B.ByteString] -> Class Direct
                          -> IO (Maybe (Method Direct, [B.ByteString], Class Direct))
-lookupMethodRecursive name sig clsnames cls =
+lookupMethodRecursive name sig clsnames cls = do
+  printfCp $ printf "looking @ %s\n" (toString thisname)
   case res of
     Just x -> return $ Just (x, nextclsn, cls)
     Nothing -> if thisname == "java/lang/Object"

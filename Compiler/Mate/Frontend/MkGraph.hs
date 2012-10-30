@@ -255,12 +255,13 @@ fieldType cls off = fieldType2VarType $ ntSignature nt
                 (CField _ nt') -> nt'
                 _ -> error "fieldType: fail :("
 
-methodType :: Class Direct -> Word16 -> ([VarType], Maybe VarType)
-methodType cls off = (map fieldType2VarType argst, rett)
+methodType :: Bool -> Class Direct -> Word16 -> ([VarType], Maybe VarType)
+methodType isVirtual cls off = (map fieldType2VarType argst', rett)
   where
-    (MethodSignature argst returnt) = ntSignature $
+    argst' = if isVirtual then (ObjectType "lol"):argst else argst
+    (MethodSignature argst returnt) =
       case constsPool cls M.! off of
-        (CMethod _ nt') -> nt'
+        (CMethod _ nt') -> ntSignature nt'
         _ -> error "methodType: fail :("
     rett = case returnt of
             Returns ft -> Just (fieldType2VarType ft)
@@ -357,15 +358,15 @@ tir IADD = tirOpInt Add JInt
 tir ISUB = tirOpInt Sub JInt
 tir IMUL = tirOpInt Mul JInt
 tir FADD = tirOpInt Add JFloat
-tir (INVOKESTATIC ident) = tirInvoke ident
-tir (INVOKESPECIAL ident) = tirInvoke ident
-tir (INVOKEVIRTUAL ident) = tirInvoke ident
+tir (INVOKESTATIC ident) = tirInvoke False ident
+tir (INVOKESPECIAL ident) = tirInvoke False ident
+tir (INVOKEVIRTUAL ident) = tirInvoke True ident
 tir x = error $ "tir: " ++ show x
 
-tirInvoke :: Word16 -> State SimStack [MateIR Var O O]
-tirInvoke ident = do
+tirInvoke :: Bool -> Word16 -> State SimStack [MateIR Var O O]
+tirInvoke isVirtual ident = do
   cls <- classf <$> get
-  let (varts, mret) = methodType cls ident
+  let (varts, mret) = methodType isVirtual cls ident
   pushes <- trace (printf "tirInvoke: varts: %s\n" (show varts)) $ 
             forM (reverse $ zip varts [0..]) $ \(x, nr) -> do
     y <- apop
