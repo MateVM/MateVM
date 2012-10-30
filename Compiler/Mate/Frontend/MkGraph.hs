@@ -324,6 +324,9 @@ tir (GETSTATIC x) = do
   nv <- newvar (fieldType cls x)
   apush nv
   return [IRLoad (RTPool x) JRefNull nv]
+tir (PUTSTATIC x) = do
+  y <- apop
+  return [IRStore (RTPool x) JRefNull y]
 tir (LDC1 x) = tir (LDC2 (fromIntegral x))
 tir (LDC2 x) = do
   cls <- classf <$> get

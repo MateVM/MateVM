@@ -237,6 +237,26 @@ girEmitOO (IRLoad (RTPool x) (HIConstant 0) (HIReg dst)) = do
       mov dst (Addr 0)
       s <- getState
       setState (s { traps = M.insert trapaddr sfi (traps s) })
+    (CClass objname) -> do
+      saveRegs
+      trapaddr <- emitSigIllTrap 5
+      callMalloc
+      restoreRegs
+      -- 0x13371337 is just a placeholder; will be replaced with mtable ptr
+      mov (Disp 0, eax) (0x13371337 :: Word32)
+      mov (Disp 4, eax) (0 :: Word32)
+      let patcher wbr = do
+            objsize <- liftIO $ getObjectSize objname
+            push32 objsize
+            callMalloc
+            restoreRegs
+            mtable <- liftIO $ getMethodTable objname
+            mov (Disp 0, eax) mtable
+            --mov (Disp 4, eax) (0x1337babe :: Word32)
+            mov (Disp 4, eax) (0::Word32)
+            return wbr
+      s <- getState
+      setState (s { traps = M.insert trapaddr (NewObject patcher) (traps s) })
     e -> error $ "emit: irload: missing impl.: " ++ show e
 girEmitOO (IRLoad (RTArray ta arrlen) (HIConstant 0) (HIReg dst)) = do
   let tsize = case decodeS (0 :: Integer) (B.pack [ta]) of
@@ -253,9 +273,18 @@ girEmitOO (IRLoad (RTArray ta arrlen) (HIConstant 0) (HIReg dst)) = do
 girEmitOO (IRLoad rt (HIReg memsrc) (HIReg dst)) = do
   error "irload: emit: use rt"
   mov dst (Disp 0, memsrc)
-girEmitOO (IRStore rt (HIReg memdst) (HIConstant c)) = do
-  error "irstore: emit: use rt"
-  mov (Disp 0, memdst) (i32tow32 c)
+girEmitOO (IRStore (RTPool x) (HIConstant 0) (HIReg src)) = do
+  cls <- classf <$> getState
+  case constsPool cls M.! x of
+    (CField rc fnt) -> do
+      let sfi = StaticField $ StaticFieldInfo rc (ntName fnt)
+      trapaddr <- getCurrentOffset
+      mov (Addr 0) src
+      s <- getState
+      setState (s { traps = M.insert trapaddr sfi (traps s) })
+    e -> error $ "emit: irstore: missing impl.: " ++ show e
+girEmitOO ins@(IRStore rt memdst src) = do
+  error $ "irstore: emit: " ++ show ins
 girEmitOO (IRPush _ (HIReg x)) = push x
 girEmitOO x = error $ "girEmitOO: insn not implemented: " ++ show x
 
