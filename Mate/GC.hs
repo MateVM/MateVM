@@ -9,6 +9,7 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Text.Printf
 import Foreign.Ptr (IntPtr, Ptr)
+import Mate.Debug
 
 class (Eq a, Ord a, Show a) => RefObj a where
   
@@ -76,15 +77,15 @@ markTree root = marked root >>= (`unless` continue)
 patchRefsObj :: (RefObj a) => (a -> IO Bool) -> a -> IO ()
 patchRefsObj predicate obj = do 
   intptr <- getIntPtr obj
-  printf "patch 0x%08x" (fromIntegral intptr :: Int)
+  printfGc $ printf "patch 0x%08x" (fromIntegral intptr :: Int)
   printRef obj
   obj' <- getNewRef obj 
   fields <- refs obj
-  putStrLn "current fields:"
-  print fields
+  printfGc "current fields:\n"
+  printfGc $ show fields
   newRefs <- mapM (getNewRefIfValid predicate) fields
-  putStrLn "this are the new children: "
-  print newRefs
+  printfGc "this are the new children: "
+  printfGc $ show newRefs
   patchRefs obj' newRefs                 
 
 getNewRefIfValid :: (RefObj a) => (a -> IO Bool) -> a -> IO a
@@ -94,7 +95,7 @@ getNewRefIfValid predicate obj = do
     then do newRef <- getNewRef obj
             newOneValid <- predicate newRef
             if newOneValid 
-              then do putStrLn "yes this is valid: "
+              then do printfGc "yes this is valid: "
                       print newRef
                       return newRef
               else return obj

@@ -130,7 +130,7 @@ getStack sptr rebp = do
 -- | checks whether a stack should be used to retrieve gc root set
 -- i.e. GC can take place at this point
 isValidTrace :: [StackDescription] -> Bool
-isValidTrace (x:_) = startswith "<clinit>" (toString (rsiMethodname $ stackinfo x))
+isValidTrace (x:_) = not $ startswith "<clinit>" (toString (rsiMethodname $ stackinfo x))
 isValidTrace [] = True
 
 -- | allocates obj and performs gc if possible 

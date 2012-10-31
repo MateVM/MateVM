@@ -140,8 +140,6 @@ getObjectSizePtr :: Ptr a -> IO Int
 getObjectSizePtr ptr = do 
   clazzName <- getClassNamePtr ptr
   objectSize <- getObjectSize clazzName
-  putStrLn $ toString clazzName
-  print objectSize
   return $ fromIntegral objectSize
 
 getObjectFieldCountPtr :: Ptr a -> IO Int

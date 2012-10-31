@@ -1,13 +1,10 @@
 {-# LANGUAGE ExistentialQuantification #-}
 module Mate.MemoryManager   
-    (  
-     AllocationManager(..)
+    ( AllocationManager(..)
     , TwoSpace(..)
     , initTwoSpace
     , mallocBytes'
-   -- , switchSpaces
     , RefUpdateAction
-    , validRef'
     , buildGCAction )   where
 
 import qualified Foreign.Marshal.Alloc as Alloc
@@ -25,9 +22,8 @@ import Data.List
 import Mate.Debug
 import Mate.GC hiding (size)
 import qualified Mate.StackTrace as T
-import qualified Mate.JavaObjectsGC as Obj
+import Mate.JavaObjectsGC() -- only instances for Ptr a
 import qualified Mate.GC as GC
-import Debug.Trace
 
 type RootSet a = M.Map (Ptr a) RefUpdateAction
 
@@ -49,14 +45,15 @@ instance AllocationManager TwoSpace where
 
   validRef ptr = liftM (validRef' ptr) get
 
+printGc :: (Show a) => a -> IO ()
+printGc = printfGc . show
 
 performCollection' :: (RefObj a) => M.Map a RefUpdateAction -> StateT TwoSpace IO ()
 performCollection' roots = do modify switchSpaces
                               let rootList = map fst $ M.toList roots
-                              lift (putStrLn "rootSet: " >> print rootList)
+                              liftIO (printfGc "rootSet: " >> printGc rootList)
                               performCollectionIO rootList
-                              lift $ patchGCRoots roots
-                              --modify switchSpaces
+                              liftIO $ patchGCRoots roots
 
 patchGCRoots :: (RefObj a) => M.Map a RefUpdateAction -> IO ()
 patchGCRoots roots = mapM_ fixRef $ M.toList roots
@@ -74,22 +71,17 @@ markedOrInvalid = do memManager <- get
 -- [todo hs] this is slow. merge phases to eliminate list with refs
 performCollectionIO :: RefObj a => [a] -> StateT TwoSpace IO ()
 performCollectionIO refs' = do 
-    lift $ putStrLn "before mark"
-    lift $ putStrLn "marked"
-    lift $ print refs'
-
+    liftIO $ printfGc "before mark\n"
     objFilter <- markedOrInvalid
-
-    lift $ if length refs' > 0 then Obj.printRef $ head refs' else return ()
-    lifeRefs <- lift $ liftM (nub . concat) $ mapM (markTree'' objFilter mark refs') refs'
-    lift $ putStrLn "marked"
-    lift $ mapM printRef lifeRefs
-    lift $ putStrLn "go evacuate"
+    lifeRefs <- liftIO $ liftM (nub . concat) $ mapM (markTree'' objFilter mark refs') refs'
+    liftIO $ printfGc "marked\n"
+    liftIO $ mapM printRef lifeRefs
+    liftIO $ printfGc "go evacuate!\n"
     evacuate' lifeRefs 
-    lift $ putStrLn "eacuated"
+    lift $ printfGc "eacuated. patching..\n"
     memoryManager <- get
     lift $ patchAllRefs (getIntPtr >=> return . flip validRef' memoryManager) lifeRefs 
-    lift $ putStrLn "patched"                      
+    lift $ printfGc "patched.\n"                      
 
 
 buildGCAction :: AllocationManager a => [T.StackDescription] -> Int -> StateT a IO (Ptr b)
@@ -101,17 +93,18 @@ buildGCAction stack size = do let rootsOnStack = concatMap T.possibleRefs stack
                               mallocBytesT size
   where --checkRef :: IntPtr -> StateT a IO Bool
         dereference :: IntPtr -> IO (IntPtr,IntPtr)
-        dereference intPtr = do printf "deref stacklocation: 0x%08x\n" (fromIntegral intPtr :: Int)
+        dereference intPtr = do printfGc $ printf "deref stacklocation: 0x%08x\n" (fromIntegral intPtr :: Int)
                                 obj <- peek $ intPtrToPtr intPtr :: IO IntPtr
-                                printf "deref location: "
-                                print $ intPtrToPtr obj
+                                printfGc $ printf "deref location: "
+                                printfGc (show $ intPtrToPtr obj)
                                 return (intPtr,obj)
 
 -- (stackLocation,obj)
 buildRootPatcher :: (IntPtr,IntPtr) -> RootSet a -> RootSet a
 buildRootPatcher (ptr,obj) = M.insertWith (both) ptr' patch 
   where --patch = poke ptr' 
-        patch newLocation = do printf "patch new ref: 0x%08x on stackloc: 0x%08x\n" (fromIntegral newLocation :: Int) (fromIntegral ptr :: Int)
+        patch newLocation = do printfGc $ printf "patch new ref: 0x%08x on stackloc: 0x%08x\n" 
+                                 (fromIntegral newLocation :: Int) (fromIntegral ptr :: Int)
                                poke (intPtrToPtr ptr) newLocation   
         ptr' = intPtrToPtr obj
 
@@ -143,7 +136,7 @@ mallocBytes' bytes = do state' <- get
   where alloc :: TwoSpace -> IntPtr -> StateT TwoSpace IO (Ptr b)
         alloc state' end = do let ptr = toHeap state'
                               put $ state' { toHeap = end  } 
-                              liftIO (putStrLn $ "Allocated obj: " ++ show (intPtrToPtr ptr))
+                              liftIO (printfGc $ "Allocated obj: " ++ show (intPtrToPtr ptr) ++ "\n")
                               liftIO (return $ intPtrToPtr ptr)
         failNoSpace :: Integer -> Integer -> a
         failNoSpace usage fullSize = 
@@ -151,7 +144,7 @@ mallocBytes' bytes = do state' <- get
         
         logAllocation :: Int -> Integer -> Integer -> IO ()
         --logAllocation _ _ _ = return ()
-        logAllocation fullSize usage capacity = printf "alloc size: %d (%d/%d)\n" fullSize usage capacity
+        logAllocation fullSize usage capacity = printfGc $ printf "alloc size: %d (%d/%d)\n" fullSize usage capacity
                           
 
 
@@ -162,7 +155,8 @@ evacuate'' :: (RefObj a, AllocationManager b) => a -> StateT b IO ()
 evacuate'' obj = do (size,location) <- liftIO ((,) <$> getSizeDebug obj <*> getIntPtr obj)
                     -- malloc in TwoSpace
                     newPtr <- mallocBytesT size
-                    liftIO (putStrLn ("evacuating: " ++ show obj ++ " and set: " ++ show newPtr ++ " size: " ++ show size))
+                    liftIO (printfGc ("evacuating: " ++ show obj ++ 
+                                         " and set: " ++ show newPtr ++ " size: " ++ show size ++ "\n"))
                     -- copy data over and leave notice
                     liftIO (copyBytes newPtr (intPtrToPtr location) size >> 
                             setNewRef obj (cast newPtr) >>
@@ -171,18 +165,17 @@ evacuate'' obj = do (size,location) <- liftIO ((,) <$> getSizeDebug obj <*> getI
 getSizeDebug :: RefObj a => a -> IO Int
 getSizeDebug obj = do 
   intObj <- getIntPtr obj
-  printf "objTo evacuate: 0x%08x\n" (fromIntegral intObj :: Int)
+  printfGc $ printf "objTo evacuate: 0x%08x\n" (fromIntegral intObj :: Int)
   size <- GC.size obj
-  printf "size was %i\n" size
+  printfGc $ printf "size was %i\n" size
   return size
 
 --evacuateList :: (RefObj a, AllocationManager b) => [a] -> b -> StateT b IO ()
 --evacuateList objs = evacuate' objs
 
 validRef' :: IntPtr -> TwoSpace -> Bool
-validRef' ptr twoSpace = let valid = (ptr >= (fst $ validRange twoSpace)) && 
-                                     (ptr <= (snd $ validRange twoSpace))
-                         in trace ("valid: " ++ show valid ++ " (" ++ (show $ intPtrToPtr ptr) ++ ")" ++ " valid range: " ++ (show $  validRange twoSpace)) valid
+validRef' ptr twoSpace = (ptr >= (fst $ validRange twoSpace)) && 
+                         (ptr <= (snd $ validRange twoSpace))
 
 initTwoSpace :: Int -> IO TwoSpace
 initTwoSpace size' =  do printfStr $ printf "initializing TwoSpace memory manager with %d bytes.\n" size'

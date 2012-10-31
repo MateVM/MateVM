@@ -16,7 +16,8 @@ import Text.Printf
 import Control.Monad
 import JVM.ClassFile
 import Mate.JavaObjects
---import Mate.NativeSizes
+import Mate.Debug
+import Prelude hiding (print)
 
 instance RefObj (Ptr a) where
   getIntPtr   = return . ptrToIntPtr
@@ -90,32 +91,33 @@ patchRefsPtr ptr xs = do
     then pokeArray (ptr `plusPtr` fieldsOffsetArray) xs 
     else pokeArray (ptr `plusPtr` fieldsOffset) xs
 
+printInt32 :: String -> Int32 -> IO ()
+printInt32 str ptr = printfGc $ printf str ptr
 
 
 printRef' :: Ptr a -> IO ()
 printRef' ptr = do 
-    printf "Obj: address 0x%08x\n" =<< (liftM fromIntegral (getIntPtr ptr) :: IO Int32)
-    printf "method_table: 0x%08x\n" =<< (peekByteOff ptr 0 :: IO Int32)
+    printInt32 "Obj: address 0x%08x\n" =<< (liftM fromIntegral (getIntPtr ptr) :: IO Int32)
+    printInt32 "method_table: 0x%08x\n" =<< (peekByteOff ptr 0 :: IO Int32)
     method_table <- peekByteOff ptr 0 :: IO Int32
     
     let printObj = do
-         printf "we got an object"
+         printfGc $ printf "we got an object"
          clazzName <- getClassNamePtr ptr 
-         printf "type: %s\n" $ toString clazzName
-         printf "children 0x%08x\n" =<< getObjectFieldCountPtr ptr                 
-         printf "marked 0x%08x\n" =<< (peekByteOff ptr markByteOffset :: IO Int32) 
-         printf "newRef 0x%08x\n" =<< (peekByteOff ptr newPtrOffset :: IO Int32)
+         printfGc $ printf "type: %s\n" $ toString clazzName
+         fieldCnt <- getObjectFieldCountPtr ptr    
+         printfGc $ printf "children 0x%08x\n" fieldCnt
+         markedBit <- (peekByteOff ptr markByteOffset :: IO Int32)           
+         printInt32 "marked 0x%08x\n" markedBit
+         printInt32 "newRef 0x%08x\n" =<< (peekByteOff ptr newPtrOffset :: IO Int32)
          printChildren ptr
-         putStrLn ""
+         printfGc "\n"
   
     let printArray = do
-        printf "we got an array\n"
+        printfGc $ printf "we got an array\n"
         len <- peekByteOff ptr 8 :: IO Int32
-        printf "length: 0x%08x\n" len
+        printfGc $ printf "length: 0x%08x\n" len
         printChildren ptr
-        printf "dump"
-        blubber <- peekArray 16 (castPtr ptr) :: IO [Ptr b]
-        print blubber
 
     if method_table == arrayMagicNumber
       then printArray
@@ -123,5 +125,5 @@ printRef' ptr = do
 
 printChildren :: Ptr a -> IO ()
 printChildren ptr = do children <- refs ptr
-                       putStrLn $ "children" ++ show children
+                       printfGc $ "children" ++ show children
 
