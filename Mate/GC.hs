@@ -96,7 +96,7 @@ getNewRefIfValid predicate obj = do
             newOneValid <- predicate newRef
             if newOneValid 
               then do printfGc "yes this is valid: "
-                      print newRef
+                      printfGc $ show newRef
                       return newRef
               else return obj
     else return obj
