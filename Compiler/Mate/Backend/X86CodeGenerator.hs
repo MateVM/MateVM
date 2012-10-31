@@ -107,7 +107,9 @@ compileLinear lbls linsn = do
           movss xmm7 r
           retseq
         IRReturn x -> error $ "IRReturn: impl. me: " ++ show x
-  mapM_ compileIns linsn
+  forM_ linsn $ \ins -> do
+    newNamedLabel ("ir: " ++ show ins) >>= defineLabel
+    compileIns ins
   floatconstants <- M.toList <$> floatConsts <$> getState
   forM_ floatconstants $ \(l, f) -> do
     defineLabel l
