@@ -437,6 +437,10 @@ girEmitOO (IRLoad (RTArray ta arrlen) (HIConstant 0) dst) = do
 girEmitOO (IRLoad RTNone (SpillIReg d) (HIReg dst)) = do -- arraylength
   mov eax (d, ebp)
   mov dst (Disp 0, eax)
+girEmitOO (IRLoad RTNone (HIReg src) (SpillIReg d)) = do -- arraylength
+  let dst = (d, ebp)
+  mov eax (Disp 0, src)
+  mov dst eax
 girEmitOO (IRLoad (RTIndex (HIConstant i)) (SpillIReg srcd) (SpillIReg dstd)) = do
   mov eax (srcd, ebp)
   -- TODO: ptrSize ...
@@ -452,9 +456,38 @@ girEmitOO (IRLoad (RTIndex (HIConstant i)) (SpillIReg srcd) (HIReg dst)) = do
   -- TODO: ptrSize ...
   mov eax (Disp (fromIntegral . (+8) $ i * ptrSize), eax)
   mov dst eax
-girEmitOO (IRLoad rt (HIReg memsrc) (HIReg dst)) = do
-  error "irload: emit: use rt"
-  mov dst (Disp 0, memsrc)
+girEmitOO (IRLoad (RTIndex idx) src dst) = do
+  let isNotEdx = case dst of
+                  HIReg dst' -> dst' /= edx
+                  _ -> True
+      isNotEbx = case dst of
+                  HIReg dst' -> dst' /= ebx
+                  _ -> True
+  when isNotEdx $ push edx
+  when isNotEbx $ push ebx
+  case idx of
+    HIConstant i -> mov eax (((i32tow32 i) * ptrSize) + 8)
+    HIReg i -> do
+      mov eax i
+      mov ebx (4 :: Word32)
+      mul ebx
+      add eax (8 :: Word32)
+    SpillIReg d -> do
+      mov eax (d, ebp)
+      mov ebx (4 :: Word32)
+      mul ebx
+      add eax (8 :: Word32)
+  case src of
+    HIReg s -> do add eax s
+    SpillIReg d -> do add eax (d, ebp)
+  case dst of
+    HIReg d -> do mov d (Disp 0, eax)
+    SpillIReg d -> do
+      mov ebx (Disp 0, eax)
+      mov (d, ebp) ebx
+  when isNotEbx $ pop ebx
+  when isNotEdx $ pop edx
+
 girEmitOO (IRStore (RTPool x) obj src) = do
   cls <- classf <$> getState
   case constsPool cls M.! x of
@@ -492,19 +525,42 @@ girEmitOO (IRStore (RTPool x) obj src) = do
           s <- getState
           setState (s { traps = M.insert trapaddr (ObjectField patcher) (traps s)})
     e -> error $ "emit: irstore: missing impl.: " ++ show e
-girEmitOO (IRStore (RTIndex (HIConstant i)) dst src) = do
-  push ebx
+girEmitOO (IRStore (RTIndex idx) dst src) = do
+  let isNotEdx = case dst of
+                  HIReg dst' -> dst' /= edx
+                  _ -> True
+      isNotEbx = case dst of
+                  HIReg dst' -> dst' /= ebx
+                  _ -> True
+  when isNotEdx $ push edx
+  when isNotEbx $ push ebx
+  case idx of
+    HIConstant _ -> mov eax (0 :: Word32)
+    HIReg i -> do
+      mov eax i
+      mov ebx (4 :: Word32)
+      mul ebx
+      add eax (8 :: Word32)
+    SpillIReg d -> do
+      mov eax (d, ebp)
+      mov ebx (4 :: Word32)
+      mul ebx
+      add eax (8 :: Word32)
   case dst of
-    HIReg d -> mov eax d
-    SpillIReg d -> mov eax (d, ebp)
-    SpillRReg d -> mov eax (d, ebp)
+    HIReg d -> add eax d
+    SpillIReg d -> add eax (d, ebp)
+    SpillRReg d -> add eax (d, ebp)
   -- store array elem
   case src of
+    HIConstant i -> mov ebx (i32tow32 i)
     HIReg s -> mov ebx s
     SpillIReg sd -> mov ebx (sd, ebp)
     SpillRReg sd -> mov ebx (sd, ebp)
-  mov (Disp ((+8) . (*4) $ i32tow32 i), eax) ebx
-  pop ebx
+  case idx of
+    HIConstant i -> mov (Disp ((+8) . (*4) $ i32tow32 i), eax) ebx
+    HIReg i -> mov (Disp 0, eax) ebx
+  when isNotEbx $ pop ebx
+  when isNotEdx $ pop edx
 girEmitOO ins@(IRStore rt memdst src) = do
   error $ "irstore: emit: " ++ show ins
 girEmitOO (IRPush _ (HIReg x)) = push x

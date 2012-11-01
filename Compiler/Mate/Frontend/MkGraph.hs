@@ -377,22 +377,10 @@ tir ARRAYLENGTH = do
   nv <- newvar JInt
   apush nv
   return [IRLoad RTNone arr nv]
-tir AALOAD = do
-  idx <- apop
-  arr <- apop
-  when (varType arr /= JRef) $ error "tir: aaload: type mismatch1"
-  when (varType idx /= JInt) $ error "tir: aaload: type mismatch2"
-  nv <- newvar JRef
-  apush nv
-  return [IRLoad (RTIndex idx) arr nv]
-tir AASTORE = do
-  value <- apop
-  idx <- apop
-  arr <- apop
-  when (varType arr /= JRef) $ error "tir: aastore: type mismatch1"
-  when (varType idx /= JInt) $ error "tir: aastore: type mismatch2"
-  when (varType value /= JRef) $ error "tir: aastore: type mismatch3"
-  return [IRStore (RTIndex idx) arr value]
+tir AALOAD = tirArrayLoad JRef
+tir IALOAD = tirArrayLoad JInt
+tir AASTORE = tirArrayStore JRef
+tir IASTORE = tirArrayStore JInt
 tir DUP = do
   x <- apop
   apush x
@@ -408,6 +396,26 @@ tir (INVOKESTATIC ident) = tirInvoke CallStatic ident
 tir (INVOKESPECIAL ident) = tirInvoke CallSpecial ident
 tir (INVOKEVIRTUAL ident) = tirInvoke CallVirtual ident
 tir x = error $ "tir: " ++ show x
+
+tirArrayLoad :: VarType -> State SimStack [MateIR Var O O]
+tirArrayLoad t = do
+  idx <- apop
+  arr <- apop
+  when (varType arr /= JRef) $ error "tir: aaload: type mismatch1"
+  when (varType idx /= JInt) $ error "tir: aaload: type mismatch2"
+  nv <- newvar t
+  apush nv
+  return [IRLoad (RTIndex idx) arr nv]
+
+tirArrayStore :: VarType -> State SimStack [MateIR Var O O]
+tirArrayStore t = do
+  value <- apop
+  idx <- apop
+  arr <- apop
+  when (varType arr /= JRef) $ error "tir: tirArrayStore: type mismatch1"
+  when (varType idx /= JInt) $ error "tir: tirArrayStore: type mismatch2"
+  when (varType value /= t) $ error $ "tir: tirArrayStore: type mismatch3: " ++ show t
+  return [IRStore (RTIndex idx) arr value]
 
 tirInvoke :: CallType -> Word16 -> State SimStack [MateIR Var O O]
 tirInvoke ct ident = do
