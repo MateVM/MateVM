@@ -229,8 +229,14 @@ girEmitOO (IROp Sub dst' src1' src2') = do
     ge _ _ _ = error $ "sub: not impl.: " ++ show dst' ++ ", "
                      ++ show src1' ++ ", " ++ show src2'
 girEmitOO (IROp Mul dst' src1' src2') = do
+    -- edx is killed by `mul' instruction
+    when isNotEdx $ push edx
     gm dst' src1' src2'
+    when isNotEdx $ pop edx
   where
+    isNotEdx = case dst' of
+                HIReg dst -> dst /= edx
+                _ -> True
     gm (HIReg dst) (SpillIReg sd1) (HIReg src2) = do
       mov eax dst
       mul (sd1, ebp)
@@ -240,6 +246,11 @@ girEmitOO (IROp Mul dst' src1' src2') = do
       mul src2
       mov (dst, ebp) eax
     gm (SpillIReg dst) (HIConstant c1) (HIReg src2) = do
+      mov eax (i32tow32 c1)
+      mul src2
+      mov (dst, ebp) eax
+    gm (SpillIReg dst) (HIConstant c1) (SpillIReg s2) = do
+      let src2 = (s2, ebp)
       mov eax (i32tow32 c1)
       mul src2
       mov (dst, ebp) eax
