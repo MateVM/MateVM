@@ -10,9 +10,9 @@ public class AbsurdlyHuge {
 							for(int z=0;z<x;z++) {
 								for(int g=0;w<x;w++) {
 									if(i+u+k+v+w+z<x) {
-										return absurdlyHuge(k+v);
+										return 1 + absurdlyHuge(k+v);
 									} else {
-										return absurdlyHuge(w+z);
+										return 2 + absurdlyHuge(w+z);
 									}
 								}
 							}
@@ -21,10 +21,10 @@ public class AbsurdlyHuge {
 				}
 			}
 		}
-		return 0;
+		return 0x1337;
 	}
 
 	public static void main(String[] args) {
-		System.out.printf("result: 0x%08x\n", absurdlyHuge(1));
+		System.out.printf("result: 0x%08x\n", absurdlyHuge(0));
 	}
 }

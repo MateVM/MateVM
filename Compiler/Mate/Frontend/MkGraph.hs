@@ -190,9 +190,9 @@ toMid = do
         FRETURN -> returnSomething JFloat
         DRETURN -> error "toLast: DReturn"
         (IF jcmp rel) -> do
-          op1 <- apop2
-          let op2 = JIntValue 0
-          unless (varType op1 == JInt) $ error "toLast IF: type mismatch"
+          let op1 = JIntValue 0
+          op2 <- apop2
+          unless (varType op2 == JInt) $ error "toLast IF: type mismatch"
           ifstuff jcmp rel op1 op2
         (IFNULL _) -> error "toLast: IFNULL"
         (IFNONNULL _) -> error "toLast: IFNONNULL"

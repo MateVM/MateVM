@@ -79,17 +79,28 @@ compileLinear lbls linsn = do
   let compileIns (Fst (IRLabel h)) = defineLabel $ lmap M.! h
       compileIns (Mid ins) = girEmitOO ins
       compileIns (Lst ins) = case ins of
+        -- TODO: signed values
         IRIfElse jcmp src1 src2 h1 h2 -> do
           let l1 = lmap M.! h1
           let l2 = lmap M.! h2
-          case (src1, src2) of
-            (HIReg s1, HIReg s2) -> cmp s1 s2
-            (HIConstant c, HIReg s1) -> cmp s1 (i32tow32 c)
-            (HIReg s1, HIConstant c) -> cmp s1 (i32tow32 c)
-            (SpillIReg d1, HIConstant c) -> cmp (d1, ebp) (i32tow32 c)
+          case (src1, src2) of -- attention: swap args
+            (HIReg s1, HIReg s2) -> do
+              cmp s2 s1
+            (SpillIReg d1, HIReg s2) -> do
+              cmp s2 (d1, ebp)
+            (SpillIReg d1, SpillIReg d2) -> do
+              mov eax (d2, ebp)
+              cmp eax (d1, ebp)
+            (HIConstant c, HIReg s1) -> do
+              cmp s1 (i32tow32 c)
+            (HIReg s1, HIConstant c) -> do
+              mov eax (i32tow32 c)
+              cmp eax s1
+            (SpillIReg d1, HIConstant c) -> do
+              mov eax (i32tow32 c)
+              cmp eax (d1, ebp)
             (HIConstant c, SpillIReg s1) -> do
-              let se = (s1, ebp)
-              cmp se (i32tow32 c) -- TODO: invert LE/GEresult??
+              cmp (s1, ebp) (i32tow32 c)
             x -> error $ "IRifelse: not impl. yet" ++ show x
           case jcmp of
             C_EQ -> je  l1; C_NE -> jne l1
@@ -132,9 +143,12 @@ girEmitOO (IROp Add dst' src1' src2') =
         | dst == src1 = add src1 src2
         | dst == src2 = add src2 src1
         | otherwise = do mov dst src1; add dst src2
-    ge (HIReg dst) (HIConstant c1) (HIConstant c2) =
-      mov dst (fromIntegral $ c1 + c2 :: Word32)
-
+    ge dst (HIConstant c1) (HIConstant c2) = do
+      let ci = i32tow32 (c1 + c2)
+      case dst of
+        HIReg d -> mov d ci
+        SpillIReg d -> mov (d, ebp) ci
+        x -> error $ "emit: op: add: dst + const + const: " ++ show x
     ge (HIReg dst) (HIConstant c1) (HIReg src2) = do
       mov dst src2
       when (c1 /= 0) $ add dst (fromIntegral c1 :: Word32)
@@ -156,6 +170,13 @@ girEmitOO (IROp Add dst' src1' src2') =
     ge (SpillIReg disp) (HIReg src1) (SpillIReg s2) = do
       let dst = (disp, ebp)
       let src2 = (s2, ebp)
+      mov eax src2
+      add eax src1
+      mov dst eax
+    ge (SpillIReg disp) (SpillIReg s1) (SpillIReg s2) = do
+      let src1 = (s1, ebp)
+      let src2 = (s2, ebp)
+      let dst = (disp, ebp)
       mov eax src2
       add eax src1
       mov dst eax
