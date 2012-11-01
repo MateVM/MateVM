@@ -70,4 +70,5 @@ executeMain bclspath cls = do
       addMethodRef entry mi [bclspath]
       printfInfo "executing `main' now:\n"
       executeFuncPtr $ methodEntryPoint entry
+      printfInfo "Well, goodbye Sir!\n"
     Nothing -> error "main not found"

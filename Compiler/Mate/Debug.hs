@@ -2,6 +2,7 @@
 
 module Compiler.Mate.Debug
   ( printfJit
+  , printfTrap
   , printfBb
   , printfMp
   , printfCp
@@ -39,6 +40,7 @@ printString prefix str = do
   hFlush logHandle
 
 {-# INLINE printfJit #-}
+{-# INLINE printfTrap #-}
 {-# INLINE printfBb #-}
 {-# INLINE printfMp #-}
 {-# INLINE printfCp #-}
@@ -46,13 +48,14 @@ printString prefix str = do
 {-# INLINE printfInfo #-}
 {-# INLINE printfEx #-}
 {-# INLINE printfPipe #-}
-printfJit, printfBb, printfMp, printfCp,
+printfJit, printfTrap, printfBb, printfMp, printfCp,
   printfStr, printfInfo, printfEx, printfPipe :: String -> IO ()
 {-
 -- TODO(bernhard):
 -- http://stackoverflow.com/questions/12123082/function-composition-with-text-printf-printf
 -}
 printfJit  = printString "Jit: "
+printfTrap = printString "Trap: "
 printfBb   = printString "Bb: "
 printfMp   = printString "Mp: "
 printfCp   = printString "Cp: "

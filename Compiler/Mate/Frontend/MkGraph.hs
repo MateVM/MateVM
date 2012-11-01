@@ -63,6 +63,10 @@ w162i32 :: Word16 -> Int32
 w162i32 w16 = fromIntegral i16
   where i16 = fromIntegral w16 :: Int16
 
+w82i32 :: Word8 -> Int32
+w82i32 w8 = fromIntegral i8
+ where i8 = fromIntegral w8 :: Int8
+
 -- forward references wouldn't be a problem, but backwards are
 resolveReferences :: LabelState ()
 resolveReferences = do
@@ -305,6 +309,13 @@ tir FCONST_1 =  do apush $ JFloatValue 1; return []
 tir FCONST_2 =  do apush $ JFloatValue 3; return []
 tir (ILOAD_ x) = tir (ILOAD (imm2num x))
 tir (ILOAD x) = tirLoad x JInt
+tir (IINC x con) = do
+  loadinsn <- tirLoad x JInt
+  y <- apop
+  nv <- newvar JInt
+  apush nv
+  storeinsn <- tirStore x JInt
+  return $ loadinsn ++ [IROp Add y nv (JIntValue (w82i32 con))] ++ storeinsn
 tir (ALOAD_ x) = tir (ALOAD (imm2num x))
 tir (ALOAD x) = tirLoad x JRef
 tir (FLOAD_ x) = tir (FLOAD (imm2num x))

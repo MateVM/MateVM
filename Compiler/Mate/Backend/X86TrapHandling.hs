@@ -37,6 +37,7 @@ foreign export ccall mateHandler :: MateHandlerType
 mateHandler :: MateHandlerType
 mateHandler reip reax rebx resi rebp resp retarr = do
   tmap <- getTrapMap
+  printfTrap "----------------------\nenter matehandler\n"
   let reipw32 = fromIntegral reip
   let wbr = WriteBackRegs { wbEip = reip, wbEbp = rebp, wbEsp = resp, wbEax = reax }
   (deleteMe, ret_wbr) <- case M.lookup reipw32 tmap of
@@ -66,13 +67,15 @@ mateHandler reip reax rebx resi rebp resp retarr = do
       handleExceptionPatcher (wbr { wbEax = ex, wbEsp = lesp}) >>= delFalse
       -}
       error $ "getTrapType: abort :-( eip: "
-           ++ showHex reip ".   " ++ concatMap (`showHex` ", ") (M.keys tmap)
-           ++ "\nebx: " ++ showHex rebx "."
+           ++ showHex (fromIntegral reip :: Word32) ".   "
+           ++ concatMap (`showHex` ", ") (M.keys tmap)
+           ++ "\nebx: " ++ showHex (fromIntegral rebx :: Word32) "."
   when deleteMe $ setTrapMap $ M.delete reipw32 tmap
   pokeReg 0x0 wbEip ret_wbr
   pokeReg 0x4 wbEbp ret_wbr
   pokeReg 0x8 wbEsp ret_wbr
   pokeReg 0xc wbEax ret_wbr
+  printfTrap "nothing todo here *fly away*\n"
     where
       delTrue x = return (True,x)
       delFalse x = return (False,x)
@@ -87,8 +90,9 @@ patchWithHarpy patcher wbr = do
   let fixme = 1024
   let entry = Just (intPtrToPtr (fromIntegral $ wbEip wbr), fixme)
   let cgconfig = defaultCodeGenConfig { customCodeBuffer = entry }
+  printfTrap "try patching with harpy now\n"
   (_, Right right) <- runCodeGenWithConfig (withDisasm $ patcher wbr) () () cgconfig
-  when mateDEBUG $ mapM_ (printfJit . printf "patched: %s\n" . showIntel) $ snd right
+  when mateDEBUG $ mapM_ (printfTrap . printf "patched: %s\n" . showIntel) $ snd right
   return $ fst right
 
 withDisasm :: CodeGen e s WriteBackRegs -> CodeGen e s (WriteBackRegs, [Instruction])
@@ -99,6 +103,7 @@ withDisasm patcher = do
 
 staticFieldHandler :: WriteBackRegs -> IO WriteBackRegs
 staticFieldHandler wbr = do
+  printfTrap "patching static field handler\n"
   -- patch the offset here, first two bytes are part of the insn (opcode + reg)
   let imm_ptr = intPtrToPtr (fromIntegral (wbEip wbr + 2)) :: Ptr CPtrdiff
   checkMe <- peek imm_ptr
@@ -111,11 +116,12 @@ staticFieldHandler wbr = do
 patchInvoke :: MethodInfo -> CPtrdiff -> CPtrdiff -> IO NativeWord ->
                WriteBackRegs -> CodeGen e s WriteBackRegs
 patchInvoke (MethodInfo methname _ msig)  method_table table2patch io_offset wbr = do
+  liftIO $ printfTrap "patching invoke call\n"
   vmap <- liftIO getVirtualMap
-  liftIO $ printfJit $ printf "patched virtual call: issued from 0x%08x\n" (fromIntegral (wbEip wbr) :: Word32)
+  liftIO $ printfTrap $ printf "patched virtual call: issued from 0x%08x\n" (fromIntegral (wbEip wbr) :: Word32)
   when (method_table == 0) $ error "patchInvoke: method_table is null.  abort."
   let cls = vmap M.! fromIntegral method_table
-  liftIO $ printfJit $ printf "cls stuff: %s\n" (toString cls)
+  liftIO $ printfTrap $ printf "cls stuff: %s\n" (toString cls)
   let newmi = MethodInfo methname cls msig
   offset <- liftIO io_offset
   (entryAddr, _) <- liftIO $ getMethodEntry newmi
@@ -123,5 +129,5 @@ patchInvoke (MethodInfo methname _ msig)  method_table table2patch io_offset wbr
   -- patch entry in table
   let call_insn = intPtrToPtr . fromIntegral $ table2patch + fromIntegral offset
   liftIO $ poke call_insn entryAddr
-  liftIO $ printfJit $ printf "patched virtual call: 0x%08x\n" (fromIntegral entryAddr :: Word32)
+  liftIO $ printfTrap $ printf "patched virtual call: 0x%08x\n" (fromIntegral entryAddr :: Word32)
   return wbr

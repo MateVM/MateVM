@@ -68,7 +68,7 @@ compileLinear lbls linsn = do
   -- entry sequence
   push ebp
   mov ebp esp
-  let stackalloc = 0x100 :: Word32 -- TODO
+  let stackalloc = 0x10000 :: Word32 -- TODO
   sub esp stackalloc
   bblabels <- forM (M.elems lbls) $ \h -> do
                 l <- newNamedLabel ("Label: " ++ show h)
@@ -86,6 +86,7 @@ compileLinear lbls linsn = do
             (HIReg s1, HIReg s2) -> cmp s1 s2
             (HIConstant c, HIReg s1) -> cmp s1 (i32tow32 c)
             (HIReg s1, HIConstant c) -> cmp s1 (i32tow32 c)
+            (SpillIReg d1, HIConstant c) -> cmp (d1, ebp) (i32tow32 c)
             (HIConstant c, SpillIReg s1) -> do
               let se = (s1, ebp)
               cmp se (i32tow32 c) -- TODO: invert LE/GEresult??
@@ -158,10 +159,14 @@ girEmitOO (IROp Add dst' src1' src2') =
       mov eax src2
       add eax src1
       mov dst eax
+    ge dst@(SpillIReg _) src1@(SpillIReg _) src2@(HIReg _) = do
+      ge dst src2 src1
     ge (SpillIReg disp) (HIReg src1) (HIConstant c) = do
       let dst = (disp, ebp)
       mov dst src1
       when (c /= 0) $ add dst (i32tow32 c)
+    ge dst@(SpillIReg _) src1@(HIConstant _) src2@(HIReg _) = do
+      ge dst src2 src1
     ge (SpillIReg disp) (SpillIReg src1) (HIConstant c) = do
       let dst = (disp, ebp)
       let s1 = (src1, ebp)
@@ -223,9 +228,22 @@ girEmitOO (IROp Sub dst' src1' src2') = do
       sub dst src1
     ge _ _ _ = error $ "sub: not impl.: " ++ show dst' ++ ", "
                      ++ show src1' ++ ", " ++ show src2'
-girEmitOO (IROp Mul _ _ _) = do
-  newNamedLabel "TODO! IROp Mul" >>= defineLabel
-  nop
+girEmitOO (IROp Mul dst' src1' src2') = do
+    gm dst' src1' src2'
+  where
+    gm (HIReg dst) (SpillIReg sd1) (HIReg src2) = do
+      mov eax dst
+      mul (sd1, ebp)
+      mov dst eax
+    gm (SpillIReg dst) (HIReg src1) (HIReg src2) = do
+      mov eax src1
+      mul src2
+      mov (dst, ebp) eax
+    gm (SpillIReg dst) (HIConstant c1) (HIReg src2) = do
+      mov eax (i32tow32 c1)
+      mul src2
+      mov (dst, ebp) eax
+    gm d s1 s2 = error $ printf "emit: impl. mul: %s = %s * %s\n" (show d) (show s1) (show s2)
 girEmitOO (IRInvoke (RTPool cpidx) haveReturn CallVirtual) = do
   let isInterface = False -- TODO: ...
   cls <- classf <$> getState

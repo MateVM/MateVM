@@ -50,7 +50,7 @@ pipeline cls meth jvminsn = do
     prettyHeader "Code Generation"
 
     let cgconfig = defaultCodeGenConfig
-                  { codeBufferSize = fromIntegral $ (length jvminsn) * 32 }
+                  { codeBufferSize = fromIntegral $ (length jvminsn) * 0x40 }
     let stinit = compileStateInit cls
     (_, res) <- runCodeGenWithConfig (compileLinear lbls ra) () stinit cgconfig
     (dis, entry, trapmap) <- case res of
