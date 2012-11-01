@@ -63,11 +63,11 @@ methodHaveReturnValue cls idx = case ret of
 
 methodInfoToMethod :: MethodInfo -> Class Direct -> Method Direct
 methodInfoToMethod mi cls =
-  fromJust $ lookupMethodSig (methName mi) (methSignature mi) cls
+  fromJust $ lookupMethodWithSig (methName mi) (methSignature mi) cls
 
 methodIsStatic :: Method Direct -> Bool
 methodIsStatic = S.member ACC_STATIC . methodAccessFlags
 
-lookupMethodSig :: B.ByteString -> MethodSignature -> Class Direct -> Maybe (Method Direct)
-lookupMethodSig name sig cls =
+lookupMethodWithSig :: B.ByteString -> MethodSignature -> Class Direct -> Maybe (Method Direct)
+lookupMethodWithSig name sig cls =
   find (\x -> methodName x == name && methodSignature x == sig) $ classMethods cls

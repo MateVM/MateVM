@@ -6,4 +6,4 @@ import JVM.ClassFile
 import Compiler.Mate.Types
 import Compiler.Mate.Backend.NativeSizes
 
-compileMethod :: B.ByteString -> Class Direct -> IO (NativeWord, TrapMap)
+compileMethod :: B.ByteString -> MethodSignature -> Class Direct -> IO (NativeWord, TrapMap)

@@ -101,7 +101,7 @@ lookupMethodRecursive name sig clsnames cls = do
         supercl <- getClassFile (superClass cls)
         lookupMethodRecursive name sig nextclsn supercl
   where
-    res = lookupMethodSig name sig cls
+    res = lookupMethodWithSig name sig cls
     thisname = thisClass cls
     nextclsn :: [B.ByteString]
     nextclsn = thisname:clsnames
@@ -144,7 +144,9 @@ compile methodinfo = do
   printfJit $ printf "emit code of \"%s\" from \"%s\":\n"
                (toString $ methName methodinfo)
                (toString $ methClassName methodinfo)
-  (entry, new_tmap) <- compileMethod (methName methodinfo) cls
+  (entry, new_tmap) <- compileMethod (methName methodinfo)
+                                     (methSignature methodinfo)
+                                     cls
   setTrapMap $ tmap `M.union` new_tmap -- prefers elements in tmap
   printfJit $ printf "generated code of \"%s\" @ \"%s\" from \"%s\". DONE\n"
                (toString $ methName methodinfo)

@@ -30,6 +30,7 @@ import Compiler.Mate.Backend
 import Compiler.Mate.Backend.NativeSizes
 
 import Compiler.Mate.Types
+import Compiler.Mate.Utilities
 
 
 pipeline :: Class Direct -> Method Direct -> [J.Instruction]
@@ -99,9 +100,9 @@ prettyHeader str = do
   printfPipe $ printf "-- %s --\n" str
   printfPipe $ printf "%s\n" (replicate len ' ')
 
-compileMethod :: B.ByteString -> Class Direct -> IO (NativeWord, TrapMap)
-compileMethod meth cls = do
-  case lookupMethod meth cls of
+compileMethod :: B.ByteString -> MethodSignature -> Class Direct -> IO (NativeWord, TrapMap)
+compileMethod meth sig cls = do
+  case lookupMethodWithSig meth sig cls of
     Just m -> do
       let c = codeInstructions $ decodeMethod $ fromMaybe (error "no code seg") (attrByName m "Code")
       pipeline cls m c
