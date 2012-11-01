@@ -310,12 +310,12 @@ tir FCONST_2 =  do apush $ JFloatValue 3; return []
 tir (ILOAD_ x) = tir (ILOAD (imm2num x))
 tir (ILOAD x) = tirLoad x JInt
 tir (IINC x con) = do
-  loadinsn <- tirLoad x JInt
+  tirLoad' x JInt
   y <- apop
   nv <- newvar JInt
   apush nv
   storeinsn <- tirStore x JInt
-  return $ loadinsn ++ [IROp Add y nv (JIntValue (w82i32 con))] ++ storeinsn
+  return $ [IROp Add nv y (JIntValue (w82i32 con))] ++ storeinsn
 tir (ALOAD_ x) = tir (ALOAD (imm2num x))
 tir (ALOAD x) = tirLoad x JRef
 tir (FLOAD_ x) = tir (FLOAD (imm2num x))
@@ -453,8 +453,8 @@ tirInvoke ct ident = do
     Nothing -> return r
     Just m -> return $ r ++ [m]
 
-tirLoad :: Word8 -> VarType -> State SimStack [MateIR Var O O]
-tirLoad x t = do
+tirLoad' :: Word8 -> VarType -> State SimStack ()
+tirLoad' x t = do
   meth <- method <$> get
   vreg <- if x < methodArgs meth
            then do
@@ -464,14 +464,30 @@ tirLoad x t = do
                 let tup = (assign, HFReg . XMMReg . fromIntegral $ x)
                 modify (\s -> s { preRegs = tup : (preRegs s) })
                 return $ VReg t assign
-              _ -> do
+              JRef -> do
+                let assign = preArgs !! (fromIntegral x)
+                let tup = (assign, SpillRReg . Disp . (+8) . fromIntegral $ (ptrSize * x))
+                modify (\s -> s { preRegs = tup : (preRegs s) })
+                return $ VReg t assign
+              JInt -> do
                 let assign = preArgs !! (fromIntegral x)
                 let tup = (assign, SpillIReg . Disp . (+8) . fromIntegral $ (ptrSize * x))
                 modify (\s -> s { preRegs = tup : (preRegs s) })
                 return $ VReg t assign
            else return $ VReg t (fromIntegral x)
   apush vreg
-  return []
+
+tirLoad :: Word8 -> VarType -> State SimStack [MateIR Var O O]
+tirLoad x t = do
+  tirLoad' x t
+  vreg <- apop
+  nv <- newvar t
+  apush nv
+  let nul = case t of
+              JInt -> JIntValue 0
+              JFloat -> JFloatValue 0
+              JRef -> JRefNull
+  return [IROp Add nv vreg nul]
 
 tirStore :: Word8 -> VarType -> State SimStack [MateIR Var O O]
 tirStore w8 t = do

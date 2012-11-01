@@ -115,6 +115,10 @@ compileLinear lbls linsn = do
           let src = (d, ebp)
           mov eax src
           retseq
+        IRReturn (Just (SpillRReg d)) -> do
+          let src = (d, ebp)
+          mov eax src
+          retseq
         IRReturn (Just (HFReg r)) -> do
           movss xmm7 r
           retseq
@@ -156,6 +160,8 @@ girEmitOO (IROp Add dst' src1' src2') =
       let src2 = (disp, ebp)
       mov dst src2
       when (c1 /= 0) $ add dst (fromIntegral c1 :: Word32)
+    ge dst@(HIReg _) src1@(HIConstant _) (SpillRReg dr) = do
+      ge dst src1 (SpillIReg dr)
     ge (HIReg dst) (SpillIReg disp) (HIReg src2) = do
       let src1 = (disp, ebp)
       mov dst src2
@@ -434,6 +440,8 @@ girEmitOO (IRLoad (RTArray ta arrlen) (HIConstant 0) dst) = do
     SpillIReg d -> mov (d, ebp) eax
     SpillRReg d -> mov (d, ebp) eax
     x -> error $ "irload: emit: newarray: " ++ show x
+girEmitOO (IRLoad RTNone (HIReg src) (HIReg dst)) = do -- arraylength
+  mov dst (Disp 0, src)
 girEmitOO (IRLoad RTNone (SpillIReg d) (HIReg dst)) = do -- arraylength
   mov eax (d, ebp)
   mov dst (Disp 0, eax)
@@ -480,9 +488,13 @@ girEmitOO (IRLoad (RTIndex idx) src dst) = do
   case src of
     HIReg s -> do add eax s
     SpillIReg d -> do add eax (d, ebp)
+    SpillRReg d -> do add eax (d, ebp)
   case dst of
     HIReg d -> do mov d (Disp 0, eax)
     SpillIReg d -> do
+      mov ebx (Disp 0, eax)
+      mov (d, ebp) ebx
+    SpillRReg d -> do
       mov ebx (Disp 0, eax)
       mov (d, ebp) ebx
   when isNotEbx $ pop ebx
