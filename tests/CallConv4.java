@@ -20,8 +20,8 @@ public class CallConv4 {
 		sum = sum + 1;
 		sum = sum + 1;
 		sum = sum + 1;
-		returnOne();
-		// System.out.printf("result: 0x%08x\n", sum);
+		sum = sum + returnOne();
+		System.out.printf("result: 0x%08x\n", sum);
 	}
 	public static int returnOne() {
 		return 1;

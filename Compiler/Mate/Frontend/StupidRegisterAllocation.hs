@@ -53,7 +53,7 @@ preFloats :: [Integer]
 preFloats = [preFloatStart .. (preFloatStart + 5)]
 
 emptyRegs :: MappedRegs
-emptyRegs = MappedRegs preAssignedRegs 0x30 -- TODO: stack space...
+emptyRegs = MappedRegs preAssignedRegs (0xfffffffc) -- TODO: stack space...
 
 allIntRegs, allFloatRegs :: [HVar]
 -- register usage:
@@ -167,7 +167,7 @@ stupidRegAlloc preAssigned linsn = evalState regAlloc' startmapping
                             JFloat -> SpillFReg (Disp disp)
                             JRef -> SpillRReg (Disp disp)
               let imap = M.insert vreg spill $ regMap mr
-              put (mr { stackCnt = disp + 4, regMap = imap} )
+              put (mr { stackCnt = disp - 4, regMap = imap} )
               return spill
             (x:_) -> do
               let imap = M.insert vreg x $ regMap mr
