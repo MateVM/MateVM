@@ -445,10 +445,9 @@ girEmitOO (IRStore (RTPool x) obj src) = do
         else do -- putfield
           push ebx
           case obj of
-            HIReg dst -> do
-              mov eax dst
-            SpillIReg d -> do
-              mov eax (d, ebp)
+            HIReg dst -> mov eax dst
+            SpillIReg d -> mov eax (d, ebp)
+            SpillRReg d -> mov eax (d, ebp)
             x -> error $ "girEmitOO: IRStore: putfield1: " ++ show x
           case src of
             HIReg s1 -> mov ebx s1
