@@ -1,8 +1,13 @@
-(h) introduce intermediate language
-	-> easier code generation *and* better code generation would be nice
-    -> better support for types: float, long, double...
+(h) newcodegen
+	-> make all testcases working again (exception and switch will be more work I guess)
+	-> interface with updated GC (object layout, ...)
+	-> soooo much cleanup
+	-> proper register allocator
+	-> some hoopl passes
+	-> simple inlining of static methods
 
-(h) switch statement (basically lookupswitch insn)
+(m) floating point
+	-> infrastructure is there
 
 (m) testing: hunit? quickcheck? other?
 	-> we have `make tests' now, but it should be only considered as
@@ -10,10 +15,6 @@
 	-> estimated effort: for infrastructure, 2-3 days
 
 (m) check different types (byte, long, ...)
-
-(m) hoopl
-	-> for "frontEnd analysis"
-	-> transition to MIR (Mate IR)?
 
 (l) proper java native interface (JNI)
 	-> atm just hackish solution.
@@ -35,10 +36,6 @@
 (l) improve instanceof/checkcast
 	-> build something at compile-time, for faster checks at runtime
 
-(h) bug (?): can there be a namespace clash with static and non-static methods?
-	-> the signature doesn't contain the static modifier
-	-> estimated effort: some hours (if a fix is needed)
-
 (l) global map hack:
 	-> it's an stupid and ugly hack. we don't want that.
 	-> estimated effort: unknown. research for a solution is needed
@@ -57,8 +54,6 @@
 	-> at the moment System.Posix.Signal isn't powerful enough
 	-> wait for: http://hackage.haskell.org/trac/ghc/ticket/2451
 
-(m) benchmark for presentation
-
 (l) get rid of missingh
 	-> huge dependency and we just need one function of it
 
@@ -71,6 +66,9 @@
 	-> specjvm98
 	-> dacapo benchmark suite
 
+(m) garbage collection
+	-> awesome stuff by harald
+
 
 (l) ... low priority
 (m) ... medium priority
@@ -78,9 +76,10 @@
 
 
 what we won't do anytime soon:
-( ) garbage collection
 ( ) thread support
 ( ) verifier
+	-> although we do some sanity checks at SimStack (e.g., are the parameters
+	for an IADD really of type `Int'?)
 
 
 
