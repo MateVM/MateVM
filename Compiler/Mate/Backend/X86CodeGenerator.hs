@@ -314,22 +314,21 @@ girEmitOO (IRInvoke (RTPool cpidx) haveReturn ct) = do
   s <- getState
   setState (s { traps = M.insert calladdr (StaticMethod patcher) (traps s) })
 girEmitOO (IRLoad (RTPool x) (HIConstant 0) dst) = do
-  newNamedLabel ("TODO: RT `NEW' or `GESTATIC' or `LDC': " ++ show x) >>= defineLabel
   cls <- classf <$> getState
   case constsPool cls M.! x of
-    (CString s) -> do
+    (CString s) -> do -- load str (ldc)
       sref <- liftIO $ getUniqueStringAddr s
       case dst of
         HIReg d -> mov d sref
         SpillIReg d -> mov (d, ebp) sref
         SpillRReg d -> mov (d, ebp) sref
         x -> error $ "irload: emit: cstring: " ++ show x
-    (CInteger i) -> do
+    (CInteger i) -> do -- load integer (ldc)
       case dst of
         HIReg d -> mov d i
         SpillIReg d -> mov (d, ebp) i
         x -> error $ "irload: emit: cinteger: " ++ show x
-    (CField rc fnt) -> do
+    (CField rc fnt) -> do -- getstatic
       let sfi = StaticField $ StaticFieldInfo rc (ntName fnt)
       trapaddr <- getCurrentOffset
       mov eax (Addr 0)
@@ -340,7 +339,7 @@ girEmitOO (IRLoad (RTPool x) (HIConstant 0) dst) = do
         x -> error $ "irload: emit: cfield: " ++ show x
       s <- getState
       setState (s { traps = M.insert trapaddr sfi (traps s) })
-    (CClass objname) -> do
+    (CClass objname) -> do -- `new' object
       saveRegs
       trapaddr <- emitSigIllTrap 5
       callMalloc
@@ -370,6 +369,29 @@ girEmitOO (IRLoad (RTPool x) (HIConstant 0) dst) = do
       s <- getState
       setState (s { traps = M.insert trapaddr (NewObject patcher) (traps s) })
     e -> error $ "emit: irload: missing impl.: " ++ show e
+girEmitOO (IRLoad (RTPool x) src dst) = do
+  cls <- classf <$> getState
+  case constsPool cls M.! x of
+    (CField rc fnt) -> do -- getfield
+      push ebx
+      case src of
+        HIReg s -> mov eax s
+        SpillIReg sd -> mov eax (sd, ebp)
+        SpillRReg sd -> mov eax (sd, ebp)
+      trapaddr <- emitSigIllTrap 7
+      let patcher wbr = do
+            offset <- liftIO $ fromIntegral <$> getFieldOffset rc (ntName fnt)
+            mov ebx (Disp offset, eax)
+            return wbr
+      case dst of
+        HIReg d -> mov d ebx
+        SpillIReg dd -> mov (dd, ebp) ebx
+        SpillRReg dd -> mov (dd, ebp) ebx
+      pop ebx
+      let ofp = ObjectField patcher
+      s <- getState
+      setState (s { traps = M.insert trapaddr ofp (traps s) })
+    x -> error $ "emit: irload: missing impl.: getfield or something: " ++ show x
 girEmitOO (IRLoad (RTArray ta arrlen) (HIConstant 0) dst) = do
   let tsize = case decodeS (0 :: Integer) (B.pack [ta]) of
                 T_INT -> 4
@@ -412,7 +434,7 @@ girEmitOO (IRStore (RTPool x) obj src) = do
   case constsPool cls M.! x of
     (CField rc fnt) -> do
       if obj == HIConstant 0
-        then do
+        then do -- putstatic
           let sfi = StaticField $ StaticFieldInfo rc (ntName fnt)
           trapaddr <- getCurrentOffset
           case src of
@@ -420,17 +442,19 @@ girEmitOO (IRStore (RTPool x) obj src) = do
             _ -> error "girEmitOO: IRStore: static field"
           s <- getState
           setState (s { traps = M.insert trapaddr sfi (traps s) })
-        else do
+        else do -- putfield
           push ebx
           case obj of
             HIReg dst -> do
               mov eax dst
             SpillIReg d -> do
               mov eax (d, ebp)
-            _ -> error "girEmitOO: IRStore: putfield"
+            x -> error $ "girEmitOO: IRStore: putfield1: " ++ show x
           case src of
             HIReg s1 -> mov ebx s1
             SpillIReg d -> mov ebx (d, ebp)
+            HIConstant c -> mov ebx (i32tow32 c)
+            x -> error $ "girEmitOO: IRStore: putfield2: " ++ show x
           -- like: 4581fc6b  89 98 30 7b 00 00 movl   %ebx,31536(%eax)
           trapaddr <- emitSigIllTrap 6
           let patcher wbr = do
@@ -504,6 +528,13 @@ call32Eax (Disp disp32) = emit8 0xff >> emit8 0x90 >> emit32 disp32
 -- push disp32(%eax)
 push32RelEax :: Disp -> CodeGen e s ()
 push32RelEax (Disp disp32) = emit8 0xff >> emit8 0xb0 >> emit32 disp32
+
+{-
+-- mov disp32(%eax), %ebx
+mov32EbxRelEax :: Disp -> CodeGen e s ()
+mov32EbxRelEax (Disp d32) = emit8 0x67 >> emit8 0x8b >> emit8 0x98
+                            >> emit32 d32
+-}
 
 -- mov %ebx, disp32(%eax)
 mov32RelEbxEax :: Disp -> CodeGen e s ()
