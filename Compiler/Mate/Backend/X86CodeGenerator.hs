@@ -160,6 +160,11 @@ girEmitOO (IROp Add dst' src1' src2') =
       let src1 = (disp, ebp)
       mov dst src2
       add dst src1
+    ge (HIReg dst) (SpillIReg s1) (SpillIReg s2) = do
+      let src1 = (s1, ebp)
+      let src2 = (s2, ebp)
+      mov dst src2
+      add dst src1
     ge (HIReg dst) src1 c1@(HIConstant _) = ge (HIReg dst) c1 src1
     ge (HIReg dst) src1 spill@(SpillIReg _) = ge (HIReg dst) spill src1
     ge (HIReg dst) spill@(SpillIReg _) src2 = ge (HIReg dst) src2 spill
