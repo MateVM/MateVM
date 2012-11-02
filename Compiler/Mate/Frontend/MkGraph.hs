@@ -291,12 +291,14 @@ methodArgs meth = isStatic $ L.genericLength args
 
 fieldType2VarType :: FieldType -> VarType
 fieldType2VarType IntType = JInt
+fieldType2VarType BoolType = JInt -- TODO: is this okay?
 fieldType2VarType FloatType = JFloat
 fieldType2VarType (ObjectType _) = JRef
 fieldType2VarType (Array _ ty) = fieldType2VarType ty
 fieldType2VarType x = error $ "fieldType2VarType: " ++ show x
 
 tir :: J.Instruction -> State SimStack [MateIR Var O O]
+tir ACONST_NULL = do apush $ JRefNull; return []
 tir ICONST_0 = tir (BIPUSH 0)
 tir ICONST_1 = tir (BIPUSH 1)
 tir ICONST_2 = tir (BIPUSH 2)

@@ -608,6 +608,8 @@ girEmitOO (IRMisc2 jins dst src) = do
         HIReg s -> mov eax s
         SpillIReg d -> mov eax (d, ebp)
         SpillRReg d -> mov eax (d, ebp)
+        HIConstant i -> mov eax (i32tow32 i)
+        x -> error $ "emit: misc2: instanceof: src: " ++ show x
       -- place something like `mov edx $mtable_of_objref' instead
       trapaddr <- emitSigIllTrap 4
       movres 0
