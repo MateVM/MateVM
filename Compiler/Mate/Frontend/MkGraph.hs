@@ -274,6 +274,7 @@ methodType isVirtual cls off = (map fieldType2VarType argst', rett)
     (MethodSignature argst returnt) =
       case constsPool cls M.! off of
         (CMethod _ nt') -> ntSignature nt'
+        (CIfaceMethod _ nt') -> ntSignature nt'
         _ -> error "methodType: fail :("
     rett = case returnt of
             Returns ft -> Just (fieldType2VarType ft)
@@ -395,6 +396,7 @@ tir FADD = tirOpInt Add JFloat
 tir (INVOKESTATIC ident) = tirInvoke CallStatic ident
 tir (INVOKESPECIAL ident) = tirInvoke CallSpecial ident
 tir (INVOKEVIRTUAL ident) = tirInvoke CallVirtual ident
+tir (INVOKEINTERFACE ident _) = tirInvoke CallInterface ident
 tir x = error $ "tir: " ++ show x
 
 tirArrayLoad :: VarType -> State SimStack [MateIR Var O O]

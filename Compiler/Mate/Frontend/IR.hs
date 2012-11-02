@@ -47,7 +47,7 @@ data MateIR t e x where
   IRReturn :: (Show t) => Maybe t -> MateIR t O C
 
 data CallingConv = SaveRegs | RestoreRegs deriving (Show, Eq)
-data CallType = CallStatic | CallSpecial | CallVirtual deriving (Show, Eq)
+data CallType = CallStatic | CallSpecial | CallVirtual | CallInterface deriving (Show, Eq)
 
 data OpType
   = Add

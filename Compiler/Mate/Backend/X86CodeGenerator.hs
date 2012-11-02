@@ -301,6 +301,10 @@ girEmitOO (IROp Mul dst' src1' src2') = do
       mov eax dst
       mul (sd1, ebp)
       mov dst eax
+    gm (HIReg dst) (HIReg src1) (HIConstant c2) = do
+      mov eax (i32tow32 c2)
+      mul src1
+      mov dst eax
     gm (SpillIReg dst) (HIReg src1) (HIReg src2) = do
       mov eax src1
       mul src2
@@ -321,64 +325,14 @@ girEmitOO (IROp Mul dst' src1' src2') = do
       mul src2
       mov (dst, ebp) eax
     gm d s1 s2 = error $ printf "emit: impl. mul: %s = %s * %s\n" (show d) (show s1) (show s2)
-girEmitOO (IRInvoke (RTPool cpidx) haveReturn CallVirtual) = do
-  let isInterface = False -- TODO: ...
-  cls <- classf <$> getState
-  let mi@(MethodInfo methodname objname msig@(MethodSignature args _)) =
-          buildMethodID cls cpidx
-  newNamedLabel (show mi) >>= defineLabel
-  -- get method offset for call @ runtime
-  let offset =
-        if isInterface
-          then getInterfaceMethodOffset objname methodname (encode msig)
-          else getMethodOffset objname (methodname `B.append` encode msig)
-  let argsLen = genericLength args
-  -- objref lives somewhere on the argument stack
-  -- mov ebx (Disp (argsLen * ptrSize), esp)
-  pop ebx; push ebx
-  when isInterface $
-    mov ebx (Disp 0, ebx) -- get method-table-ptr, keep it in ebx
-  -- get method-table-ptr (or interface-table-ptr)
-  mov eax (Disp 0, ebx)
-  -- make actual (indirect) call
-  calladdr <- getCurrentOffset
-  -- will be patched to this: call (Disp 0xXXXXXXXX, eax)
-  emitSigIllTrap 6
-
-  -- discard arguments on stack (`+1' for "this")
-  let argcnt = ptrSize * (1 + methodGetArgsCount (methodNameTypeByIdx cls cpidx))
-  when (argcnt > 0) (add esp argcnt)
-
-  case haveReturn of
-    Just (HIReg dst) -> mov dst eax
-    Nothing -> return ()
-  -- note, that "mi" has the wrong class reference here.
-  -- we figure that out at run-time, in the methodpool,
-  -- depending on the method-table-ptr
-  s <- getState
-  setState (s { traps = M.insert calladdr
-                        (VirtualCall isInterface mi offset)
-                        (traps s) })
 girEmitOO (IRInvoke (RTPool cpidx) haveReturn ct) = do
-  cls <- classf <$> getState
-  let hasThis = ct == CallSpecial
-  let l = buildMethodID cls cpidx
-  newNamedLabel (show l) >>= defineLabel
-  -- like: call $0x01234567
-  calladdr <- emitSigIllTrap 5
-  let patcher wbr = do
-        (entryAddr, _) <- liftIO $ getMethodEntry l
-        call (fromIntegral (entryAddr - (wbEip wbr + 5)) :: NativeWord)
-        return wbr
-  -- discard arguments on stack
-  let argcnt = ((if hasThis then 1 else 0) + methodGetArgsCount (methodNameTypeByIdx cls cpidx)) * ptrSize
-  when (argcnt > 0) (add esp argcnt)
-
-  case haveReturn of
-    Just (HIReg dst) -> mov dst eax
-    Nothing -> return ()
-  s <- getState
-  setState (s { traps = M.insert calladdr (StaticMethod patcher) (traps s) })
+  let static = girStatic cpidx haveReturn ct
+  let virtual = girVirtual cpidx haveReturn ct
+  case ct of
+    CallStatic -> static
+    CallSpecial -> static
+    CallVirtual -> virtual
+    CallInterface -> virtual
 girEmitOO (IRLoad (RTPool x) (HIConstant 0) dst) = do
   cls <- classf <$> getState
   case constsPool cls M.! x of
@@ -631,6 +585,67 @@ girEmitOO (IRPrep RestoreRegs regs) = do
   forM_ (reverse regs) $ \(HIReg x) -> pop x
 girEmitOO x = error $ "girEmitOO: insn not implemented: " ++ show x
 
+girStatic cpidx haveReturn ct = do
+  cls <- classf <$> getState
+  let hasThis = ct == CallSpecial
+  let l = buildMethodID cls cpidx
+  newNamedLabel (show l) >>= defineLabel
+  -- like: call $0x01234567
+  calladdr <- emitSigIllTrap 5
+  let patcher wbr = do
+        (entryAddr, _) <- liftIO $ getMethodEntry l
+        call (fromIntegral (entryAddr - (wbEip wbr + 5)) :: NativeWord)
+        return wbr
+  -- discard arguments on stack
+  let argcnt = ((if hasThis then 1 else 0)
+               + methodGetArgsCount (methodNameTypeByIdx cls cpidx)
+               ) * ptrSize
+  when (argcnt > 0) (add esp argcnt)
+
+  case haveReturn of
+    Just (HIReg dst) -> mov dst eax
+    Nothing -> return ()
+  s <- getState
+  setState (s { traps = M.insert calladdr (StaticMethod patcher) (traps s) })
+
+girVirtual cpidx haveReturn ct = do
+  let isInterface = ct == CallInterface
+  cls <- classf <$> getState
+  let mi@(MethodInfo methodname objname msig@(MethodSignature args _)) =
+          buildMethodID cls cpidx
+  newNamedLabel (show mi) >>= defineLabel
+  -- get method offset for call @ runtime
+  let offset =
+        if isInterface
+          then getInterfaceMethodOffset objname methodname (encode msig)
+          else getMethodOffset objname (methodname `B.append` encode msig)
+  let argsLen = genericLength args
+  -- objref lives somewhere on the argument stack
+  -- mov ebx (Disp (argsLen * ptrSize), esp)
+  mov ebx (Disp 0, esp)
+  when isInterface $
+    mov ebx (Disp 0, ebx) -- get method-table-ptr, keep it in ebx
+  -- get method-table-ptr (or interface-table-ptr)
+  mov eax (Disp 0, ebx)
+  -- make actual (indirect) call
+  calladdr <- getCurrentOffset
+  -- will be patched to this: call (Disp 0xXXXXXXXX, eax)
+  emitSigIllTrap 6
+
+  -- discard arguments on stack (`+1' for "this")
+  let argcnt = ptrSize * (1 + methodGetArgsCount (methodNameTypeByIdx cls cpidx))
+  when (argcnt > 0) (add esp argcnt)
+
+  case haveReturn of
+    Just (HIReg dst) -> mov dst eax
+    Nothing -> return ()
+  -- note, that "mi" has the wrong class reference here.
+  -- we figure that out at run-time, in the methodpool,
+  -- depending on the method-table-ptr
+  s <- getState
+  setState (s { traps = M.insert calladdr
+                        (VirtualCall isInterface mi offset)
+                        (traps s) })
 
 saveRegs :: CodeGen e s ()
 saveRegs = do
