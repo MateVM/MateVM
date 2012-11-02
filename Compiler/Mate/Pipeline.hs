@@ -38,8 +38,8 @@ pipeline :: Class Direct -> Method Direct -> [J.Instruction]
 pipeline cls meth jvminsn = do
     prettyHeader "JVM Input"
     mapM_ (printfPipe . printf "\t%s\n" . show) jvminsn
-    -- prettyHeader "Hoopl Graph"
-    -- printfPipe $ printf "%s\n" (showGraph show graph)
+    prettyHeader "Hoopl Graph"
+    printfPipe $ printf "%s\n" (showGraph show graph)
     -- prettyHeader "Label Map"
     -- printfPipe $ printf "%s\n" (show lbls)
     -- prettyHeader "Hoopl Opt-Graph"

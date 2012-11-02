@@ -457,26 +457,7 @@ tirInvoke ct ident = do
 
 tirLoad' :: Word8 -> VarType -> State SimStack ()
 tirLoad' x t = do
-  meth <- method <$> get
-  vreg <- if x < methodArgs meth
-           then do
-             case t of
-              JFloat -> do
-                let assign = preFloats !! (fromIntegral x)
-                let tup = (assign, HFReg . XMMReg . fromIntegral $ x)
-                modify (\s -> s { preRegs = tup : (preRegs s) })
-                return $ VReg t assign
-              JRef -> do
-                let assign = preArgs !! (fromIntegral x)
-                let tup = (assign, SpillRReg . Disp . (+8) . fromIntegral $ (ptrSize * x))
-                modify (\s -> s { preRegs = tup : (preRegs s) })
-                return $ VReg t assign
-              JInt -> do
-                let assign = preArgs !! (fromIntegral x)
-                let tup = (assign, SpillIReg . Disp . (+8) . fromIntegral $ (ptrSize * x))
-                modify (\s -> s { preRegs = tup : (preRegs s) })
-                return $ VReg t assign
-           else return $ VReg t (fromIntegral x)
+  vreg <- maybeArgument x t
   apush vreg
 
 tirLoad :: Word8 -> VarType -> State SimStack [MateIR Var O O]
@@ -491,6 +472,30 @@ tirLoad x t = do
               JRef -> JRefNull
   return [IROp Add nv vreg nul]
 
+maybeArgument :: Word8 -> VarType -> State SimStack Var
+maybeArgument x t = do
+  meth <- method <$> get
+  if x < methodArgs meth
+    then do
+      case t of
+       JFloat -> do
+         let assign = preFloats !! (fromIntegral x)
+         let tup = (assign, HFReg . XMMReg . fromIntegral $ x)
+         modify (\s -> s { preRegs = tup : (preRegs s) })
+         return $ VReg t assign
+       JRef -> do
+         let assign = preArgs !! (fromIntegral x)
+         let tup = (assign, SpillRReg . Disp . (+8) . fromIntegral $ (ptrSize * x))
+         modify (\s -> s { preRegs = tup : (preRegs s) })
+         return $ VReg t assign
+       JInt -> do
+         let assign = preArgs !! (fromIntegral x)
+         let tup = (assign, SpillIReg . Disp . (+8) . fromIntegral $ (ptrSize * x))
+         modify (\s -> s { preRegs = tup : (preRegs s) })
+         return $ VReg t assign
+    else return $ VReg t (fromIntegral x)
+
+
 tirStore :: Word8 -> VarType -> State SimStack [MateIR Var O O]
 tirStore w8 t = do
   x <- apop
@@ -499,7 +504,8 @@ tirStore w8 t = do
               JFloat -> JFloatValue 0
               JRef -> JRefNull
   unless (t == varType x) $ error "tirStore: type mismatch"
-  return [IROp Add (VReg t $ fromIntegral w8) x nul]
+  vreg <- maybeArgument w8 t
+  return [IROp Add vreg x nul]
 
 tirOpInt :: OpType -> VarType -> State SimStack [MateIR Var O O]
 tirOpInt op t = do
