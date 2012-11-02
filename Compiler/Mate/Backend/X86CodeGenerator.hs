@@ -505,10 +505,13 @@ girEmitOO (IRStore (RTPool x) obj src) = do
       if obj == HIConstant 0
         then do -- putstatic
           let sfi = StaticField $ StaticFieldInfo rc (ntName fnt)
-          trapaddr <- getCurrentOffset
           case src of
-            HIReg s1 -> mov (Addr 0) s1
+            HIReg s1 -> mov eax s1
+            SpillIReg d -> mov eax (d, ebp)
+            HIConstant i -> mov eax (i32tow32 i)
             _ -> error "girEmitOO: IRStore: static field"
+          trapaddr <- getCurrentOffset
+          mov (Addr 0) eax
           s <- getState
           setState (s { traps = M.insert trapaddr sfi (traps s) })
         else do -- putfield
