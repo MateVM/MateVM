@@ -4,25 +4,25 @@ public class Array1 {
 	public static void main(String []args) {
 		int []arr = new int[0x8];
 		int sum = 0;
-		for (int i = 0; i < 0x2; i++) {
-			arr[i] = i; // (i + 1) * 0x11;
+		for (int i = 0; i < 0x8; i++) {
+			arr[i] = (i + 1) * 0x11;
 		}
-		// arr[0] = 0x22;
-		// arr[1] = 0x33;
-		// for (int i = 0; i < 0x2; i++) {
-	// 		sum += arr[i];
-	// 	}
+		arr[0] = 0x22;
+		arr[1] = 0x33;
+		for (int i = 0; i < 0x8; i++) {
+			sum += arr[i];
+		}
 		System.out.printf("result: 0x%08x\n", sum); // 0x264
 		System.out.printf("result: 0x%08x\n", arr.length); // 0x8
-		//int b = 0x78;
-		//int c = 0x78;
-		//int e = 0x78;
-		//int r = 0x78;
-		//int r1 = 0x78;
-		//for (int i = 0; i < 0x8; ) {
-		//	System.out.printf("i: %d\n", i++); // arr[i] = (i + 1) * 0x11;
-		//}
-		//System.out.printf("result: 0x%08x\n", arrlol());
+		int b = 0x78;
+		int c = 0x78;
+		int e = 0x78;
+		int r = 0x78;
+		int r1 = 0x78;
+		for (int i = 0; i < 0x8; ) {
+			System.out.printf("i: %d\n", i++); // arr[i] = (i + 1) * 0x11;
+		}
+		System.out.printf("result: 0x%08x\n", arrlol());
 	}
 
 	public static int arrlol() {

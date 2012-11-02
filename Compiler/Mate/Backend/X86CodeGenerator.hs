@@ -562,6 +562,7 @@ girEmitOO (IRStore (RTIndex idx) dst src) = do
   case idx of
     HIConstant _ -> mov eax (0 :: Word32)
     HIReg i -> do
+      when (i == edx || i == ebx) $ error $ "irstore: rtindex: register not avail.1"
       mov eax i
       mov ebx (4 :: Word32)
       mul ebx
@@ -578,14 +579,15 @@ girEmitOO (IRStore (RTIndex idx) dst src) = do
   -- store array elem
   case src of
     HIConstant i -> mov ebx (i32tow32 i)
-    HIReg s -> mov ebx s
+    HIReg s -> do
+      when (s == edx || s == ebx) $ error $ "irstore: rtindex: register not avail.2"
+      mov ebx s
     SpillIReg sd -> mov ebx (sd, ebp)
     SpillRReg sd -> mov ebx (sd, ebp)
   case idx of
     HIConstant i -> mov (Disp ((+8) . (*4) $ i32tow32 i), eax) ebx
     HIReg i -> mov (Disp 0, eax) ebx
     SpillIReg d -> do
-      mov eax (Disp 0, eax)
       mov (Disp 0, eax) ebx
     x -> error $ "emit: irstore: idx: " ++ show x
   when isNotEbx $ pop ebx
