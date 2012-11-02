@@ -202,9 +202,16 @@ girEmitOO (IROp Add dst' src1' src2') =
     ge (SpillIReg disp) (SpillIReg src1) (HIConstant c) = do
       let dst = (disp, ebp)
       let s1 = (src1, ebp)
-      mov eax s1
-      when (c /= 0) $ add dst (i32tow32 c)
-      mov dst eax
+      if c == 0
+        then do
+          mov eax s1
+          mov dst eax
+        else do
+          mov eax s1
+          mov dst (i32tow32 c)
+          add dst eax
+    ge dst@(SpillIReg _) c@(HIConstant _) src@(SpillIReg _) = do
+      ge dst src c
     ge (SpillRReg disp) o1@(HIReg _) o2@(HIConstant _) = do
       ge (SpillIReg disp) o1 o2
     ge (SpillRReg disp) (SpillRReg src1) o2 = do
@@ -449,6 +456,12 @@ girEmitOO (IRLoad RTNone (HIReg src) (SpillIReg d)) = do -- arraylength
   let dst = (d, ebp)
   mov eax (Disp 0, src)
   mov dst eax
+girEmitOO (IRLoad RTNone (SpillRReg sd) (SpillIReg dd)) = do -- arraylength
+  let dst = (dd, ebp)
+  let src = (sd, ebp)
+  mov eax src
+  mov eax (Disp 0, eax)
+  mov dst eax
 girEmitOO (IRLoad (RTIndex (HIConstant i)) (SpillIReg srcd) (SpillIReg dstd)) = do
   mov eax (srcd, ebp)
   -- TODO: ptrSize ...
@@ -571,6 +584,10 @@ girEmitOO (IRStore (RTIndex idx) dst src) = do
   case idx of
     HIConstant i -> mov (Disp ((+8) . (*4) $ i32tow32 i), eax) ebx
     HIReg i -> mov (Disp 0, eax) ebx
+    SpillIReg d -> do
+      mov eax (Disp 0, eax)
+      mov (Disp 0, eax) ebx
+    x -> error $ "emit: irstore: idx: " ++ show x
   when isNotEbx $ pop ebx
   when isNotEdx $ pop edx
 girEmitOO ins@(IRStore rt memdst src) = do
