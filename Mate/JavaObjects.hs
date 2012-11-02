@@ -112,16 +112,20 @@ allocAndInitObject p = do
   code_ref fptr obj
   return obj
 
+-- [TODO hs] fix cloneObject
 foreign export ccall cloneObject :: CPtrdiff -> IO CPtrdiff
 cloneObject :: CPtrdiff -> IO CPtrdiff
 cloneObject obj_to_clone = do
   let ptr = intPtrToPtr $ fromIntegral obj_to_clone :: Ptr NativeWord
   mtable <- peek ptr
-  size <- getMethodTableReverse mtable >>= getObjectSize
-  obj <- mallocObjectGC (fromIntegral size)
-  let objptr = intPtrToPtr (fromIntegral obj)
-  copyBytes objptr ptr (fromIntegral size)
-  return obj
+  maybeObjTable <- getMethodTableReverse mtable
+  case maybeObjTable of
+    Nothing -> error "cloneObject performed <getMethodTableReverse> which returned Nothing."
+    Just v  -> do size <- getObjectSize v
+                  obj <- mallocObjectGC (fromIntegral size)
+                  let objptr = intPtrToPtr (fromIntegral obj)
+                  copyBytes objptr ptr (fromIntegral size)
+                  return obj
 
 
 {-nativeWordToPtr :: NativeWord -> Ptr a
@@ -131,18 +135,21 @@ ptrToNativeWord :: Ptr a -> NativeWord
 ptrToNativeWord = fromIntegral . ptrToIntPtr
 -}
 
-getClassNamePtr :: Ptr a -> IO B.ByteString
+getClassNamePtr :: Ptr a -> IO (Maybe B.ByteString)
 getClassNamePtr ptr = do
   method_table <- peek (castPtr ptr) :: IO Word32
   getMethodTableReverse method_table
 
 getObjectSizePtr :: Ptr a -> IO Int
 getObjectSizePtr ptr = do 
-  clazzName <- getClassNamePtr ptr
-  objectSize <- getObjectSize clazzName
-  return $ fromIntegral objectSize
+  clazzNameM <- getClassNamePtr ptr
+  case clazzNameM of 
+   Nothing -> error "getObjectSizePtr called on non mate object (getClassNamePtr returned Nothing)"
+   Just clazzName -> liftM fromIntegral $ getObjectSize clazzName
 
 getObjectFieldCountPtr :: Ptr a -> IO Int
 getObjectFieldCountPtr ptr = do 
-  clazzName <- getClassNamePtr ptr
-  liftM fromIntegral $ getFieldCount clazzName
+  clazzNameM <- getClassNamePtr ptr
+  case clazzNameM of 
+   Nothing -> error "getObjectFieldCountPtr called on non mate object (getClassNamePtr returned Nothing)"
+   Just clazzName -> liftM fromIntegral $ getFieldCount clazzName

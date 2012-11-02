@@ -12,6 +12,7 @@ module Mate.Debug
   , printfMem
   , mateDEBUG
   , usePreciseGC
+  , checkNothing
   , printf -- TODO: delete me
   ) where
 
@@ -30,7 +31,7 @@ logHandle = if mateDEBUG
 
 {-# INLINE mateDEBUG #-}
 mateDEBUG :: Bool
-mateDEBUG = False
+mateDEBUG = True
 
 {-# INLINE printString #-}
 printString :: String -> String -> IO ()
@@ -66,4 +67,8 @@ printfMem = printString "Mem: "
 
 {-# INLINE usePreciseGC #-}
 usePreciseGC :: Bool
-usePreciseGC = False
+usePreciseGC = True
+
+checkNothing :: String -> Maybe a -> a
+checkNothing m Nothing   = error m
+checkNothing _ (Just v)  = v

@@ -23,6 +23,7 @@ import Mate.Debug
 import Mate.GC hiding (size)
 import qualified Mate.StackTrace as T
 import Mate.JavaObjectsGC() -- only instances for Ptr a
+import qualified Mate.JavaObjectsGC as GCObj
 import qualified Mate.GC as GC
 
 type RootSet a = M.Map (Ptr a) RefUpdateAction
@@ -64,10 +65,14 @@ markedOrInvalid :: (RefObj a) => StateT TwoSpace IO (a -> IO Bool)
 markedOrInvalid = do memManager <- get
                      return $ \obj -> do objAsPtr <- getIntPtr obj
                                          let valid = validRef' objAsPtr memManager
-                                         if valid 
-                                          then liftM not (marked obj)
+                                         if valid && objAsPtr /= 0 
+                                          then do validObj <- GCObj.validMateObj objAsPtr 
+                                                  if validObj
+                                                   then liftM not (marked obj)
+                                                   else return True
                                           else return True -- not valid reference        
-                        
+
+                       
 -- [todo hs] this is slow. merge phases to eliminate list with refs
 performCollectionIO :: RefObj a => [a] -> StateT TwoSpace IO ()
 performCollectionIO refs' = do 

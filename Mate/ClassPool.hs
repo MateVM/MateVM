@@ -99,13 +99,11 @@ getMethodTable path = do
   ci <- getClassInfo path
   return $ ciMethodBase ci
 
-getMethodTableReverse :: NativeWord -> IO B.ByteString
+getMethodTableReverse :: NativeWord -> IO (Maybe B.ByteString)
 getMethodTableReverse mtable = do
   class_map <- getClassMap
   let f x = ciMethodBase x == mtable
-  case find f (M.elems class_map) of
-    Just x -> return $ ciName x
-    Nothing -> error "getMethodTableReverse: nothing found"
+  return $ find f (M.elems class_map) >>= return . ciName
 
 getObjectSize :: B.ByteString -> IO NativeWord
 getObjectSize path = do

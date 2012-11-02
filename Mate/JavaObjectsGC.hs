@@ -2,6 +2,7 @@
 module Mate.JavaObjectsGC 
     ( RefObj(..)
     , printRef'
+    , validMateObj
     ) where
 
 import Mate.GC
@@ -17,7 +18,6 @@ import Control.Monad
 import JVM.ClassFile
 import Mate.JavaObjects
 import Mate.Debug
-import Prelude hiding (print)
 
 instance RefObj (Ptr a) where
   getIntPtr   = return . ptrToIntPtr
@@ -47,15 +47,18 @@ fieldsOffsetArray = 12
 arrayMagicNumber :: Int32
 arrayMagicNumber = 0x1227babe 
 
+-- [TODO hs] fix for array[array]
 unpackRefs :: Ptr a -> IO [Ptr a]
 unpackRefs ptr = do 
   isarray <- isArray ptr
   if isarray
     then do
       len <- peekByteOff ptr 8 :: IO Int
-      peekArray len (ptr `plusPtr` 12) 
+      peekArray len (ptr `plusPtr` 12)
     else do
+      --print "ooohuh"
       numberOfFields <- getObjectFieldCountPtr ptr
+      --print "got ooohuh"
       peekArray numberOfFields (ptr `plusPtr` fieldsOffset)
 
 isArray :: Ptr a -> IO Bool
@@ -63,12 +66,27 @@ isArray ptr = do
     method_table <- peekByteOff ptr 0 :: IO Int32
     return $ method_table == arrayMagicNumber
 
+validMateObj :: IntPtr -> IO Bool
+validMateObj intPtr = do let ptr = intPtrToPtr intPtr
+                         isarray <- isArray ptr 
+                         if isarray
+                          then return True 
+                          else do method_table <- peekByteOff ptr 0 :: IO (Ptr a)
+                                  clazzNameM <- getClassNamePtr method_table
+                                  case clazzNameM of 
+                                    Nothing -> return False
+                                    Just _ -> return True
+                                  
 getSize :: Ptr a -> IO Int
 getSize ptr = do
   isarray <- isArray ptr
   if isarray
     then getArrayObjectSize ptr
-    else getObjectSizePtr ptr
+    else do 
+           --print "knobbl"
+           s <- getObjectSizePtr ptr
+           --print "got knobbl"
+           return s
 
 getArrayObjectSize :: Ptr a -> IO Int
 getArrayObjectSize ptr = do
@@ -94,7 +112,6 @@ patchRefsPtr ptr xs = do
 printInt32 :: String -> Int32 -> IO ()
 printInt32 str ptr = printfGc $ printf str ptr
 
-
 printRef' :: Ptr a -> IO ()
 printRef' ptr = do 
     printInt32 "Obj: address 0x%08x\n" =<< (liftM fromIntegral (getIntPtr ptr) :: IO Int32)
@@ -103,7 +120,7 @@ printRef' ptr = do
     
     let printObj = do
          printfGc $ printf "we got an object"
-         clazzName <- getClassNamePtr ptr 
+         clazzName <- liftM (checkNothing "getClassNamePtr called on non mate obj") $ getClassNamePtr ptr 
          printfGc $ printf "type: %s\n" $ toString clazzName
          fieldCnt <- getObjectFieldCountPtr ptr    
          printfGc $ printf "children 0x%08x\n" fieldCnt
