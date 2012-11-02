@@ -265,6 +265,27 @@ girEmitOO (IROp Sub dst' src1' src2') = do
       let src1 = (s1, ebp)
       mov dst src2
       sub dst src1
+    ge (SpillIReg d) (HIConstant c) (HIReg src2) = do
+      let dst = (d, ebp)
+      mov dst src2
+      sub dst (i32tow32 c)
+    ge (SpillIReg d) (HIReg src1) (HIReg src2) = do
+      let dst = (d, ebp)
+      mov dst src2
+      sub dst src1
+    ge (SpillIReg d) (SpillIReg s1) (HIReg src2) = do
+      let dst = (d, ebp)
+      let src1 = (s1, ebp)
+      mov eax src2
+      sub eax src1
+      mov dst eax
+    ge (SpillIReg d) (SpillIReg s1) (SpillIReg s2) = do
+      let dst = (d, ebp)
+      let src1 = (s1, ebp)
+      let src2 = (s2, ebp)
+      mov eax src2
+      sub eax src1
+      mov dst eax
     ge _ _ _ = error $ "sub: not impl.: " ++ show dst' ++ ", "
                      ++ show src1' ++ ", " ++ show src2'
 girEmitOO (IROp Mul dst' src1' src2') = do
@@ -291,6 +312,12 @@ girEmitOO (IROp Mul dst' src1' src2') = do
     gm (SpillIReg dst) (HIConstant c1) (SpillIReg s2) = do
       let src2 = (s2, ebp)
       mov eax (i32tow32 c1)
+      mul src2
+      mov (dst, ebp) eax
+    gm (SpillIReg dst) (SpillIReg s1) (SpillIReg s2) = do
+      let src1 = (s1, ebp)
+      let src2 = (s2, ebp)
+      mov eax src1
       mul src2
       mov (dst, ebp) eax
     gm d s1 s2 = error $ printf "emit: impl. mul: %s = %s * %s\n" (show d) (show s1) (show s2)

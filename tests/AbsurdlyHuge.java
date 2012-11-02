@@ -25,6 +25,6 @@ public class AbsurdlyHuge {
 	}
 
 	public static void main(String[] args) {
-		System.out.printf("result: 0x%08x\n", absurdlyHuge(0));
+		System.out.printf("result: 0x%08x\n", absurdlyHuge(2));
 	}
 }
