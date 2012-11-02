@@ -300,7 +300,7 @@ girEmitOO (IROp Mul dst' src1' src2') = do
     gm (HIReg dst) (HIReg src1) (HIReg src2) = do
       mov eax src1
       mul src2
-      mov dst src2
+      mov dst eax
     gm (HIReg dst) (SpillIReg sd1) (HIReg src2) = do
       mov eax src2
       mul (sd1, ebp)
