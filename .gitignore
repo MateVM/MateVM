@@ -5,6 +5,7 @@ mate
 mate.static
 mate.dbg
 mate.prof
+mate.hpc
 mate.log
 tags
 *.swp
@@ -15,3 +16,5 @@ tags
 dist
 *.jar
 tools/hs-boehmgc
+.hpc/
+*.tix

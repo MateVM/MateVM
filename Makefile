@@ -10,6 +10,7 @@ HS_BOOT := $(shell ls Compiler/Mate/Runtime/*.hs-boot)
 BUILD := build
 B_RELEASE := $(BUILD)/release
 B_STATIC := $(BUILD)/static
+B_COVERAGE := $(BUILD)/coverage
 B_DEBUG := $(BUILD)/debug
 PACKAGES_ := bytestring harpy hs-java plugins
 PACKAGES := $(addprefix -package ,$(PACKAGES_))
@@ -68,6 +69,27 @@ mate.static: Mate.hs ffi/trap.c $(HS_FILES) $(HS_BOOT) ffi/native.o $(CLASS_FILE
 	@mkdir -p $(B_STATIC)
 	$(GHCCALL) $(B_STATIC) -static
 
+mate.hpc: Mate.hs ffi/trap.c $(HS_FILES) $(HS_BOOT) ffi/native.o $(CLASS_FILES)
+	@mkdir -p $(B_COVERAGE)
+	@mkdir -p $(B_COVERAGE)/tix/tests
+	$(GHCCALL) $(B_COVERAGE) -static -fhpc
+
+
+# see http://www.haskell.org/ghc/docs/7.0.4/html/users_guide/hpc.html
+TIX_FILES := $(addprefix $(B_COVERAGE)/tix/,$(TEST_JAVA_FILES:.java=.tix))
+coverage: mate.hpc $(TIX_FILES)
+	@hpc sum $(TIX_FILES) --output=$(B_COVERAGE)/coverage.tix
+	@hpc report $(B_COVERAGE)/coverage.tix
+	@mkdir -p $(B_COVERAGE)/html > /dev/null
+	@hpc markup $(B_COVERAGE)/coverage.tix --destdir=$(B_COVERAGE)/html > /dev/null
+	@echo "see ./$(B_COVERAGE)/html for a HTML report"
+
+# call it only with -j1 !
+$(B_COVERAGE)/tix/%.tix: %.class mate.hpc
+	@echo "doing coverage of $(basename $<)..."
+	@./mate.hpc $(basename $<) > /dev/null
+	@mv mate.hpc.tix $@
+
 %.gdb: %.class mate
 	gdb -x .gdbcmds -q --args mate $(basename $<) +RTS -V0 --install-signal-handlers=no
 
@@ -75,7 +97,8 @@ clean:
 	rm -rf $(BUILD) mate mate.static ffi/native.o \
 		tests/*.class Mate/*_stub.* \
 		$(CLASS_FILES) \
-		scratch/*.class
+		scratch/*.class \
+		.hpc
 
 ghci: mate.static
 	ghci -I. $(PACKAGES) -outputdir $(B_STATIC) Mate.hs $(GHC_CPP)
