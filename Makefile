@@ -98,7 +98,7 @@ clean:
 		tests/*.class Mate/*_stub.* \
 		$(CLASS_FILES) \
 		scratch/*.class \
-		.hpc
+		.hpc all.tix
 
 ghci: mate.static
 	ghci -I. $(PACKAGES) -outputdir $(B_STATIC) Mate.hs $(GHC_CPP)

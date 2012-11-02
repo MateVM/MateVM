@@ -13,7 +13,8 @@ tags
 *_stub.h
 *.hi-boot
 *.o-boot
-dist
+dist/
+build/
 *.jar
 tools/hs-boehmgc
 .hpc/
