@@ -460,8 +460,8 @@ tirInvoke ct ident = do
       let movretval = IROp Add movtarget nv (JIntValue 0)
       return (Just nv, Just movretval)
     Nothing -> return (Nothing, Nothing)
-  let r = (IRPrep SaveRegs []) : pushes ++
-          [IRInvoke (RTPool ident) targetreg ct, IRPrep RestoreRegs []]
+  let r = (IRPrep SaveRegs S.empty): pushes ++
+          [IRInvoke (RTPool ident) targetreg ct, IRPrep RestoreRegs S.empty]
   case maybemov of
     Nothing -> return r
     Just m -> return $ r ++ [m]

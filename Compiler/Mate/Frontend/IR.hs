@@ -14,6 +14,7 @@ module Compiler.Mate.Frontend.IR
  , varType
  ) where
 
+import qualified Data.Set as S
 import Data.Word
 import Data.Int
 import Text.Printf
@@ -36,7 +37,7 @@ data MateIR t e x where
   IRMisc1 :: (Show t) => Instruction -> t -> MateIR t O O {- one src -}
   IRMisc2 :: (Show t) => Instruction -> t -> t -> MateIR t O O {- dst, src -}
   IRPrep :: (Show t) => CallingConv
-                     -> [t] {- regs in use -}
+                     -> S.Set t {- regs in use -}
                      -> MateIR t O O
   IRInvoke :: (Show t) => RTPool t
                        -> Maybe t
@@ -64,9 +65,10 @@ data HVar
   | HFConstant Float
   | SpillFReg Disp
   | SpillRReg Disp
-  deriving Eq
+  deriving (Eq, Ord)
 
 deriving instance Eq Disp
+deriving instance Ord Disp
 
 data RTPool t
   = RTPool Word16

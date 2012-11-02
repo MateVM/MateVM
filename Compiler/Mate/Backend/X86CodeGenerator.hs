@@ -8,6 +8,7 @@ module Compiler.Mate.Backend.X86CodeGenerator
   , compileStateInit
   ) where
 
+import qualified Data.Set as S
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as B
 import Data.Int
@@ -269,6 +270,12 @@ girEmitOO (IROp Sub dst' src1' src2') = do
       let dst = (d, ebp)
       mov dst src2
       sub dst (i32tow32 c)
+    ge (SpillIReg d) (HIConstant c) (SpillIReg s2) = do
+      let dst = (d, ebp)
+      let src2 = (s2, ebp)
+      mov eax src2
+      sub eax (i32tow32 c)
+      mov dst eax
     ge (SpillIReg d) (HIReg src1) (HIReg src2) = do
       let dst = (d, ebp)
       mov dst src2
@@ -317,6 +324,8 @@ girEmitOO (IROp Mul dst' src1' src2') = do
       mov eax (i32tow32 c1)
       mul src2
       mov (dst, ebp) eax
+    gm dst@(SpillIReg _) src1@(HIReg _) src2@(HIConstant _) = do
+      gm dst src2 src1
     gm (SpillIReg dst) (HIConstant c1) (SpillIReg s2) = do
       let src2 = (s2, ebp)
       mov eax (i32tow32 c1)
@@ -327,6 +336,11 @@ girEmitOO (IROp Mul dst' src1' src2') = do
       let src2 = (s2, ebp)
       mov eax src1
       mul src2
+      mov (dst, ebp) eax
+    gm (SpillIReg dst) (SpillIReg s1) (HIConstant c2) = do
+      let src1 = (s1, ebp)
+      mov eax (i32tow32 c2)
+      mul src1
       mov (dst, ebp) eax
     gm d s1 s2 = error $ printf "emit: impl. mul: %s = %s * %s\n" (show d) (show s1) (show s2)
 girEmitOO (IRInvoke (RTPool cpidx) haveReturn ct) = do
@@ -524,6 +538,7 @@ girEmitOO (IRStore (RTPool x) obj src) = do
           case src of
             HIReg s1 -> mov ebx s1
             SpillIReg d -> mov ebx (d, ebp)
+            SpillRReg d -> mov ebx (d, ebp)
             HIConstant c -> mov ebx (i32tow32 c)
             x -> error $ "girEmitOO: IRStore: putfield2: " ++ show x
           -- like: 4581fc6b  89 98 30 7b 00 00 movl   %ebx,31536(%eax)
@@ -587,9 +602,12 @@ girEmitOO (IRPush _ (HIConstant x)) = push (i32tow32 x)
 girEmitOO (IRPush _ (SpillIReg d)) = push (d, ebp)
 girEmitOO (IRPush _ (SpillRReg d)) = push (d, ebp)
 girEmitOO (IRPrep SaveRegs regs) = do
-  forM_ regs $ \(HIReg x) -> push x
+  forM_ (S.toList regs) $ \ x ->
+    case x of
+      HIReg r -> push r
+      f -> error $ "emit: irprep: " ++ show f
 girEmitOO (IRPrep RestoreRegs regs) = do
-  forM_ (reverse regs) $ \(HIReg x) -> pop x
+  forM_ (reverse (S.toList regs)) $ \(HIReg x) -> pop x
 girEmitOO (IRMisc1 jins src) = do
   case jins of
     CHECKCAST _ -> do
