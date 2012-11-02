@@ -397,6 +397,15 @@ tir (INVOKESTATIC ident) = tirInvoke CallStatic ident
 tir (INVOKESPECIAL ident) = tirInvoke CallSpecial ident
 tir (INVOKEVIRTUAL ident) = tirInvoke CallVirtual ident
 tir (INVOKEINTERFACE ident _) = tirInvoke CallInterface ident
+tir i@(CHECKCAST _) = do
+  y <- apop
+  apush y
+  return [IRMisc1 i y]
+tir i@(INSTANCEOF _) = do
+  y <- apop
+  nv <- newvar JInt
+  apush nv
+  return [IRMisc2 i nv y]
 tir x = error $ "tir: " ++ show x
 
 tirArrayLoad :: VarType -> State SimStack [MateIR Var O O]

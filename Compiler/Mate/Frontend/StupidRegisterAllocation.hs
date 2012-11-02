@@ -97,7 +97,13 @@ stupidRegAlloc preAssigned linsn = evalState regAlloc' startmapping
           dstnew <- doAssign dst
           nrt <- rtRepack rt
           return $ Mid $ IRLoad nrt objnew dstnew
-        IRNop -> return $ Mid $ IRNop
+        IRMisc1 jins src -> do
+          srcnew <- doAssign src
+          return $ Mid $ IRMisc1 jins srcnew
+        IRMisc2 jins dst src -> do
+          dstnew <- doAssign dst
+          srcnew <- doAssign src
+          return $ Mid $ IRMisc2 jins dstnew srcnew
         IRPrep typ [] -> do
           intuse <- regsInUse JInt -- TODO: float
           return $ Mid $ IRPrep typ (intuse `L.intersect` allIntRegs)

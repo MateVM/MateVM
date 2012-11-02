@@ -590,6 +590,38 @@ girEmitOO (IRPrep SaveRegs regs) = do
   forM_ regs $ \(HIReg x) -> push x
 girEmitOO (IRPrep RestoreRegs regs) = do
   forM_ (reverse regs) $ \(HIReg x) -> pop x
+girEmitOO (IRMisc1 jins src) = do
+  case jins of
+    CHECKCAST _ -> do
+      nop -- TODO ..
+    x -> error $ "emit: misc1: " ++ show x
+girEmitOO (IRMisc2 jins dst src) = do
+  case jins of
+    INSTANCEOF cpidx -> do
+      cls <- classf <$> getState
+      let movres :: Word32 -> CodeGen e s ()
+          movres r = do
+            case dst of
+              HIReg i -> mov i r
+              SpillIReg d -> mov (d, ebp) r
+      case src of
+        HIReg s -> mov eax s
+        SpillIReg d -> mov eax (d, ebp)
+        SpillRReg d -> mov eax (d, ebp)
+      -- place something like `mov edx $mtable_of_objref' instead
+      trapaddr <- emitSigIllTrap 4
+      movres 0
+      let patcher wbr = do
+            emitSigIllTrap 4
+            let classname = buildClassID cls cpidx
+            check <- liftIO $ isInstanceOf (fromIntegral $ wbEax wbr) classname
+            if check
+              then movres 1
+              else movres 0
+            return $ wbr {wbEip = wbEip wbr + 4}
+      s <- getState
+      setState (s { traps = M.insert trapaddr (InstanceOf patcher) (traps s) })
+    x -> error $ "emit: misc2: " ++ show x
 girEmitOO x = error $ "girEmitOO: insn not implemented: " ++ show x
 
 girStatic cpidx haveReturn ct = do

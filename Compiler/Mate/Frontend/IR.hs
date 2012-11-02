@@ -33,7 +33,8 @@ data MateIR t e x where
                      -> t {- objectref -}
                      -> t {- target -}
                      -> MateIR t O O
-  IRNop :: MateIR t O O
+  IRMisc1 :: (Show t) => Instruction -> t -> MateIR t O O {- one src -}
+  IRMisc2 :: (Show t) => Instruction -> t -> t -> MateIR t O O {- dst, src -}
   IRPrep :: (Show t) => CallingConv
                      -> [t] {- regs in use -}
                      -> MateIR t O O
@@ -111,7 +112,8 @@ instance Show (MateIR t e x) where
   show (IRJump l) = printf "\tjump %s" (show l)
   show (IRIfElse jcmp v1 v2 l1 l2) = printf "\tif (%s `%s` %s) then %s else %s" (show v1) (show jcmp) (show v2) (show l1) (show l2)
   show (IRReturn b) = printf "\treturn (%s)" (show b)
-  show IRNop = printf "\tnop"
+  show (IRMisc1 jins x) = printf "\tmisc1: \"%s\": %s" (show jins) (show x)
+  show (IRMisc2 jins x y) = printf "\tmisc2: \"%s\": %s %s " (show jins) (show x) (show y)
   show (IRPrep typ regs) = printf "\tcall preps (%s): %s" (show typ) (show regs)
 
 instance Show HVar where
