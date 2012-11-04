@@ -67,7 +67,7 @@ printfMem = printString "Mem: "
 
 {-# INLINE usePreciseGC #-}
 usePreciseGC :: Bool
-usePreciseGC = True
+usePreciseGC = False
 
 checkNothing :: String -> Maybe a -> a
 checkNothing m Nothing   = error m
