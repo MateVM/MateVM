@@ -47,14 +47,25 @@ fieldsOffsetArray = 12
 arrayMagicNumber :: Int32
 arrayMagicNumber = 0x1227babe 
 
+primArrayMagicNumber :: Int32
+primArrayMagicNumber = 0x1228babe 
+
+isArrayMagicNumber :: Int32 -> Bool
+isArrayMagicNumber ptr = ptr == arrayMagicNumber || ptr == primArrayMagicNumber
+
 -- [TODO hs] fix for array[array]
 unpackRefs :: Ptr a -> IO [Ptr a]
 unpackRefs ptr = do 
   isarray <- isArray ptr
   if isarray
     then do
-      len <- peekByteOff ptr 8 :: IO Int
-      peekArray len (ptr `plusPtr` 12)
+      method_table <- peekByteOff ptr 0 :: IO Int32
+      if method_table == arrayMagicNumber 
+        then do len <- peekByteOff ptr 8 :: IO Int
+                printfGc "got reference type array\n"
+                peekArray len (ptr `plusPtr` 12)
+        else do printfGc "got primitive array\n"
+                return [] -- is array but primitives
     else do
       --print "ooohuh"
       numberOfFields <- getObjectFieldCountPtr ptr
@@ -63,15 +74,19 @@ unpackRefs ptr = do
 
 isArray :: Ptr a -> IO Bool
 isArray ptr = do
+    printfGc "isArray..\n"
     method_table <- peekByteOff ptr 0 :: IO Int32
-    return $ method_table == arrayMagicNumber
+    printfGc "done array. \n"
+    return $ isArrayMagicNumber method_table 
 
 validMateObj :: IntPtr -> IO Bool
 validMateObj intPtr = do let ptr = intPtrToPtr intPtr
                          isarray <- isArray ptr 
                          if isarray
                           then return True 
-                          else do method_table <- peekByteOff ptr 0 :: IO (Ptr a)
+                          else do printfGc "check mate obj\n"
+                                  method_table <- peekByteOff ptr 0 :: IO (Ptr a)
+                                  printfGc "done checking.\n"
                                   clazzNameM <- getClassNamePtr method_table
                                   case clazzNameM of 
                                     Nothing -> return False
@@ -136,7 +151,7 @@ printRef' ptr = do
         printfGc $ printf "length: 0x%08x\n" len
         printChildren ptr
 
-    if method_table == arrayMagicNumber
+    if isArrayMagicNumber method_table
       then printArray
       else printObj
 

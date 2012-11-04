@@ -19,6 +19,7 @@ module Mate.Types
   , StaticFieldInfo(..)
   , MethodInfo(..)
   , ClassInfo(..)
+  , MateObjType(..)
   , setTrapMap, getTrapMap
   , setMethodMap, getMethodMap
   , setClassMap, getClassMap
@@ -162,6 +163,7 @@ type InterfaceMap = M.Map B.ByteString (Class Direct)
 -- store offset for each <Interface><Method><Signature> pair
 type InterfaceMethodMap = M.Map B.ByteString NativeWord
 
+data MateObjType = ReferenceType | PrimitiveType deriving (Show,Eq)
 
 {-
 toString :: B.ByteString -> String

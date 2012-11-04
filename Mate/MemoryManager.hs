@@ -52,7 +52,7 @@ printGc = printfGc . show
 performCollection' :: (RefObj a) => M.Map a RefUpdateAction -> StateT TwoSpace IO ()
 performCollection' roots = do modify switchSpaces
                               let rootList = map fst $ M.toList roots
-                              liftIO (printfGc "rootSet: " >> printGc rootList)
+                              liftIO (printfGc "rootSet: " >> printGc rootList >> printfGc "\n")
                               performCollectionIO rootList
                               liftIO $ patchGCRoots roots
 
@@ -101,7 +101,7 @@ buildGCAction stack size = do let rootsOnStack = concatMap T.possibleRefs stack
         dereference intPtr = do printfGc $ printf "deref stacklocation: 0x%08x\n" (fromIntegral intPtr :: Int)
                                 obj <- peek $ intPtrToPtr intPtr :: IO IntPtr
                                 printfGc $ printf "deref location: "
-                                printfGc (show $ intPtrToPtr obj)
+                                printfGc ((show $ intPtrToPtr obj) ++ "\n")
                                 return (intPtr,obj)
 
 -- (stackLocation,obj)

@@ -82,10 +82,10 @@ patchRefsObj predicate obj = do
   obj' <- getNewRef obj 
   fields <- refs obj
   printfGc "current fields:\n"
-  printfGc $ show fields
+  printfGc $ show fields ++ "\n"
   newRefs <- mapM (getNewRefIfValid predicate) fields
   printfGc "this are the new children: "
-  printfGc $ show newRefs
+  printfGc $ show newRefs ++ "\n"
   patchRefs obj' newRefs                 
 
 getNewRefIfValid :: (RefObj a) => (a -> IO Bool) -> a -> IO a

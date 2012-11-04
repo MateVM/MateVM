@@ -277,28 +277,8 @@ emitFromBB cls method = do
     emit ARRAYLENGTH = do
       pop eax
       push (Disp 8, eax)
-    emit (ANEWARRAY _) = emit (NEWARRAY 10) -- 10 == T_INT
-    emit (NEWARRAY typ) = do
-      let tsize = case decodeS (0 :: Integer) (B.pack [typ]) of
-                  T_INT -> 4
-                  T_CHAR -> 4
-                  _ -> error "newarray: type not implemented yet"
-      -- get length from stack, but leave it there
-      mov eax (Disp 0, esp)
-      mov ebx (tsize :: Word32)
-      -- multiple amount with native size of one element
-      mul ebx -- result is in eax
-      add eax (ptrSize * 3 :: Word32) -- for "length", "method_table_fake" and "gc_data"
-      -- push amount of bytes to allocate
-      push eax
-      callMalloc
-      pop eax -- ref to arraymemory
-      pop ebx -- length
-      mov (Disp 0, eax) (0x1227babe :: Word32) -- null m_table
-      mov (Disp 4, eax) (0x1337babe :: Word32) -- gcinfo
-      mov (Disp 8, eax) ebx -- store length at offset 8
-      mov (Disp 12, eax) (0x1227bab1 :: Word32)
-      push eax -- push ref again
+    emit (ANEWARRAY _) = emitNewArray ReferenceType 10 -- 10 == T_INT
+    emit (NEWARRAY typ) = emitNewArray PrimitiveType typ
 
     emit (CHECKCAST _) = nop -- TODO(bernhard): ...
     emit MONITORENTER = add esp (ptrSize :: Word32) -- TODO(bernhard): ...
@@ -381,6 +361,31 @@ emitFromBB cls method = do
 
     emit invalid = error $ "insn not implemented yet: " ++ show invalid
 
+    emitNewArray :: MateObjType -> Word8 -> CodeGen e s ()
+    emitNewArray objType typ = do
+      let tsize = case decodeS (0 :: Integer) (B.pack [typ]) of
+                  T_INT -> 4
+                  T_CHAR -> 4
+                  _ -> error "newarray: type not implemented yet"
+      let nullMethodTable = case objType of 
+                             PrimitiveType -> mov (Disp 0, eax) (0x1228babe :: Word32)
+                             ReferenceType -> mov (Disp 0, eax) (0x1227babe :: Word32)
+      -- get length from stack, but leave it there
+      mov eax (Disp 0, esp)
+      mov ebx (tsize :: Word32)
+      -- multiple amount with native size of one element
+      mul ebx -- result is in eax
+      add eax (ptrSize * 3 :: Word32) -- for "length", "method_table_fake" and "gc_data"
+      -- push amount of bytes to allocate
+      push eax
+      callMalloc
+      pop eax -- ref to arraymemory
+      pop ebx -- length
+      nullMethodTable -- null m_table
+      mov (Disp 4, eax) (0x1337babe :: Word32) -- gcinfo
+      mov (Disp 8, eax) ebx -- store length at offset 8
+      mov (Disp 12, eax) (0x1227bab1 :: Word32)
+      push eax -- push ref again
 
     emitIF :: CMP -> CodeGen e s ()
     emitIF cond = let
