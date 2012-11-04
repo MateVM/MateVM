@@ -57,9 +57,10 @@ mallocClassData size = do
 
 mallocStringGC :: Int -> IO (Ptr a)
 mallocStringGC size = do
-  printfMem $ printf "mallocString: %d\n" size
-  ptr <- mallocBytesGC size
-  BI.memset (castPtr ptr) 0 (fromIntegral size)
+  let size' = size + (size `rem` 4)
+  printfMem $ printf "mallocString: %d\n" size'
+  ptr <- mallocBytesGC size'
+  BI.memset (castPtr ptr) 0 (fromIntegral size')
   return ptr
 
 
