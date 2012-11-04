@@ -1,7 +1,7 @@
-module Mate.Tests.MockRefs where
+module Tests.MockRefs where
 
 import Mate.GC
-import Mate.MemoryManager
+import Mate.TwoSpaceAllocator
 
 import Foreign.Ptr
 import Foreign.Marshal.Alloc
@@ -19,6 +19,33 @@ import Control.Monad.State
 import Test.QuickCheck 
 import Test.QuickCheck.Monadic 
 
+import Mate.Debug
+import Data.List
+
+instance AllocationManager TwoSpace where
+  mallocBytesT = mallocBytes'
+  performCollection m = performCollectionIO (map fst $ M.toList m)
+  
+  heapSize = do space <- get
+                return $ fromIntegral $ toHeap space - fromIntegral (toBase space)
+
+  validRef ptr = liftM (validRef' ptr) get
+
+-- [todo hs] this is slow. merge phases to eliminate list with refs
+performCollectionIO :: RefObj a => [a] -> StateT TwoSpace IO ()
+performCollectionIO refs' = do 
+    liftIO $ printfGc "before mark\n"
+    let objFilter obj = return True
+    lifeRefs <- liftIO $ liftM (nub . concat) $ mapM (markTree'' objFilter mark refs') refs'
+    liftIO $ printfGc "marked\n"
+    liftIO $ mapM printRef lifeRefs
+    liftIO $ printfGc "go evacuate!\n"
+    evacuate' lifeRefs 
+    lift $ printfGc "eacuated. patching..\n"
+    memoryManager <- get
+    lift $ patchAllRefs (getIntPtr >=> return . flip validRef' memoryManager) lifeRefs 
+    lift $ printfGc "patched.\n"    
+
 instance RefObj (Ptr a) where
   getIntPtr   = return . ptrToIntPtr
   size a      = fmap ((+ fieldsOff) . (*4) . length) (refs a)
@@ -31,10 +58,7 @@ instance RefObj (Ptr a) where
   cast = castPtr
   getNewRef ptr = peekByteOff ptr newRefOff
   allocationOffset _ = 0
-
-instance PrintableRef (Ptr a) where
-  printRef    = printRef'
-
+  printRef = printRef'
 
 idOff           = 0x0
 numberOfObjsOff = 0x4
@@ -125,12 +149,12 @@ testEvacuation objr = do ref <- objr
                          lifeRefs <- markTree'' marked mark [] ref
                          putStrLn "initial objectTree"
                          printTree ref
-                         memoryManager <- initTwoSpace 0x10000
-                         evacuateList lifeRefs memoryManager
+                         mem <- initTwoSpace 0x10000
+                         (_,mem') <- runStateT (evacuate' lifeRefs) mem
                          print lifeRefs
                          putStrLn "oldObjectTree: "
                          printTree ref
-                         patchAllRefs lifeRefs
+                         patchAllRefs (\x -> return True) lifeRefs
                          newRef <- getNewRef ref 
                          putStrLn "resulting objectTree"
                          printTree newRef
@@ -181,7 +205,7 @@ testObjectTree' :: IO (ObjectTree -> Property)
 testObjectTree' = do
   memoryManager <- initTwoSpace 0x105000
   ref <- newIORef memoryManager
-  return ( \objTree -> monadicIO $ run (f ref objTree) >>= (assert . (==0)) )
+  return ( \objTree -> monadicIO $ run (f ref objTree) ) -- what was assert ==0 about?
   where f :: IORef TwoSpace -> ObjectTree -> IO Int
         f memRef objTree = do 
            root <- createObjects objTree
