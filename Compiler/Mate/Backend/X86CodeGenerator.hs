@@ -8,12 +8,14 @@ module Compiler.Mate.Backend.X86CodeGenerator
   , compileStateInit
   ) where
 
+import Prelude hiding (and)
+
 import qualified Data.Set as S
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as B
 import Data.Int
 import Data.Word
-import Data.List
+import Data.List hiding (and)
 import Data.Binary.IEEE754
 
 import Control.Applicative hiding ((<*>))
@@ -143,6 +145,19 @@ i322w32 :: Int32 -> Word32
 i322w32 = fromIntegral
 
 girEmitOO :: MateIR HVar O O -> CodeGen e CompileState ()
+girEmitOO (IROp And dst' src1' src2') = do
+    ge dst' src1' src2'
+  where
+    ge :: HVar -> HVar -> HVar -> CodeGen e CompileState ()
+    ge (SpillIReg d) (HIConstant c1) (HIConstant c2) = do
+      let c = i32tow32 (c1 .&. c2)
+      mov (d, ebp) c
+    ge (SpillIReg d) (SpillIReg s1) (HIConstant c2) = do
+      let dst = (d, ebp)
+      mov eax (i32tow32 c2)
+      and eax (s1, ebp)
+      mov dst eax
+    ge x y z = error $ printf "emit: irop: and: %s = %s && %s" (show x) (show y) (show z)
 girEmitOO (IROp Add dst' src1' src2') =
     ge dst' src1' src2'
   where
@@ -464,22 +479,22 @@ girEmitOO (IRLoad RTNone (SpillRReg sd) (SpillIReg dd)) = do -- arraylength
   mov eax src
   mov eax (Disp 0, eax)
   mov dst eax
-girEmitOO (IRLoad (RTIndex (HIConstant i)) (SpillIReg srcd) (SpillIReg dstd)) = do
+girEmitOO (IRLoad (RTIndex (HIConstant i) typ) (SpillIReg srcd) (SpillIReg dstd)) = do
   mov eax (srcd, ebp)
   -- TODO: ptrSize ...
-  mov eax (Disp (fromIntegral . (+8) $ i * ptrSize), eax)
+  mov eax (Disp (fromIntegral . (+8) $ i * (typeSize typ)), eax)
   mov (dstd, ebp) eax
-girEmitOO (IRLoad (RTIndex (HIConstant i)) (SpillIReg srcd) (SpillRReg dstd)) = do
+girEmitOO (IRLoad (RTIndex (HIConstant i) typ) (SpillIReg srcd) (SpillRReg dstd)) = do
   mov eax (srcd, ebp)
   -- TODO: ptrSize ...
-  mov eax (Disp (fromIntegral . (+8) $ i * ptrSize), eax)
+  mov eax (Disp (fromIntegral . (+8) $ i * (typeSize typ)), eax)
   mov (dstd, ebp) eax
-girEmitOO (IRLoad (RTIndex (HIConstant i)) (SpillIReg srcd) (HIReg dst)) = do
+girEmitOO (IRLoad (RTIndex (HIConstant i) typ) (SpillIReg srcd) (HIReg dst)) = do
   mov eax (srcd, ebp)
   -- TODO: ptrSize ...
-  mov eax (Disp (fromIntegral . (+8) $ i * ptrSize), eax)
+  mov eax (Disp (fromIntegral . (+8) $ i * (typeSize typ)), eax)
   mov dst eax
-girEmitOO (IRLoad (RTIndex idx) src dst) = do
+girEmitOO (IRLoad (RTIndex idx typ) src dst) = do
   let isNotEdx = case dst of
                   HIReg dst' -> dst' /= edx
                   _ -> True
@@ -489,7 +504,7 @@ girEmitOO (IRLoad (RTIndex idx) src dst) = do
   when isNotEdx $ push edx
   when isNotEbx $ push ebx
   case idx of
-    HIConstant i -> mov eax (((i32tow32 i) * ptrSize) + 8)
+    HIConstant i -> mov eax (((i32tow32 i) * (typeSize typ)) + 8)
     HIReg i -> do
       mov eax i
       mov ebx (4 :: Word32)
@@ -556,7 +571,7 @@ girEmitOO (IRStore (RTPool x) obj src) = do
           s <- getState
           setState (s { traps = M.insert trapaddr (ObjectField patcher) (traps s)})
     e -> error $ "emit: irstore: missing impl.: " ++ show e
-girEmitOO (IRStore (RTIndex idx) dst src) = do
+girEmitOO ins@(IRStore (RTIndex idx typ) dst src) = do
   let isNotEdx = case dst of
                   HIReg dst' -> dst' /= edx
                   _ -> True
@@ -570,18 +585,19 @@ girEmitOO (IRStore (RTIndex idx) dst src) = do
     HIReg i -> do
       when (i == edx || i == ebx) $ error $ "irstore: rtindex: register not avail.1"
       mov eax i
-      mov ebx (4 :: Word32)
+      mov ebx (typeSize typ :: Word32)
       mul ebx
       add eax (8 :: Word32)
     SpillIReg d -> do
       mov eax (d, ebp)
-      mov ebx (4 :: Word32)
+      mov ebx (typeSize typ :: Word32)
       mul ebx
       add eax (8 :: Word32)
   case dst of
     HIReg d -> add eax d
     SpillIReg d -> add eax (d, ebp)
     SpillRReg d -> add eax (d, ebp)
+    x -> error $ "irstore: rtindex: dst not impl.: " ++ show ins
   -- store array elem
   case src of
     HIConstant i -> mov ebx (i32tow32 i)
@@ -591,7 +607,7 @@ girEmitOO (IRStore (RTIndex idx) dst src) = do
     SpillIReg sd -> mov ebx (sd, ebp)
     SpillRReg sd -> mov ebx (sd, ebp)
   case idx of
-    HIConstant i -> mov (Disp ((+8) . (*4) $ i32tow32 i), eax) ebx
+    HIConstant i -> mov (Disp ((+8) . (*(typeSize typ)) $ i32tow32 i), eax) ebx
     HIReg i -> mov (Disp 0, eax) ebx
     SpillIReg d -> do
       mov (Disp 0, eax) ebx
@@ -772,6 +788,12 @@ getCurrentOffset = do
   ep <- (fromIntegral . ptrToIntPtr) <$> getEntryPoint
   offset <- fromIntegral <$> getCodeOffset
   return $ ep + offset
+
+typeSize :: Num a => VarType -> a
+typeSize JChar = 1
+typeSize JInt = 4
+typeSize JRef = 4
+typeSize x = error $ "typeSize: " ++ show x
 
 handleExceptionPatcher :: ExceptionHandler
 handleExceptionPatcher wbr = do

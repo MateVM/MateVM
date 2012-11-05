@@ -4,6 +4,11 @@ public class WhileArray1 {
 	public char arr[] = new char[10];
 
 	public static void main(String args[]) {
+		char arr[] = new char[2];
+		arr[0] = (char) 0x65;
+		arr[1] = 0x66;
+		System.out.printf("lol: %c\n", (char) arr[0]);
+		System.out.printf("lol: %c\n", arr[1]);
 		WhileArray1 a = new WhileArray1();
 		WhileArray1 b = new WhileArray1();
 		for (int i = 0; i < 10; i++) {

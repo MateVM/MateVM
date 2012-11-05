@@ -31,7 +31,7 @@ logHandle = if mateDEBUG
 
 {-# INLINE mateDEBUG #-}
 mateDEBUG :: Bool
-mateDEBUG = False
+mateDEBUG = True
 
 {-# INLINE printString #-}
 printString :: String -> String -> IO ()

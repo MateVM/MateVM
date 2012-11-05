@@ -78,9 +78,9 @@ stupidRegAlloc preAssigned linsn = evalState regAlloc' startmapping
     rtRepack :: RTPool Var -> State MappedRegs (RTPool HVar)
     rtRepack (RTPool w16) = return $ RTPool w16
     rtRepack (RTArray w8 w32) = return $ RTArray w8 w32
-    rtRepack (RTIndex vreg) = do
+    rtRepack (RTIndex vreg typ) = do
       newreg <- doAssign vreg
-      return $ RTIndex newreg
+      return $ RTIndex newreg typ
     rtRepack RTNone = return RTNone
 
     assignReg :: LinearIns Var -> State MappedRegs (LinearIns HVar)
@@ -149,6 +149,7 @@ stupidRegAlloc preAssigned linsn = evalState regAlloc' startmapping
           unpackFloatReg (HFReg _) = True
           unpackFloatReg _ = False
       let unpacker = case t of
+                       JChar -> unpackIntReg
                        JInt -> unpackIntReg
                        JRef -> unpackIntReg
                        JFloat -> unpackFloatReg
@@ -180,6 +181,7 @@ stupidRegAlloc preAssigned linsn = evalState regAlloc' startmapping
             then do
               let disp = stackCnt mr
               let spill = case t of
+                            JChar -> SpillIReg (Disp disp)
                             JInt -> SpillIReg (Disp disp)
                             JFloat -> SpillFReg (Disp disp)
                             JRef -> SpillRReg (Disp disp)
@@ -199,6 +201,7 @@ stupidRegAlloc preAssigned linsn = evalState regAlloc' startmapping
         availRegs t = do
           inuse <- regsInUse t
           let allregs = case t of
+                  JChar -> allIntRegs
                   JInt -> allIntRegs
                   JRef -> allIntRegs
                   JFloat -> allFloatRegs

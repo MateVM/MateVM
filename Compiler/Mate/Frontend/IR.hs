@@ -55,6 +55,7 @@ data OpType
   = Add
   | Sub
   | Mul
+  | And
   deriving Show
 
 data HVar
@@ -73,16 +74,16 @@ deriving instance Ord Disp
 data RTPool t
   = RTPool Word16
   | RTArray Word8 Word32
-  | RTIndex t
+  | RTIndex t VarType
   | RTNone
 
 instance Show t => Show (RTPool t) where
   show (RTPool w16) = printf "RT(%02d)" w16
-  show (RTIndex t) = printf "RTIdx(%s)" (show t)
+  show (RTIndex t typ) = printf "RTIdx(%s[%s])" (show t) (show typ)
   show RTNone = ""
   show (RTArray w8 len) = printf "Array(%02d, len=%s)" w8 (show len)
 
-data VarType = JInt | JFloat | JRef deriving (Show, Eq, Ord)
+data VarType = JChar | JInt | JFloat | JRef deriving (Show, Eq, Ord)
 
 data Var
   = JIntValue Int32
