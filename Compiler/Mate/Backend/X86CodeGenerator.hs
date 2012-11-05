@@ -15,6 +15,7 @@ import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as B
 import Data.Int
 import Data.Word
+import Data.Maybe
 import Data.List hiding (and)
 import Data.Binary.IEEE754
 
@@ -55,12 +56,14 @@ compileStateInit cls m = CompileState
     { floatConsts = M.empty
     , traps = M.empty
     , classf = cls
+    , gcpoints = M.empty
     , methodName = m }
 
 data CompileState = CompileState
   { floatConsts :: M.Map Label Float
   , traps :: TrapMap
   , classf :: Class Direct
+  , gcpoints :: GCPoints
   , methodName :: B.ByteString }
 
 i32tow32 :: Int32 -> Word32
@@ -141,7 +144,17 @@ compileLinear lbls linsn = do
   let exmap :: ExceptionMap Word32
       exmap = M.empty -- TODO
   mname <- methodName <$> getState
-  let rsi = RuntimeStackInfo mname exmap
+  gcpts <- gcpoints <$> getState
+  liftIO $ printfJit "gcpoints:\n"
+  liftIO $ forM_ (M.toList gcpts) $ \(ip, lst) -> do
+            printfJit $ printf "\teip: %08x\n" ip
+            forM_ lst $ \x -> do
+              printfJit $ printf "\t\t0x%08x\n" x
+  let rsi = RuntimeStackInfo
+             { rsiMethodname = mname
+             , rsiExceptionMap = exmap
+             , rsiGCPoints = gcpts
+             }
   sptr_rsi <- liftIO $
     (fromIntegral . ptrToIntPtr . castStablePtrToPtr) <$> newStablePtr rsi
   defineLabel pushExceptionMap
@@ -379,44 +392,21 @@ girEmitOO (IROp Mul dst' src1' src2') = do
       mul src1
       mov (dst, ebp) eax
     gm d s1 s2 = error $ printf "emit: impl. mul: %s = %s * %s\n" (show d) (show s1) (show s2)
-girEmitOO (IRInvoke (RTPool cpidx) haveReturn ct) = do
-  let static = girStatic cpidx haveReturn ct
-  let virtual = girVirtual cpidx haveReturn ct
+girEmitOO (IRInvoke (RTPoolCall cpidx mapping) haveReturn ct) = do
+  let static = girStatic cpidx haveReturn ct mapping
+  let virtual = girVirtual cpidx haveReturn ct mapping
   case ct of
     CallStatic -> static
     CallSpecial -> static
     CallVirtual -> virtual
     CallInterface -> virtual
-girEmitOO (IRLoad (RTPool x) (HIConstant 0) dst) = do
+girEmitOO (IRLoad (RTPoolCall x mapping) (HIConstant 0) dst) = do
   cls <- classf <$> getState
   case constsPool cls M.! x of
-    (CString s) -> do -- load str (ldc)
-      sref <- liftIO $ getUniqueStringAddr s
-      case dst of
-        HIReg d -> mov d sref
-        SpillIReg d -> mov (d, ebp) sref
-        SpillRReg d -> mov (d, ebp) sref
-        y -> error $ "irload: emit: cstring: " ++ show y
-    (CInteger i) -> do -- load integer (ldc)
-      case dst of
-        HIReg d -> mov d i
-        SpillIReg d -> mov (d, ebp) i
-        y -> error $ "irload: emit: cinteger: " ++ show y
-    (CField rc fnt) -> do -- getstatic
-      let sfi = StaticField $ StaticFieldInfo rc (ntName fnt)
-      trapaddr <- getCurrentOffset
-      mov eax (Addr 0)
-      case dst of
-        HIReg d -> mov d eax
-        SpillIReg d -> mov (d, ebp) eax
-        SpillRReg d -> mov (d, ebp) eax
-        y -> error $ "irload: emit: cfield: " ++ show y
-      s <- getState
-      setState (s { traps = M.insert trapaddr sfi (traps s) })
     (CClass objname) -> do -- `new' object
       saveRegs
       trapaddr <- emitSigIllTrap 5
-      callMalloc
+      callMallocGCPoint mapping
       restoreRegs
       -- 0x13371337 is just a placeholder; will be replaced with mtable ptr
       mov (Disp 0, eax) (0x13371337 :: Word32)
@@ -444,6 +434,33 @@ girEmitOO (IRLoad (RTPool x) (HIConstant 0) dst) = do
       s <- getState
       setState (s { traps = M.insert trapaddr (NewObject patcher) (traps s) })
     e -> error $ "emit: irload: missing impl.: " ++ show e
+girEmitOO (IRLoad (RTPool x) (HIConstant 0) dst) = do
+  cls <- classf <$> getState
+  case constsPool cls M.! x of
+    (CString s) -> do -- load str (ldc)
+      sref <- liftIO $ getUniqueStringAddr s
+      case dst of
+        HIReg d -> mov d sref
+        SpillIReg d -> mov (d, ebp) sref
+        SpillRReg d -> mov (d, ebp) sref
+        y -> error $ "irload: emit: cstring: " ++ show y
+    (CInteger i) -> do -- load integer (ldc)
+      case dst of
+        HIReg d -> mov d i
+        SpillIReg d -> mov (d, ebp) i
+        y -> error $ "irload: emit: cinteger: " ++ show y
+    (CField rc fnt) -> do -- getstatic
+      let sfi = StaticField $ StaticFieldInfo rc (ntName fnt)
+      trapaddr <- getCurrentOffset
+      mov eax (Addr 0)
+      case dst of
+        HIReg d -> mov d eax
+        SpillIReg d -> mov (d, ebp) eax
+        SpillRReg d -> mov (d, ebp) eax
+        y -> error $ "irload: emit: cfield: " ++ show y
+      s <- getState
+      setState (s { traps = M.insert trapaddr sfi (traps s) })
+    e -> error $ "emit: irload2: missing impl.: " ++ show e
 girEmitOO (IRLoad (RTPool x) src dst) = do
   cls <- classf <$> getState
   case constsPool cls M.! x of
@@ -469,7 +486,7 @@ girEmitOO (IRLoad (RTPool x) src dst) = do
       s <- getState
       setState (s { traps = M.insert trapaddr ofp (traps s) })
     y -> error $ "emit: irload: missing impl.: getfield or something: " ++ show y
-girEmitOO (IRLoad (RTArray ta objType arrlen) (HIConstant 0) dst) = do
+girEmitOO (IRLoad (RTArray ta objType regmapping arrlen) (HIConstant 0) dst) = do
   let tsize = case decodeS (0 :: Integer) (B.pack [ta]) of
                 T_INT -> 4
                 T_CHAR -> 4
@@ -477,7 +494,7 @@ girEmitOO (IRLoad (RTArray ta objType arrlen) (HIConstant 0) dst) = do
   let len = arrlen * tsize
   saveRegs
   push (len + (3 * ptrSize))
-  callMalloc
+  callMallocGCPoint regmapping
   restoreRegs
   case objType of
     PrimitiveType -> mov (Disp 0, eax) (0x1228babe :: Word32)
@@ -651,12 +668,11 @@ girEmitOO (IRPush _ (HIConstant x)) = push (i32tow32 x)
 girEmitOO (IRPush _ (SpillIReg d)) = push (d, ebp)
 girEmitOO (IRPush _ (SpillRReg d)) = push (d, ebp)
 girEmitOO (IRPrep SaveRegs regs) = do
-  forM_ (S.toList regs) $ \ x ->
-    case x of
-      HIReg r -> push r
-      f -> error $ "emit: irprep: " ++ show f
+  forM_ (S.toList regs) $ \(HIReg x) -> do
+    mov (Disp (fromJust (saveReg x)), ebp) x
 girEmitOO (IRPrep RestoreRegs regs) = do
-  forM_ (reverse (S.toList regs)) $ \(HIReg x) -> pop x
+  forM_ (S.toList regs) $ \(HIReg x) -> do
+    mov x (Disp (fromJust (saveReg x)), ebp)
 girEmitOO (IRMisc1 jins _) = do
   case jins of
     CHECKCAST _ -> do
@@ -694,8 +710,9 @@ girEmitOO (IRMisc2 jins dst src) = do
     x -> error $ "emit: misc2: " ++ show x
 girEmitOO x = error $ "girEmitOO: insn not implemented: " ++ show x
 
-girStatic :: Word16 -> Maybe HVar -> CallType -> CodeGen e CompileState ()
-girStatic cpidx haveReturn ct = do
+girStatic :: Word16 -> Maybe HVar -> CallType -> PreGCPoint
+          -> CodeGen e CompileState ()
+girStatic cpidx haveReturn ct mapping = do
   cls <- classf <$> getState
   let hasThis = ct == CallSpecial
   let l = buildMethodID cls cpidx
@@ -706,6 +723,7 @@ girStatic cpidx haveReturn ct = do
         (entryAddr, _) <- liftIO $ getMethodEntry l
         call (fromIntegral (entryAddr - (wbEip wbr + 5)) :: NativeWord)
         return wbr
+  setGCPoint mapping
   -- discard arguments on stack
   let argcnt = ((if hasThis then 1 else 0)
                + methodGetArgsCount (methodNameTypeByIdx cls cpidx)
@@ -719,8 +737,9 @@ girStatic cpidx haveReturn ct = do
   s <- getState
   setState (s { traps = M.insert calladdr (StaticMethod patcher) (traps s) })
 
-girVirtual :: Word16 -> Maybe HVar -> CallType -> CodeGen e CompileState ()
-girVirtual cpidx haveReturn ct = do
+girVirtual :: Word16 -> Maybe HVar -> CallType -> PreGCPoint
+           -> CodeGen e CompileState ()
+girVirtual cpidx haveReturn ct mapping = do
   let isInterface = ct == CallInterface
   cls <- classf <$> getState
   let mi@(MethodInfo methodname objname msig@(MethodSignature _ _)) =
@@ -741,6 +760,7 @@ girVirtual cpidx haveReturn ct = do
   calladdr <- getCurrentOffset
   -- will be patched to this: call (Disp 0xXXXXXXXX, eax)
   emitSigIllTrap 6
+  setGCPoint mapping
 
   -- discard arguments on stack (`+1' for "this")
   let argcnt = ptrSize * (1 + methodGetArgsCount (methodNameTypeByIdx cls cpidx))
@@ -758,17 +778,50 @@ girVirtual cpidx haveReturn ct = do
                         (VirtualCall isInterface mi offset)
                         (traps s) })
 
+setGCPoint :: [(HVar, VarType)] -> CodeGen e CompileState ()
+setGCPoint mapping = do
+  ip <- getCurrentOffset
+  -- liftIO $ printfJit "setGCPoint: unfiltered:\n"
+  -- liftIO $ forM_ mapping $ \x -> do
+  --               printfJit $ printf "\t%s\n" (show x)
+  let filtered = filterJRefs mapping
+  -- liftIO $ printfJit "setGCPoint: filtered:\n"
+  -- liftIO $ forM_ filtered $ \x -> do
+  --               printfJit $ printf "\t0x%08x\n" x
+  s <- getState
+  setState (s { gcpoints = M.insert ip filtered (gcpoints s) })
+
+
+filterJRefs :: [(HVar, VarType)] -> GCPoint
+filterJRefs = mapMaybe frefs
+  where
+    frefs (SpillRReg (Disp d), JRef) = Just d
+    frefs (SpillIReg _, JRef) = error "filterJRefs: can this happen? 1"
+    frefs (HIReg reg32, JRef) = saveReg reg32
+    frefs _ = Nothing
+
+saveReg :: Reg32 -> Maybe Word32
+saveReg (Reg32 w8) =
+  case w8 of
+    0 {- eax -} -> Nothing
+    1 {- ecx -} -> Just 0xfffffffc
+    2 {- edx -} -> Just 0xfffffff8
+    3 {- ebx -} -> Just 0xfffffff4
+    4 {- esp -} -> error "saveReg: esp???"
+    5 {- ebp -} -> error "saveReg: ebp???"
+    6 {- esi -} -> Just 0xfffffff0
+    7 {- edi -} -> Just 0xffffffec
+    _ -> error "saveReg: ?????"
+
 saveRegs :: CodeGen e s ()
 saveRegs = do
-  push ecx; push edx
-  push ebx; push esi
-  push edi
+  forM_ [ecx, edx, ebx, esi, edi] $ \x -> do
+    mov (Disp (fromJust (saveReg x)), ebp) x
 
 restoreRegs :: CodeGen e s ()
 restoreRegs = do
-  pop edi
-  pop esi; pop ebx
-  pop edx; pop ecx
+  forM_ [ecx, edx, ebx, esi, edi] $ \x -> do
+    mov x (Disp (fromJust (saveReg x)), ebp)
 
 -- helper
 callMalloc :: CodeGen e s ()
@@ -776,6 +829,14 @@ callMalloc = do
   push ebp
   push esp
   call mallocObjectAddr
+  add esp ((3 * ptrSize) :: Word32)
+
+callMallocGCPoint :: PreGCPoint -> CodeGen e CompileState ()
+callMallocGCPoint regmapping = do
+  push ebp
+  push esp
+  call mallocObjectAddr
+  setGCPoint regmapping
   add esp ((3 * ptrSize) :: Word32)
 
 

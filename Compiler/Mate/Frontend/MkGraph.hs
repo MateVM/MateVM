@@ -39,7 +39,7 @@ data SimStack = SimStack
   , regcnt :: Integer
   , classf :: Class Direct
   , method :: Method Direct
-  , preRegs :: [(Integer, HVar)]
+  , preRegs :: [(Integer, (HVar, VarType))]
   }
 
 data LabelLookup = LabelLookup
@@ -401,7 +401,7 @@ tir (LDC2 x) = do
 tir (NEW x) = do
   nv <- newvar JRef
   apush nv
-  return [IRLoad (RTPool x) JRefNull nv]
+  return [IRLoad (RTPoolCall x []) JRefNull nv]
 tir (ANEWARRAY _) = tirArray ReferenceType 10 -- for int. TODO?
 tir (NEWARRAY w8) = tirArray PrimitiveType w8
 tir ARRAYLENGTH = do
@@ -463,7 +463,7 @@ tirArray objtype w8 = do
               x -> error $ "tir: anewarray: len is not constant: " ++ show x
   nv <- newvar JRef
   apush nv
-  return [IRLoad (RTArray w8 objtype len') JRefNull nv]
+  return [IRLoad (RTArray w8 objtype [] len') JRefNull nv]
 
 tirArrayLoad :: VarType -> State SimStack [MateIR Var O O]
 tirArrayLoad t = do
@@ -517,7 +517,8 @@ tirInvoke ct ident = do
         let nr8 = fromIntegral nr
         let nri = fromIntegral nr
         let assign = preFloats !! nri
-        modify (\s -> s { preRegs = (assign, HFReg $ XMMReg nr8) : (preRegs s) })
+        modify (\s -> s { preRegs = (assign, (HFReg $ XMMReg nr8, JFloat))
+                                    : (preRegs s) })
         return $ IROp Add (VReg x assign) y (JFloatValue 0) -- mov
   (targetreg, maybemov) <- case mret of
     Just x -> do
@@ -533,7 +534,7 @@ tirInvoke ct ident = do
       return (Just nv, Just movretval)
     Nothing -> return (Nothing, Nothing)
   let r = (IRPrep SaveRegs S.empty): pushes ++
-          [IRInvoke (RTPool ident) targetreg ct, IRPrep RestoreRegs S.empty]
+          [IRInvoke (RTPoolCall ident []) targetreg ct, IRPrep RestoreRegs S.empty]
   case maybemov of
     Nothing -> return r
     Just m -> return $ r ++ [m]
@@ -561,27 +562,34 @@ tirLoad x t = do
 maybeArgument :: Word8 -> VarType -> State SimStack Var
 maybeArgument x t = do
   meth <- method <$> get
+  let genVReg :: (Disp -> HVar) -> Integer
+              -> Word8 -> VarType
+              -> (Integer, (HVar, VarType))
+      genVReg constructor a w8 t' =
+        (a,
+           (constructor . Disp . (+0xc) . fromIntegral $ (ptrSize * w8)
+           , t'))
   if x < methodArgs meth
     then do
       case t of
        JFloat -> do
          let assign = preFloats !! (fromIntegral x)
-         let tup = (assign, HFReg . XMMReg . fromIntegral $ x)
+         let tup = (assign, (HFReg . XMMReg . fromIntegral $ x, JFloat))
          modify (\s -> s { preRegs = tup : (preRegs s) })
          return $ VReg t assign
        JRef -> do
          let assign = preArgs !! (fromIntegral x)
-         let tup = (assign, SpillRReg . Disp . (+0xc) . fromIntegral $ (ptrSize * x))
+         let tup = genVReg SpillRReg assign x JInt
          modify (\s -> s { preRegs = tup : (preRegs s) })
          return $ VReg t assign
        JInt -> do
          let assign = preArgs !! (fromIntegral x)
-         let tup = (assign, SpillIReg . Disp . (+0xc) . fromIntegral $ (ptrSize * x))
+         let tup = genVReg SpillIReg assign x JInt
          modify (\s -> s { preRegs = tup : (preRegs s) })
          return $ VReg t assign
        JChar -> do
          let assign = preArgs !! (fromIntegral x)
-         let tup = (assign, SpillIReg . Disp . (+0xc) . fromIntegral $ (ptrSize * x))
+         let tup = genVReg SpillIReg assign x JInt
          modify (\s -> s { preRegs = tup : (preRegs s) })
          return $ VReg t assign
     else return $ VReg t (fromIntegral x)

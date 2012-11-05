@@ -15,14 +15,16 @@ import Data.Word
 import Control.Applicative
 import Control.Monad.State
 
-import Harpy hiding (Label)
+import Harpy hiding (Label, fst)
 
 import Compiler.Mate.Frontend.IR
 import Compiler.Mate.Frontend.Linear
 
+type RegisterMap = M.Map Integer (HVar, VarType)
+
 {- regalloc PoC -}
 data MappedRegs = MappedRegs
-  { regMap :: M.Map Integer HVar
+  { regMap :: RegisterMap
   , regsUsed :: S.Set HVar -- for fast access
   , stackCnt :: Word32 }
 
@@ -38,10 +40,10 @@ preArgsStart = 200000
 preArgs :: [Integer]
 preArgs = [preArgsStart .. (preArgsStart + preArgsLength - 1)]
 
-preAssignedRegs :: M.Map Integer HVar
+preAssignedRegs :: RegisterMap
 preAssignedRegs = M.fromList $
-                  [ (preeax,  HIReg eax)
-                  , (prexmm7, HFReg xmm7)
+                  [ (preeax,  (HIReg eax, JInt))
+                  , (prexmm7, (HFReg xmm7, JFloat))
                   ]
 
 -- calling convention for floats is different: arguments are passed via xmm
@@ -53,7 +55,7 @@ preFloats :: [Integer]
 preFloats = [preFloatStart .. (preFloatStart + 5)]
 
 emptyRegs :: MappedRegs
-emptyRegs = MappedRegs preAssignedRegs S.empty (0xfffffffc) -- TODO: stack space...
+emptyRegs = MappedRegs preAssignedRegs S.empty (0xffffffe8) -- TODO: stack space...
 
 allIntRegs, allFloatRegs :: S.Set HVar
 -- register usage:
@@ -63,19 +65,31 @@ allIntRegs, allFloatRegs :: S.Set HVar
 allIntRegs = S.fromList $ map HIReg [ecx, edx, ebx, esi, edi]
 allFloatRegs = S.fromList $ map HFReg [xmm0, xmm1, xmm2, xmm3, xmm4, xmm5, xmm6]
 
-stupidRegAlloc :: [(Integer, HVar)] -> [LinearIns Var] -> [LinearIns HVar]
+stupidRegAlloc :: [(Integer, (HVar, VarType))]
+               -> [LinearIns Var]
+               -> [LinearIns HVar]
 stupidRegAlloc preAssigned linsn = evalState regAlloc' startmapping
   where
     startassign = M.union (regMap emptyRegs) (M.fromList preAssigned)
     startmapping = emptyRegs { regMap = startassign
                              , regsUsed = S.filter regsonly
+                                        $ S.map fst
                                         $ S.fromList
                                         $ M.elems startassign }
     regAlloc' = mapM assignReg linsn
 
     rtRepack :: RTPool Var -> State MappedRegs (RTPool HVar)
     rtRepack (RTPool w16) = return $ RTPool w16
-    rtRepack (RTArray w8 obj w32) = return $ RTArray w8 obj w32
+    rtRepack (RTPoolCall w16 []) = do
+      mapping <- M.elems <$> regMap <$> get
+      return $ RTPoolCall w16 mapping
+    rtRepack (RTPoolCall _ x) = do
+      error $ "regalloc: rtpoolcall: mapping should be empty: " ++ show x
+    rtRepack (RTArray w8 obj [] w32) = do
+      mapping <- M.elems <$> regMap <$> get
+      return $ RTArray w8 obj mapping w32
+    rtRepack (RTArray _ _ x _) = do
+      error $ "regalloc: rtArray: mapping should be empty: " ++ show x
     rtRepack (RTIndex vreg typ) = do
       newreg <- doAssign vreg
       return $ RTIndex newreg typ
@@ -168,7 +182,7 @@ stupidRegAlloc preAssigned linsn = evalState regAlloc' startmapping
         hasAssign x = error $ "hasAssign: " ++ show x
 
         getAssign :: Var -> State MappedRegs HVar
-        getAssign (VReg _ vreg) = (M.! vreg) <$> regMap <$> get
+        getAssign (VReg _ vreg) = fst <$> (M.! vreg) <$> regMap <$> get
         getAssign x = error $ "getAssign: " ++ show x
 
         nextAvailReg:: Var -> State MappedRegs HVar
@@ -183,13 +197,13 @@ stupidRegAlloc preAssigned linsn = evalState regAlloc' startmapping
                             JInt -> SpillIReg (Disp disp)
                             JFloat -> SpillFReg (Disp disp)
                             JRef -> SpillRReg (Disp disp)
-              let imap = M.insert vreg spill $ regMap mr
+              let imap = M.insert vreg (spill, t) $ regMap mr
               put (mr { stackCnt = disp - 4
                       , regMap = imap} )
               return spill
             else do
               let x = S.findMin availregs
-              let imap = M.insert vreg x $ regMap mr
+              let imap = M.insert vreg (x, t) $ regMap mr
               put (mr { regMap = imap
                       , regsUsed = S.insert x availregs })
               return x
@@ -204,6 +218,4 @@ stupidRegAlloc preAssigned linsn = evalState regAlloc' startmapping
                   JRef -> allIntRegs
                   JFloat -> allFloatRegs
           return (allregs S.\\ inuse)
-
-
 {- /regalloc -}

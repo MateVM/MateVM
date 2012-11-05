@@ -1,13 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Compiler.Mate.Types
-  ( BlockID
-  , BasicBlock(..)
-  , BBEnd(..)
-  , MapBB
-  , ExceptionMap
+  ( ExceptionMap
   , RuntimeStackInfo(..)
+  , StackDisp, GCPoint, GCPoints, GCSet, rootSet
   , JpcNpcMap
-  , RawMethod(..)
   , TrapPatcher, TrapPatcherEax
   , ExceptionHandler
   , WriteBackRegs(..)
@@ -47,40 +43,32 @@ import JVM.Assembler
 import Compiler.Mate.Backend.NativeSizes
 
 
-type BlockID = Int
--- Represents a CFG node
-data BasicBlock = BasicBlock {
-  code :: [(Int, Instruction)],
-  bblength :: Int,
-  successor :: BBEnd }
-
--- describes (leaving) edges of a CFG node
-data BBEnd
-  = Return
-  | FallThrough BlockID
-  | OneTarget BlockID
-  | TwoTarget BlockID BlockID
-  | SwitchTarget [(Maybe Word32, BlockID)]
-  deriving Show
-
-type MapBB = M.Map BlockID BasicBlock
 type ExceptionMap a = M.Map (a, a) [(B.ByteString, a)]
-data RuntimeStackInfo = RuntimeStackInfo {
-  rsiMethodname :: B.ByteString,
-  rsiExceptionMap :: ExceptionMap NativeWord } deriving Show
+data RuntimeStackInfo = RuntimeStackInfo
+  { rsiMethodname :: B.ByteString
+  , rsiExceptionMap :: ExceptionMap NativeWord
+  , rsiGCPoints :: GCPoints
+  } deriving Show
+
+type StackDisp = NativeWord -- stack displacement
+-- TODO: replace list with Set?
+type GCPoint = [StackDisp] -- information for one GC Point (e.g. `NEW')
+
+-- a method can has several points in program where it calls the GC.
+-- however, the stack layout can be different for each point
+type GCPoints = M.Map NativeWord -- instruction pointer
+                      GCPoint
+
+-- at runtime, the GC can build a GCSet via stack walks
+type GCSet = [(Word32 {- ebp -}, GCPoint)]
+
+-- the rootSet contains all addresses of valids Java references (e.g. objects,
+-- arrays, ... ?)
+rootSet :: GCSet -> [Word32]
+rootSet = concatMap (\(base, points) -> map (+base) points)
 
 -- java byte code PC -> native PC
 type JpcNpcMap = M.Map Int Word32
-
-data RawMethod = RawMethod {
-  rawMapBB :: MapBB,
-  rawExcpMap :: ExceptionMap Word16,
-  rawLocals :: Int,
-  rawStackSize :: Int,
-  rawArgCount :: NativeWord,
-  rawMethodName :: B.ByteString,
-  rawCodeLength :: NativeWord }
-
 
 -- NativeWord = point of method call in generated code
 -- MethodInfo = relevant information about callee

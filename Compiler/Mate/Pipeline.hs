@@ -46,8 +46,8 @@ pipeline cls meth jvminsn = do
     -- printfPipe $ printf "%s\n" (showGraph show optgraph)
     -- prettyHeader "Flatten Graph"
     -- printfPipe $ printf "%s\n" (show linear)
-    -- prettyHeader "Register Allocation"
-    -- printfPipe $ printf "%s\n" (show ra)
+    prettyHeader "Register Allocation"
+    printfPipe $ printf "%s\n" (show ra)
     prettyHeader "Code Generation"
 
     let cgconfig = defaultCodeGenConfig

@@ -10,6 +10,7 @@ module Compiler.Mate.Frontend.IR
  , HVar(..)
  , Var(..)
  , RTPool(..)
+ , PreGCPoint
  , VarType(..)
  , varType
  ) where
@@ -73,17 +74,23 @@ data HVar
 deriving instance Eq Disp
 deriving instance Ord Disp
 
+type PreGCPoint = [(HVar, VarType)]
+
 data RTPool t
   = RTPool Word16
-  | RTArray Word8 MateObjType Word32
+  | RTPoolCall Word16 PreGCPoint
+  | RTArray Word8 MateObjType PreGCPoint Word32
   | RTIndex t VarType
   | RTNone
 
 instance Show t => Show (RTPool t) where
   show (RTPool w16) = printf "RT(%02d)" w16
+  show (RTPoolCall w16 _) = printf "RTCall(%02d)" w16
   show (RTIndex t typ) = printf "RTIdx(%s[%s])" (show t) (show typ)
   show RTNone = ""
-  show (RTArray w8 mot len) = printf "Array(%02d, len=%s, %s)" w8 (show len) (show mot)
+  show (RTArray w8 mot _ len) =
+    -- (concatMap (\x -> printf "\t\t%s\n" (show x)) regmap) ++
+    (printf "Array(%02d, len=%s, %s)\n" w8 (show len) (show mot))
 
 data VarType = JChar | JInt | JFloat | JRef deriving (Show, Eq, Ord)
 
