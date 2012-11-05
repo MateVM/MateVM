@@ -65,6 +65,12 @@ struct chararray {
 	char str;
 };
 
+void jmate_io_PrintStream__printf_X___Ljava_lang_String_Ljava_lang_Object__V
+	(struct string *fmt, struct integer *a1)
+{
+	printf("-EWRONG_PRINTF_ARGS: 0x%08x\n", a1->value);
+}
+
 void jmate_io_PrintStream__printf_0___Ljava_lang_String__V
 	(struct string *fmt)
 {
@@ -72,7 +78,7 @@ void jmate_io_PrintStream__printf_0___Ljava_lang_String__V
 }
 
 void jmate_io_PrintStream__printf_1___Ljava_lang_String_Ljava_lang_Object__V
-	(struct integer *a1, struct string *fmt)
+	(struct string *fmt, struct integer *a1)
 {
 #if 0
 	printf("fmt:        0x%08x\n", (unsigned int) fmt);
@@ -85,26 +91,26 @@ void jmate_io_PrintStream__printf_1___Ljava_lang_String_Ljava_lang_Object__V
 }
 
 void jmate_io_PrintStream__printf_2___Ljava_lang_String_Ljava_lang_Object_Ljava_lang_Object__V
-	(struct integer *a2, struct integer *a1, struct string *fmt)
+	(struct string *fmt, struct integer *a1, struct integer *a2)
 {
 	printf(&fmt->value->str, a1->value, a2->value);
 }
 
 void
 jmate_io_PrintStream__printf_3___Ljava_lang_String_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object__V
-	(struct integer *a3, struct integer *a2, struct integer *a1, struct string *fmt)
+	(struct string *fmt, struct integer *a1, struct integer *a2, struct integer *a3)
 {
 	printf(&fmt->value->str, a1->value, a2->value, a3->value);
 }
 
 void jmate_io_PrintStream__printf_4___Ljava_lang_String_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object__V
-	(struct integer *a4, struct integer *a3, struct integer *a2, struct integer *a1, struct string *fmt)
+	(struct string *fmt, struct integer *a1, struct integer *a2, struct integer *a3, struct integer *a4)
 {
 	printf(&fmt->value->str, a1->value, a2->value, a3->value, a4->value);
 }
 
 void jmate_io_PrintStream__printf_5___Ljava_lang_String_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object_Ljava_lang_Object__V
-	(struct integer *a5, struct integer *a4, struct integer *a3, struct integer *a2, struct integer *a1, struct string *fmt)
+	(struct string *fmt, struct integer *a1, struct integer *a2, struct integer *a3, struct integer *a4, struct integer *a5)
 {
 	printf(&fmt->value->str, a1->value, a2->value, a3->value, a4->value, a5->value);
 }
@@ -122,6 +128,7 @@ void java_lang_VMSystem__arraycopy___Ljava_lang_Object_ILjava_lang_Object_II_V(
 		struct chararray *dest, int dest_start, int len)
 #endif
 {
+	fprintf(stderr, "TODO: vmsystem.arraycopy: args order!\n");
 	memcpy(&dest->str, &src->str + src_start, len);
 	dest->length = len;
 #if 0
