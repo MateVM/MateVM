@@ -452,7 +452,7 @@ girEmitOO (IRLoad (RTPool x) src dst) = do
 girEmitOO (IRLoad (RTArray ta arrlen) (HIConstant 0) dst) = do
   let tsize = case decodeS (0 :: Integer) (B.pack [ta]) of
                 T_INT -> 4
-                T_CHAR -> 2
+                T_CHAR -> 1
                 _ -> error "newarray: type not implemented yet"
   let len = arrlen * tsize
   saveRegs
@@ -508,12 +508,12 @@ girEmitOO (IRLoad (RTIndex idx typ) src dst) = do
     HIConstant i -> mov eax (((i32tow32 i) * (typeSize typ)) + 8)
     HIReg i -> do
       mov eax i
-      mov ebx (4 :: Word32)
+      mov ebx (typeSize typ :: Word32)
       mul ebx
       add eax (8 :: Word32)
     SpillIReg d -> do
       mov eax (d, ebp)
-      mov ebx (4 :: Word32)
+      mov ebx (typeSize typ :: Word32)
       mul ebx
       add eax (8 :: Word32)
   case src of

@@ -111,7 +111,7 @@ stupidRegAlloc preAssigned linsn = evalState regAlloc' startmapping
           srcnew <- doAssign src
           return $ Mid $ IRMisc2 jins dstnew srcnew
         IRPrep typ _ -> do
-          ru <- regsInUse JInt -- TODO: float
+          ru <- S.delete (HIReg eax) <$> regsInUse JInt -- TODO: float. TODO: eax
           return $ Mid $ IRPrep typ ru
         IRPush nr src -> do
           srcnew <- doAssign src

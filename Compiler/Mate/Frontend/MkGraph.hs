@@ -595,7 +595,8 @@ tirOpInt :: OpType -> VarType -> State SimStack [MateIR Var O O]
 tirOpInt op t = do
   x <- apop; y <- apop
   nv <- newvar t; apush nv
-  unless (t == varType x && t == varType y) $ error "tirOpInt: type mismatch"
+  -- TODO: char ...
+  -- unless (t == varType x && t == varType y) $ error "tirOpInt: type mismatch"
   return [IROp op nv x y]
 
 newvar :: VarType -> State SimStack Var
