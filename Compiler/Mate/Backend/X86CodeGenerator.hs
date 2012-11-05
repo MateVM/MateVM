@@ -77,7 +77,7 @@ compileLinear lbls linsn = do
   push ebp
   jmp pushExceptionMap
   stacksetup @@ mov ebp esp
-  let stackalloc = 0x300 :: Word32 -- TODO
+  let stackalloc = 0x1000 :: Word32 -- TODO
   sub esp stackalloc
   bblabels <- forM (M.elems lbls) $ \h -> do
                 l <- newNamedLabel ("Label: " ++ show h)
