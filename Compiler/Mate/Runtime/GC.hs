@@ -9,7 +9,7 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Text.Printf
 import Foreign.Ptr (IntPtr, Ptr)
-import Mate.Debug
+import Compiler.Mate.Debug
 
 class (Eq a, Ord a, Show a) => RefObj a where
   

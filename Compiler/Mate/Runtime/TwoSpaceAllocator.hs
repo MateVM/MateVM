@@ -1,13 +1,13 @@
-module Mate.TwoSpaceAllocator where
+module Compiler.Mate.Runtime.TwoSpaceAllocator where
 
 import Foreign
 import Control.Monad.State
 import Control.Applicative
 import qualified Foreign.Marshal.Alloc as Alloc
 
-import Mate.GC hiding (size)
-import qualified Mate.GC as GC
-import Mate.Debug
+import Compiler.Mate.Runtime.GC hiding (size)
+import qualified Compiler.Mate.Runtime.GC as GC
+import Compiler.Mate.Debug
 
 data TwoSpace = TwoSpace { fromBase :: IntPtr, 
                            toBase   :: IntPtr, 

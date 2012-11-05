@@ -1,4 +1,4 @@
-module Mate.GarbageAlloc where
+module Compiler.Mate.Runtime.GarbageAlloc where
 
 import Foreign
 import Foreign.C

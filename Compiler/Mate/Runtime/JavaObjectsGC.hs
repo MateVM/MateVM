@@ -16,8 +16,8 @@ import Text.Printf
 
 import Control.Monad
 import JVM.ClassFile
-import Mate.JavaObjects
-import Mate.Debug
+import Compiler.Mate.Runtime.JavaObjects
+import Compiler.Mate.Debug
 
 instance RefObj (Ptr a) where
   getIntPtr   = return . ptrToIntPtr
