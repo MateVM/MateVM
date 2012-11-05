@@ -8,10 +8,8 @@ module Compiler.Mate.Frontend.StupidRegisterAllocation
   , ptrSize -- TODO...
   ) where
 
-import qualified Data.List as L
 import qualified Data.Set as S
 import qualified Data.Map as M
-import Data.Maybe
 import Data.Word
 
 import Control.Applicative

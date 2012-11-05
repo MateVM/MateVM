@@ -33,8 +33,6 @@ import Compiler.Mate.Debug
 import Compiler.Mate.Frontend.IR
 import Compiler.Mate.Frontend.StupidRegisterAllocation
 
-import Text.Printf
-
 data SimStack = SimStack
   { stack :: [Var]
   , regcnt :: Integer
@@ -217,10 +215,10 @@ toMid = do
           unless (varType op1 == varType op2) $ error "toLast IF_ACMP: type mismatch"
           ifstuff jcmp rel op1 op2
         (GOTO rel) -> do
-          jmp <- addLabel (pc + w162i32 rel)
+          jump <- addLabel (pc + w162i32 rel)
           incrementPC ins
           popInstruction
-          return $ ([], IRJump jmp)
+          return $ ([], IRJump jump)
         _ -> do -- fallthrough case
           next <- addLabel (pc + insnLength ins)
           insIR <- normalIns ins
@@ -235,6 +233,7 @@ toMid = do
           unless (varType r == t) $ error "toLast return: type mismatch"
           return $ ([], IRReturn $ Just r)
 
+handleBlockEnd :: LabelState [MateIR Var O O]
 handleBlockEnd = do
   st <- simStack <$> get
   let len = L.genericLength $ stack $ st
@@ -246,14 +245,10 @@ handleBlockEnd = do
         forM targets $ \t -> do
           be <- M.lookup t <$> blockEnds <$> get
           let be' = case be of
-                      Just x -> x
+                      Just x' -> x'
                       Nothing -> []
           modify (\s -> s { blockEnds = M.insert t (x:be') (blockEnds s)})
-        let nul = case (varType x) of
-                    JInt -> JIntValue 0
-                    JFloat -> JFloatValue 0
-                    JRef -> JRefNull
-        return (IROp Add (VReg (varType x) r) x nul)
+        return (IROp Add (VReg (varType x) r) x (nul (varType x)))
     else return []
 
 insnLength :: Integral a => J.Instruction -> a
@@ -334,7 +329,7 @@ fieldType2VarType CharByte = JChar
 fieldType2VarType BoolType = JInt -- TODO: is this okay?
 fieldType2VarType FloatType = JFloat
 fieldType2VarType (ObjectType _) = JRef
-fieldType2VarType (Array _ ty) = JRef -- fieldType2VarType ty
+fieldType2VarType (Array _ _) = JRef -- fieldType2VarType ty -- TODO
 fieldType2VarType x = error $ "fieldType2VarType: " ++ show x
 
 tir :: J.Instruction -> State SimStack [MateIR Var O O]
@@ -373,8 +368,8 @@ tir (PUTFIELD x) = do
   src <- apop
   obj <- apop
   unless (JRef == varType obj) $ error "putfield: type mismatch"
-  cls <- classf <$> get
   -- TODO: char shit...
+  -- cls <- classf <$> get
   -- unless (fieldType cls x == varType src) $ error "putfield: type mismatch2"
   return [IRStore (RTPool x) obj src]
 tir (GETFIELD x) = do
@@ -406,7 +401,7 @@ tir (NEW x) = do
   nv <- newvar JRef
   apush nv
   return [IRLoad (RTPool x) JRefNull nv]
-tir (ANEWARRAY w16) = tir (NEWARRAY 10) -- for int. TODO?
+tir (ANEWARRAY _) = tir (NEWARRAY 10) -- for int. TODO?
 tir (NEWARRAY w8) = do
   len <- apop
   let len' = case len of
@@ -527,6 +522,7 @@ tirInvoke ct ident = do
                       JInt -> preeax
                       JFloat -> prexmm7
                       JRef -> preeax
+                      y -> error $ "tirInvoke: prereg: " ++ show y
       let nv = VReg x prereg
       movtarget <- newvar x
       tracePipe(printf "return: %s@%s\n" (show prereg) (show x)) $apush movtarget
@@ -544,17 +540,20 @@ tirLoad' x t = do
   vreg <- maybeArgument x t
   apush vreg
 
+nul :: VarType -> Var
+nul t = case t of
+  JInt -> JIntValue 0
+  JFloat -> JFloatValue 0
+  JRef -> JRefNull
+  x -> error $ "tirLoad: nul: " ++ show x
+
 tirLoad :: Word8 -> VarType -> State SimStack [MateIR Var O O]
 tirLoad x t = do
   tirLoad' x t
   vreg <- apop
   nv <- newvar t
   apush nv
-  let nul = case t of
-              JInt -> JIntValue 0
-              JFloat -> JFloatValue 0
-              JRef -> JRefNull
-  return [IROp Add nv vreg nul]
+  return [IROp Add nv vreg (nul t)]
 
 maybeArgument :: Word8 -> VarType -> State SimStack Var
 maybeArgument x t = do
@@ -577,19 +576,20 @@ maybeArgument x t = do
          let tup = (assign, SpillIReg . Disp . (+0xc) . fromIntegral $ (ptrSize * x))
          modify (\s -> s { preRegs = tup : (preRegs s) })
          return $ VReg t assign
+       JChar -> do
+         let assign = preArgs !! (fromIntegral x)
+         let tup = (assign, SpillIReg . Disp . (+0xc) . fromIntegral $ (ptrSize * x))
+         modify (\s -> s { preRegs = tup : (preRegs s) })
+         return $ VReg t assign
     else return $ VReg t (fromIntegral x)
 
 
 tirStore :: Word8 -> VarType -> State SimStack [MateIR Var O O]
 tirStore w8 t = do
   x <- apop
-  let nul = case t of
-              JInt -> JIntValue 0
-              JFloat -> JFloatValue 0
-              JRef -> JRefNull
   unless (t == varType x) $ error "tirStore: type mismatch"
   vreg <- maybeArgument w8 t
-  return [IROp Add vreg x nul]
+  return [IROp Add vreg x (nul t)]
 
 tirOpInt :: OpType -> VarType -> State SimStack [MateIR Var O O]
 tirOpInt op t = do

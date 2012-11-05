@@ -394,12 +394,12 @@ girEmitOO (IRLoad (RTPool x) (HIConstant 0) dst) = do
         HIReg d -> mov d sref
         SpillIReg d -> mov (d, ebp) sref
         SpillRReg d -> mov (d, ebp) sref
-        x -> error $ "irload: emit: cstring: " ++ show x
+        y -> error $ "irload: emit: cstring: " ++ show y
     (CInteger i) -> do -- load integer (ldc)
       case dst of
         HIReg d -> mov d i
         SpillIReg d -> mov (d, ebp) i
-        x -> error $ "irload: emit: cinteger: " ++ show x
+        y -> error $ "irload: emit: cinteger: " ++ show y
     (CField rc fnt) -> do -- getstatic
       let sfi = StaticField $ StaticFieldInfo rc (ntName fnt)
       trapaddr <- getCurrentOffset
@@ -408,7 +408,7 @@ girEmitOO (IRLoad (RTPool x) (HIConstant 0) dst) = do
         HIReg d -> mov d eax
         SpillIReg d -> mov (d, ebp) eax
         SpillRReg d -> mov (d, ebp) eax
-        x -> error $ "irload: emit: cfield: " ++ show x
+        y -> error $ "irload: emit: cfield: " ++ show y
       s <- getState
       setState (s { traps = M.insert trapaddr sfi (traps s) })
     (CClass objname) -> do -- `new' object
@@ -423,7 +423,7 @@ girEmitOO (IRLoad (RTPool x) (HIConstant 0) dst) = do
         HIReg d -> mov d eax
         SpillIReg d -> mov (d, ebp) eax
         SpillRReg d -> mov (d, ebp) eax
-        x -> error $ "irload: emit: cclass: " ++ show x
+        y -> error $ "irload: emit: cclass: " ++ show y
       let patcher wbr = do
             objsize <- liftIO $ getObjectSize objname
             push32 objsize
@@ -437,6 +437,7 @@ girEmitOO (IRLoad (RTPool x) (HIConstant 0) dst) = do
               HIReg d -> mov d eax
               SpillIReg d -> mov (d, ebp) eax
               SpillRReg d -> mov (d, ebp) eax
+              y -> error $ "irload: emit: cclass2: " ++ show y
             return wbr
       s <- getState
       setState (s { traps = M.insert trapaddr (NewObject patcher) (traps s) })
@@ -450,6 +451,7 @@ girEmitOO (IRLoad (RTPool x) src dst) = do
         HIReg s -> mov eax s
         SpillIReg sd -> mov eax (sd, ebp)
         SpillRReg sd -> mov eax (sd, ebp)
+        y -> error $ "irload: emit: cfield: src: " ++ show y
       trapaddr <- emitSigIllTrap 7
       let patcher wbr = do
             offset <- liftIO $ fromIntegral <$> getFieldOffset rc (ntName fnt)
@@ -459,11 +461,12 @@ girEmitOO (IRLoad (RTPool x) src dst) = do
         HIReg d -> mov d ebx
         SpillIReg dd -> mov (dd, ebp) ebx
         SpillRReg dd -> mov (dd, ebp) ebx
+        y -> error $ "irload: emit: cfield: dst: " ++ show y
       pop ebx
       let ofp = ObjectField patcher
       s <- getState
       setState (s { traps = M.insert trapaddr ofp (traps s) })
-    x -> error $ "emit: irload: missing impl.: getfield or something: " ++ show x
+    y -> error $ "emit: irload: missing impl.: getfield or something: " ++ show y
 girEmitOO (IRLoad (RTArray ta arrlen) (HIConstant 0) dst) = do
   let tsize = case decodeS (0 :: Integer) (B.pack [ta]) of
                 T_INT -> 4
@@ -531,10 +534,12 @@ girEmitOO (IRLoad (RTIndex idx typ) src dst) = do
       mov ebx (typeSize typ :: Word32)
       mul ebx
       add eax (8 :: Word32)
+    y -> error $ "girEmitOO: irload: rtindex: idx1: " ++ show y
   case src of
     HIReg s -> do add eax s
     SpillIReg d -> do add eax (d, ebp)
     SpillRReg d -> do add eax (d, ebp)
+    y -> error $ "girEmitOO: irload: rtindex: src: " ++ show y
   case dst of
     HIReg d -> do mov d (Disp 0, eax)
     SpillIReg d -> do
@@ -543,6 +548,7 @@ girEmitOO (IRLoad (RTIndex idx typ) src dst) = do
     SpillRReg d -> do
       mov ebx (Disp 0, eax)
       mov (d, ebp) ebx
+    y -> error $ "girEmitOO: irload: rtindex: dst: " ++ show y
   when isNotEbx $ pop ebx
   when isNotEdx $ pop edx
 
@@ -568,13 +574,13 @@ girEmitOO (IRStore (RTPool x) obj src) = do
             HIReg dst -> mov eax dst
             SpillIReg d -> mov eax (d, ebp)
             SpillRReg d -> mov eax (d, ebp)
-            x -> error $ "girEmitOO: IRStore: putfield1: " ++ show x
+            x' -> error $ "girEmitOO: IRStore: putfield1: " ++ show x'
           case src of
             HIReg s1 -> mov ebx s1
             SpillIReg d -> mov ebx (d, ebp)
             SpillRReg d -> mov ebx (d, ebp)
             HIConstant c -> mov ebx (i32tow32 c)
-            x -> error $ "girEmitOO: IRStore: putfield2: " ++ show x
+            x' -> error $ "girEmitOO: IRStore: putfield2: " ++ show x'
           -- like: 4581fc6b  89 98 30 7b 00 00 movl   %ebx,31536(%eax)
           trapaddr <- emitSigIllTrap 6
           let patcher wbr = do
@@ -587,7 +593,7 @@ girEmitOO (IRStore (RTPool x) obj src) = do
           s <- getState
           setState (s { traps = M.insert trapaddr (ObjectField patcher) (traps s)})
     e -> error $ "emit: irstore: missing impl.: " ++ show e
-girEmitOO ins@(IRStore (RTIndex idx typ) dst src) = do
+girEmitOO (IRStore (RTIndex idx typ) dst src) = do
   let isNotEdx = case dst of
                   HIReg dst' -> dst' /= edx
                   _ -> True
@@ -609,11 +615,12 @@ girEmitOO ins@(IRStore (RTIndex idx typ) dst src) = do
       mov ebx (typeSize typ :: Word32)
       mul ebx
       add eax (8 :: Word32)
+    y -> error $ "girEmitOO: irstore: rtindex: idx1: " ++ show y
   case dst of
     HIReg d -> add eax d
     SpillIReg d -> add eax (d, ebp)
     SpillRReg d -> add eax (d, ebp)
-    x -> error $ "irstore: rtindex: dst not impl.: " ++ show ins
+    y -> error $ "girEmitOO: irstore: rtindex: dst: " ++ show y
   -- store array elem
   case src of
     HIConstant i -> mov ebx (i32tow32 i)
@@ -622,15 +629,15 @@ girEmitOO ins@(IRStore (RTIndex idx typ) dst src) = do
       mov ebx s
     SpillIReg sd -> mov ebx (sd, ebp)
     SpillRReg sd -> mov ebx (sd, ebp)
+    y -> error $ "girEmitOO: irstore: rtindex: src: " ++ show y
   case idx of
     HIConstant i -> mov (Disp ((+8) . (*(typeSize typ)) $ i32tow32 i), eax) ebx
-    HIReg i -> mov (Disp 0, eax) ebx
-    SpillIReg d -> do
-      mov (Disp 0, eax) ebx
-    x -> error $ "emit: irstore: idx: " ++ show x
+    HIReg _ -> mov (Disp 0, eax) ebx
+    SpillIReg _ -> mov (Disp 0, eax) ebx
+    y -> error $ "girEmitOO: irstore: rtindex: idx2: " ++ show y
   when isNotEbx $ pop ebx
   when isNotEdx $ pop edx
-girEmitOO ins@(IRStore rt memdst src) = do
+girEmitOO ins@(IRStore _ _ _) = do
   error $ "irstore: emit: " ++ show ins
 girEmitOO (IRPush _ (HIReg x)) = push x
 girEmitOO (IRPush _ (HIConstant x)) = push (i32tow32 x)
@@ -643,7 +650,7 @@ girEmitOO (IRPrep SaveRegs regs) = do
       f -> error $ "emit: irprep: " ++ show f
 girEmitOO (IRPrep RestoreRegs regs) = do
   forM_ (reverse (S.toList regs)) $ \(HIReg x) -> pop x
-girEmitOO (IRMisc1 jins src) = do
+girEmitOO (IRMisc1 jins _) = do
   case jins of
     CHECKCAST _ -> do
       nop -- TODO ..
@@ -657,6 +664,7 @@ girEmitOO (IRMisc2 jins dst src) = do
             case dst of
               HIReg i -> mov i r
               SpillIReg d -> mov (d, ebp) r
+              y -> error $ "girEmitOO: misc2: instanceof: " ++ show y
       case src of
         HIReg s -> mov eax s
         SpillIReg d -> mov eax (d, ebp)
@@ -679,6 +687,7 @@ girEmitOO (IRMisc2 jins dst src) = do
     x -> error $ "emit: misc2: " ++ show x
 girEmitOO x = error $ "girEmitOO: insn not implemented: " ++ show x
 
+girStatic :: Word16 -> Maybe HVar -> CallType -> CodeGen e CompileState ()
 girStatic cpidx haveReturn ct = do
   cls <- classf <$> getState
   let hasThis = ct == CallSpecial
@@ -698,14 +707,16 @@ girStatic cpidx haveReturn ct = do
 
   case haveReturn of
     Just (HIReg dst) -> mov dst eax
+    Just y -> error $ "girStatic: haveReturn: " ++ show y
     Nothing -> return ()
   s <- getState
   setState (s { traps = M.insert calladdr (StaticMethod patcher) (traps s) })
 
+girVirtual :: Word16 -> Maybe HVar -> CallType -> CodeGen e CompileState ()
 girVirtual cpidx haveReturn ct = do
   let isInterface = ct == CallInterface
   cls <- classf <$> getState
-  let mi@(MethodInfo methodname objname msig@(MethodSignature args _)) =
+  let mi@(MethodInfo methodname objname msig@(MethodSignature _ _)) =
           buildMethodID cls cpidx
   newNamedLabel (show mi) >>= defineLabel
   -- get method offset for call @ runtime
@@ -713,9 +724,7 @@ girVirtual cpidx haveReturn ct = do
         if isInterface
           then getInterfaceMethodOffset objname methodname (encode msig)
           else getMethodOffset objname (methodname `B.append` encode msig)
-  let argsLen = genericLength args
   -- objref lives somewhere on the argument stack
-  -- mov ebx (Disp (argsLen * ptrSize), esp)
   mov ebx (Disp 0, esp)
   when isInterface $
     mov ebx (Disp 0, ebx) -- get method-table-ptr, keep it in ebx
@@ -733,6 +742,7 @@ girVirtual cpidx haveReturn ct = do
   case haveReturn of
     Just (HIReg dst) -> mov dst eax
     Nothing -> return ()
+    Just y -> error $ "girVirtual: haveReturn: " ++ show y
   -- note, that "mi" has the wrong class reference here.
   -- we figure that out at run-time, in the methodpool,
   -- depending on the method-table-ptr
