@@ -569,12 +569,12 @@ maybeArgument x t = do
          return $ VReg t assign
        JRef -> do
          let assign = preArgs !! (fromIntegral x)
-         let tup = (assign, SpillRReg . Disp . (+8) . fromIntegral $ (ptrSize * x))
+         let tup = (assign, SpillRReg . Disp . (+0xc) . fromIntegral $ (ptrSize * x))
          modify (\s -> s { preRegs = tup : (preRegs s) })
          return $ VReg t assign
        JInt -> do
          let assign = preArgs !! (fromIntegral x)
-         let tup = (assign, SpillIReg . Disp . (+8) . fromIntegral $ (ptrSize * x))
+         let tup = (assign, SpillIReg . Disp . (+0xc) . fromIntegral $ (ptrSize * x))
          modify (\s -> s { preRegs = tup : (preRegs s) })
          return $ VReg t assign
     else return $ VReg t (fromIntegral x)

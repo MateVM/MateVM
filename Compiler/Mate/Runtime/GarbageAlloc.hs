@@ -89,7 +89,7 @@ mallocObjectGC_stackstrace :: CPtrdiff -> CPtrdiff -> Int -> IO CPtrdiff
 mallocObjectGC_stackstrace sptr rebp size = do
   printfStr $ printf "mallocObject: %d\n" size
   printfStr $ printf "ebp @ malloc: 0x%08x\n" (fromIntegral rebp :: Word32)
-  ptr <- alloc Nothing size -- TODO: (Just (sptr, rebp)) size
+  ptr <- alloc (Just (sptr, rebp)) size
   BI.memset (castPtr ptr) 0 (fromIntegral size)
   return $ fromIntegral $ ptrToIntPtr ptr
 

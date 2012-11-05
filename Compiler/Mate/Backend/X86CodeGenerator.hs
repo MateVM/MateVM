@@ -25,7 +25,7 @@ import Foreign hiding (xor)
 import Foreign.C.Types
 
 import JVM.Assembler hiding (Instruction)
-import JVM.ClassFile
+import JVM.ClassFile hiding (methodName)
 import Data.Binary
 import Data.BinaryState
 
@@ -50,16 +50,18 @@ foreign import ccall "&mallocObjectGC_stackstrace"
   mallocObjectAddr :: FunPtr (CPtrdiff -> CPtrdiff -> Int -> IO CPtrdiff)
 
 
-compileStateInit :: Class Direct -> CompileState
-compileStateInit cls = CompileState
+compileStateInit :: Class Direct -> B.ByteString -> CompileState
+compileStateInit cls m = CompileState
     { floatConsts = M.empty
     , traps = M.empty
-    , classf = cls }
+    , classf = cls
+    , methodName = m }
 
 data CompileState = CompileState
   { floatConsts :: M.Map Label Float
   , traps :: TrapMap
-  , classf :: Class Direct }
+  , classf :: Class Direct
+  , methodName :: B.ByteString }
 
 i32tow32 :: Int32 -> Word32
 i32tow32 = fromIntegral
@@ -67,18 +69,22 @@ i32tow32 = fromIntegral
 compileLinear :: M.Map Int32 H.Label -> [LinearIns HVar]
               -> CodeGen e CompileState ([Instruction], NativeWord, TrapMap)
 compileLinear lbls linsn = do
+  -- TODO(bernhard): don't jump around in the code... wtf dude!
+  pushExceptionMap <- newNamedLabel "pushExceptionMap"
+  stacksetup <- newNamedLabel "stacksetup"
   ep <- fromIntegral <$> ptrToIntPtr <$> getEntryPoint
   -- entry sequence
   push ebp
-  mov ebp esp
-  let stackalloc = 0x10000 :: Word32 -- TODO
+  jmp pushExceptionMap
+  stacksetup @@ mov ebp esp
+  let stackalloc = 0x300 :: Word32 -- TODO
   sub esp stackalloc
   bblabels <- forM (M.elems lbls) $ \h -> do
                 l <- newNamedLabel ("Label: " ++ show h)
                 return (h, l)
   let lmap :: M.Map H.Label Label
       lmap = M.fromList bblabels
-  let retseq = do mov esp ebp; pop ebp; ret
+  let retseq = do mov esp ebp; pop ebp; pop ebp; ret
   let compileIns (Fst (IRLabel h)) = defineLabel $ lmap M.! h
       compileIns (Mid ins) = girEmitOO ins
       compileIns (Lst ins) = case ins of
@@ -132,6 +138,15 @@ compileLinear lbls linsn = do
   forM_ linsn $ \ins -> do
     newNamedLabel ("ir: " ++ show ins) >>= defineLabel
     compileIns ins
+  let exmap :: ExceptionMap Word32
+      exmap = M.empty -- TODO
+  mname <- methodName <$> getState
+  let rsi = RuntimeStackInfo mname exmap
+  sptr_rsi <- liftIO $
+    (fromIntegral . ptrToIntPtr . castStablePtrToPtr) <$> newStablePtr rsi
+  defineLabel pushExceptionMap
+  push (sptr_rsi :: Word32)
+  jmp stacksetup
   floatconstants <- M.toList <$> floatConsts <$> getState
   forM_ floatconstants $ \(l, f) -> do
     defineLabel l
