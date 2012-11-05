@@ -92,6 +92,9 @@ compileLinear lbls linsn = do
             (SpillIReg d1, SpillIReg d2) -> do
               mov eax (d2, ebp)
               cmp eax (d1, ebp)
+            (SpillRReg d1, SpillRReg d2) -> do
+              mov eax (d2, ebp)
+              cmp eax (d1, ebp)
             (HIConstant c, HIReg s1) -> do
               cmp s1 (i32tow32 c)
             (HIReg s1, HIConstant c) -> do
