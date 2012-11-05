@@ -245,6 +245,8 @@ girEmitOO (IROp Add dst' src1' src2') =
           mov eax s1
           mov dst (i32tow32 c)
           add dst eax
+    ge dst@(SpillIReg _) (SpillRReg src1) c@(HIConstant _) = do
+      ge dst (SpillIReg src1) c
     ge dst@(SpillIReg _) c@(HIConstant _) src@(SpillIReg _) = do
       ge dst src c
     ge (SpillRReg disp) o1@(HIReg _) o2@(HIConstant _) = do
@@ -467,51 +469,56 @@ girEmitOO (IRLoad (RTPool x) src dst) = do
       s <- getState
       setState (s { traps = M.insert trapaddr ofp (traps s) })
     y -> error $ "emit: irload: missing impl.: getfield or something: " ++ show y
-girEmitOO (IRLoad (RTArray ta arrlen) (HIConstant 0) dst) = do
+girEmitOO (IRLoad (RTArray ta objType arrlen) (HIConstant 0) dst) = do
   let tsize = case decodeS (0 :: Integer) (B.pack [ta]) of
                 T_INT -> 4
-                T_CHAR -> 1
+                T_CHAR -> 4
                 _ -> error "newarray: type not implemented yet"
   let len = arrlen * tsize
   saveRegs
-  push (len + ptrSize)
+  push (len + (3 * ptrSize))
   callMalloc
   restoreRegs
-  mov (Disp 0, eax) arrlen -- store length at offset 0
+  case objType of
+    PrimitiveType -> mov (Disp 0, eax) (0x1228babe :: Word32)
+    ReferenceType -> mov (Disp 0, eax) (0x1227babe :: Word32)
+  mov (Disp 4, eax) (0x1337babe :: Word32) -- gcinfo
+  mov (Disp 8, eax) arrlen -- store length at offset 0
+  -- mov (Disp 12, eax) (0x1227bab1 :: Word32) -- TODO: delete me? (stackmaaaaaaaaaark)
   case dst of
     HIReg d -> mov d eax
     SpillIReg d -> mov (d, ebp) eax
     SpillRReg d -> mov (d, ebp) eax
     x -> error $ "irload: emit: newarray: " ++ show x
 girEmitOO (IRLoad RTNone (HIReg src) (HIReg dst)) = do -- arraylength
-  mov dst (Disp 0, src)
+  mov dst (Disp 8, src)
 girEmitOO (IRLoad RTNone (SpillIReg d) (HIReg dst)) = do -- arraylength
   mov eax (d, ebp)
-  mov dst (Disp 0, eax)
+  mov dst (Disp 8, eax)
 girEmitOO (IRLoad RTNone (HIReg src) (SpillIReg d)) = do -- arraylength
   let dst = (d, ebp)
-  mov eax (Disp 0, src)
+  mov eax (Disp 8, src)
   mov dst eax
 girEmitOO (IRLoad RTNone (SpillRReg sd) (SpillIReg dd)) = do -- arraylength
   let dst = (dd, ebp)
   let src = (sd, ebp)
   mov eax src
-  mov eax (Disp 0, eax)
+  mov eax (Disp 8, eax)
   mov dst eax
 girEmitOO (IRLoad (RTIndex (HIConstant i) typ) (SpillIReg srcd) (SpillIReg dstd)) = do
   mov eax (srcd, ebp)
   -- TODO: ptrSize ...
-  mov eax (Disp (fromIntegral . (+8) $ i * (typeSize typ)), eax)
+  mov eax (Disp (fromIntegral . (+0xc) $ i * (typeSize typ)), eax)
   mov (dstd, ebp) eax
 girEmitOO (IRLoad (RTIndex (HIConstant i) typ) (SpillIReg srcd) (SpillRReg dstd)) = do
   mov eax (srcd, ebp)
   -- TODO: ptrSize ...
-  mov eax (Disp (fromIntegral . (+8) $ i * (typeSize typ)), eax)
+  mov eax (Disp (fromIntegral . (+0xc) $ i * (typeSize typ)), eax)
   mov (dstd, ebp) eax
 girEmitOO (IRLoad (RTIndex (HIConstant i) typ) (SpillIReg srcd) (HIReg dst)) = do
   mov eax (srcd, ebp)
   -- TODO: ptrSize ...
-  mov eax (Disp (fromIntegral . (+8) $ i * (typeSize typ)), eax)
+  mov eax (Disp (fromIntegral . (+0xc) $ i * (typeSize typ)), eax)
   mov dst eax
 girEmitOO (IRLoad (RTIndex idx typ) src dst) = do
   let isNotEdx = case dst of
@@ -523,17 +530,17 @@ girEmitOO (IRLoad (RTIndex idx typ) src dst) = do
   when isNotEdx $ push edx
   when isNotEbx $ push ebx
   case idx of
-    HIConstant i -> mov eax (((i32tow32 i) * (typeSize typ)) + 8)
+    HIConstant i -> mov eax (((i32tow32 i) * (typeSize typ)) + 0xc)
     HIReg i -> do
       mov eax i
       mov ebx (typeSize typ :: Word32)
       mul ebx
-      add eax (8 :: Word32)
+      add eax (0xc :: Word32)
     SpillIReg d -> do
       mov eax (d, ebp)
       mov ebx (typeSize typ :: Word32)
       mul ebx
-      add eax (8 :: Word32)
+      add eax (0xc :: Word32)
     y -> error $ "girEmitOO: irload: rtindex: idx1: " ++ show y
   case src of
     HIReg s -> do add eax s
@@ -609,12 +616,12 @@ girEmitOO (IRStore (RTIndex idx typ) dst src) = do
       mov eax i
       mov ebx (typeSize typ :: Word32)
       mul ebx
-      add eax (8 :: Word32)
+      add eax (0xc :: Word32)
     SpillIReg d -> do
       mov eax (d, ebp)
       mov ebx (typeSize typ :: Word32)
       mul ebx
-      add eax (8 :: Word32)
+      add eax (0xc :: Word32)
     y -> error $ "girEmitOO: irstore: rtindex: idx1: " ++ show y
   case dst of
     HIReg d -> add eax d
@@ -631,7 +638,7 @@ girEmitOO (IRStore (RTIndex idx typ) dst src) = do
     SpillRReg sd -> mov ebx (sd, ebp)
     y -> error $ "girEmitOO: irstore: rtindex: src: " ++ show y
   case idx of
-    HIConstant i -> mov (Disp ((+8) . (*(typeSize typ)) $ i32tow32 i), eax) ebx
+    HIConstant i -> mov (Disp ((+0xc) . (*(typeSize typ)) $ i32tow32 i), eax) ebx
     HIReg _ -> mov (Disp 0, eax) ebx
     SpillIReg _ -> mov (Disp 0, eax) ebx
     y -> error $ "girEmitOO: irstore: rtindex: idx2: " ++ show y
@@ -816,7 +823,7 @@ getCurrentOffset = do
   return $ ep + offset
 
 typeSize :: Num a => VarType -> a
-typeSize JChar = 1
+typeSize JChar = 4
 typeSize JInt = 4
 typeSize JRef = 4
 typeSize x = error $ "typeSize: " ++ show x

@@ -367,9 +367,6 @@ emitFromBB cls method = do
                   T_INT -> 4
                   T_CHAR -> 4
                   _ -> error "newarray: type not implemented yet"
-      let nullMethodTable = case objType of 
-                             PrimitiveType -> mov (Disp 0, eax) (0x1228babe :: Word32)
-                             ReferenceType -> mov (Disp 0, eax) (0x1227babe :: Word32)
       -- get length from stack, but leave it there
       mov eax (Disp 0, esp)
       mov ebx (tsize :: Word32)
@@ -381,7 +378,9 @@ emitFromBB cls method = do
       callMalloc
       pop eax -- ref to arraymemory
       pop ebx -- length
-      nullMethodTable -- null m_table
+      case objType of 
+        PrimitiveType -> mov (Disp 0, eax) (0x1228babe :: Word32)
+        ReferenceType -> mov (Disp 0, eax) (0x1227babe :: Word32)
       mov (Disp 4, eax) (0x1337babe :: Word32) -- gcinfo
       mov (Disp 8, eax) ebx -- store length at offset 8
       mov (Disp 12, eax) (0x1227bab1 :: Word32)

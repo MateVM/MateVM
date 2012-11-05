@@ -7,21 +7,25 @@ public class Array1 {
 		for (int i = 0; i < 0x8; i++) {
 			arr[i] = (i + 1) * 0x11;
 		}
+		System.out.printf("lolwoot: asdf\n");
+		Object bla = new Object();
+		System.out.printf("lolwoot: wuuut\n");
+		// System.out.printf("lolwoot: 0x%08x\n", arr[2]);
 		arr[0] = 0x22;
 		arr[1] = 0x33;
 		for (int i = 0; i < 0x8; i++) {
 			sum += arr[i];
 		}
 		System.out.printf("result: 0x%08x\n", sum); // 0x264
-		System.out.printf("result: 0x%08x\n", arr.length); // 0x8
-		int b = 0x78;
-		int c = 0x78;
-		int e = 0x78;
-		int r = 0x78;
-		int r1 = 0x78;
-		for (int i = 0; i < 0x8; ) {
-			System.out.printf("i: %d\n", i++); // arr[i] = (i + 1) * 0x11;
-		}
+		// System.out.printf("result: 0x%08x\n", arr.length); // 0x8
+		// int b = 0x78;
+		// int c = 0x78;
+		// int e = 0x78;
+		// int r = 0x78;
+		// int r1 = 0x78;
+		// for (int i = 0; i < 0x8; ) {
+		// 	System.out.printf("i: %d\n", i++);
+		// }
 		System.out.printf("result: 0x%08x\n", arrlol());
 	}
 
@@ -37,6 +41,8 @@ public class Array1 {
 		arr[7] = 0x18;
 		arr[8] = 0x19;
 		arr[9] = 0x1a;
+		Object bla = new Object();
+		System.out.printf("blalol\n");
 		return arr[8];
 	}
 }

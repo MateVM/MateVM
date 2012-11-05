@@ -73,7 +73,7 @@ allocateJavaString str = do
   -- [hs] i kept length + \0 and object correction separate for clarity 
   let arrayObjCorr = 2 * ptrSize 
   -- (+1) for \0, (+4) for length
-  newstr <- mallocStringGC (strlen + 5 + arrayObjCorr) --[TODO hs,bernhard: should be managed right?]
+  newstr <- mallocStringGC (strlen + 5 + arrayObjCorr)
   BI.memset newstr 0 (fromIntegral $ strlen + 5 + arrayObjCorr)
   arr <- newArray ((map fromIntegral $ B.unpack str) :: [Word8])
   copyBytes (plusPtr newstr (4 + arrayObjCorr)) arr strlen

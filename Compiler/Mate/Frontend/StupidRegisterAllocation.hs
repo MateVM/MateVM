@@ -75,7 +75,7 @@ stupidRegAlloc preAssigned linsn = evalState regAlloc' startmapping
 
     rtRepack :: RTPool Var -> State MappedRegs (RTPool HVar)
     rtRepack (RTPool w16) = return $ RTPool w16
-    rtRepack (RTArray w8 w32) = return $ RTArray w8 w32
+    rtRepack (RTArray w8 obj w32) = return $ RTArray w8 obj w32
     rtRepack (RTIndex vreg typ) = do
       newreg <- doAssign vreg
       return $ RTIndex newreg typ

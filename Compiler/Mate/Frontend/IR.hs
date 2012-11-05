@@ -23,6 +23,8 @@ import JVM.Assembler
 import Compiler.Hoopl
 import Harpy hiding (Label)
 
+import Compiler.Mate.Types
+
 data MateIR t e x where
   IRLabel :: Label -> MateIR t C O
   IROp :: (Show t) => OpType -> t -> t -> t -> MateIR t O O
@@ -73,7 +75,7 @@ deriving instance Ord Disp
 
 data RTPool t
   = RTPool Word16
-  | RTArray Word8 Word32
+  | RTArray Word8 MateObjType Word32
   | RTIndex t VarType
   | RTNone
 
@@ -81,7 +83,7 @@ instance Show t => Show (RTPool t) where
   show (RTPool w16) = printf "RT(%02d)" w16
   show (RTIndex t typ) = printf "RTIdx(%s[%s])" (show t) (show typ)
   show RTNone = ""
-  show (RTArray w8 len) = printf "Array(%02d, len=%s)" w8 (show len)
+  show (RTArray w8 mot len) = printf "Array(%02d, len=%s, %s)" w8 (show len) (show mot)
 
 data VarType = JChar | JInt | JFloat | JRef deriving (Show, Eq, Ord)
 

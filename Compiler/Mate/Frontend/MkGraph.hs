@@ -30,6 +30,7 @@ import Compiler.Hoopl
 import Harpy hiding (Label)
 
 import Compiler.Mate.Debug
+import Compiler.Mate.Types
 import Compiler.Mate.Frontend.IR
 import Compiler.Mate.Frontend.StupidRegisterAllocation
 
@@ -401,15 +402,8 @@ tir (NEW x) = do
   nv <- newvar JRef
   apush nv
   return [IRLoad (RTPool x) JRefNull nv]
-tir (ANEWARRAY _) = tir (NEWARRAY 10) -- for int. TODO?
-tir (NEWARRAY w8) = do
-  len <- apop
-  let len' = case len of
-              JIntValue x -> fromIntegral x
-              x -> error $ "tir: anewarray: len is not constant: " ++ show x
-  nv <- newvar JRef
-  apush nv
-  return [IRLoad (RTArray w8 len') JRefNull nv]
+tir (ANEWARRAY _) = tirArray ReferenceType 10 -- for int. TODO?
+tir (NEWARRAY w8) = tirArray PrimitiveType w8
 tir ARRAYLENGTH = do
   arr <- apop
   when (varType arr /= JRef) $ error "tir: arraylength: type mismatch"
@@ -461,6 +455,15 @@ tir i@(INSTANCEOF _) = do
   apush nv
   return [IRMisc2 i nv y]
 tir x = error $ "tir: " ++ show x
+
+tirArray objtype w8 = do
+  len <- apop
+  let len' = case len of
+              JIntValue x -> fromIntegral x
+              x -> error $ "tir: anewarray: len is not constant: " ++ show x
+  nv <- newvar JRef
+  apush nv
+  return [IRLoad (RTArray w8 objtype len') JRefNull nv]
 
 tirArrayLoad :: VarType -> State SimStack [MateIR Var O O]
 tirArrayLoad t = do
