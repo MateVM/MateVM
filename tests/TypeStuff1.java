@@ -5,6 +5,7 @@ public class TypeStuff1 {
 	public static void main(String args[]) {
 		int ret = equal(10) ? 1 : 0;
 		System.out.printf("success1? %d\n", ret);
+		second();
 	}
 
 	public static void second() {

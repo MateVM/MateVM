@@ -62,7 +62,9 @@ pipeline cls meth jvminsn = do
     return (entry, trapmap)
   where
     initstate = LabelLookup { labels = M.empty
+                            , nextTargets = []
                             , blockEntries = S.empty
+                            , blockEnds = M.empty
                             , simStack = SimStack [] 50000 cls meth []
                             , instructions = jvminsn
                             , pcOffset = 0 }

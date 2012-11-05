@@ -171,6 +171,7 @@ girEmitOO (IROp Add dst' src1' src2') =
       case dst of
         HIReg d -> mov d ci
         SpillIReg d -> mov (d, ebp) ci
+        SpillRReg d -> mov (d, ebp) ci
         x -> error $ "emit: op: add: dst + const + const: " ++ show x
     ge (HIReg dst) (HIConstant c1) (HIReg src2) = do
       mov dst src2

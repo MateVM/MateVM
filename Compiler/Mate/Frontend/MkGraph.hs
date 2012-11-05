@@ -45,7 +45,9 @@ data SimStack = SimStack
 
 data LabelLookup = LabelLookup
   { labels :: M.Map Int32 Label
+  , nextTargets :: [Label]
   , blockEntries :: S.Set Int32
+  , blockEnds :: M.Map Label [Var]
   , simStack :: SimStack
   , instructions :: [J.Instruction]
   , pcOffset :: Int32 }
@@ -126,8 +128,15 @@ mkBlocks = do
 
 mkBlock :: LabelState (Graph (MateIR Var) C C)
 mkBlock = do
+  modify (\s -> s { nextTargets = [] })
   pc <- pcOffset <$> get
-  f' <- IRLabel <$> addLabel pc
+  l <- addLabel pc
+  let f' = IRLabel l
+  be <- (M.lookup l) <$> blockEnds <$> get
+  case be of
+    Nothing -> return ()
+    Just ts -> forM_ ts $ \x -> do
+                apush2 x
   (ms', l') <- toMid
   return $ mkFirst f' <*> mkMiddles ms' <*> mkLast l'
 
@@ -139,6 +148,7 @@ addLabel boff = do
     else do
       label <- lift $ freshLabel
       modify (\s -> s {labels = M.insert boff label (labels s) })
+      modify (\s -> s {nextTargets = label : (nextTargets s) })
       return label
 
 popInstruction :: LabelState ()
@@ -179,7 +189,7 @@ toMid = do
             incrementPC ins
             popInstruction
             return $ ([], IRIfElse jcmp op1 op2 truejmp falsejmp)
-      case ins of
+      (ret1, ret2) <- case ins of
         RETURN -> do
           incrementPC ins
           popInstruction
@@ -212,10 +222,11 @@ toMid = do
           popInstruction
           return $ ([], IRJump jmp)
         _ -> do -- fallthrough case
-          len <- length <$> stack <$> simStack <$> get
-          next <- tracePipe (printf "fuu @ fallthrough: %d\n" len)$ addLabel (pc + insnLength ins)
+          next <- addLabel (pc + insnLength ins)
           insIR <- normalIns ins
           return $ (insIR, IRJump next)
+      foo <- handleBlockEnd
+      return (ret1 ++ foo, ret2)
       where
         returnSomething t = do
           incrementPC ins
@@ -223,6 +234,27 @@ toMid = do
           r <- apop2
           unless (varType r == t) $ error "toLast return: type mismatch"
           return $ ([], IRReturn $ Just r)
+
+handleBlockEnd = do
+  st <- simStack <$> get
+  let len = L.genericLength $ stack $ st
+  if len > 0
+    then do
+      forM [500000 .. (500000 + len - 1)] $ \r -> do
+        x <- apop2
+        targets <- nextTargets <$> get
+        forM targets $ \t -> do
+          be <- M.lookup t <$> blockEnds <$> get
+          let be' = case be of
+                      Just x -> x
+                      Nothing -> []
+          modify (\s -> s { blockEnds = M.insert t (x:be') (blockEnds s)})
+        let nul = case (varType x) of
+                    JInt -> JIntValue 0
+                    JFloat -> JFloatValue 0
+                    JRef -> JRefNull
+        return (IROp Add (VReg (varType x) r) x nul)
+    else return []
 
 insnLength :: Integral a => J.Instruction -> a
 insnLength x = case x of
@@ -248,6 +280,12 @@ resetPC jvmins = do
   modify (\s -> s { pcOffset = 0, instructions = jvmins })
 
 -- helper
+apush2 :: Var -> LabelState ()
+apush2 x = do
+  st <- simStack <$> get
+  let st' = st { stack = x : (stack st) }
+  modify (\s -> s { simStack = st'})
+
 apop2 :: LabelState Var
 apop2 = do
   st <- get
