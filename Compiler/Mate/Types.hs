@@ -8,7 +8,7 @@ module Compiler.Mate.Types
   , ExceptionHandler
   , WriteBackRegs(..)
   , CompiledMethod(..)
-  , TrapMap, MethodMap, ClassMap, FieldMap
+  , TrapMap, MethodMap, ClassMap, FieldMap, FieldTypeMap
   , StringMap, VirtualMap, InterfaceMap
   , InterfaceMethodMap
   , TrapCause(..)
@@ -123,8 +123,10 @@ type ClassMap = M.Map B.ByteString ClassInfo
 data ClassInfo = ClassInfo {
   ciName :: B.ByteString,
   ciFile :: Class Direct,
-  ciStaticMap  :: FieldMap,
+  ciStaticMap :: FieldMap,
+  ciStaticFieldTypeMap :: FieldTypeMap,
   ciFieldMap :: FieldMap,
+  ciFieldTypeMap :: FieldTypeMap,
   ciMethodMap :: FieldMap,
   ciMethodBase :: NativeWord,
   ciInitDone :: Bool }
@@ -132,6 +134,9 @@ data ClassInfo = ClassInfo {
 
 -- store field offsets in a map
 type FieldMap = M.Map B.ByteString Int32
+
+-- store field information per offset
+type FieldTypeMap = M.Map Int32 (Field Direct)
 
 
 -- java strings are allocated only once, therefore we

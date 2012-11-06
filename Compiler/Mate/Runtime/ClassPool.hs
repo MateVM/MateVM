@@ -9,6 +9,7 @@ module Compiler.Mate.Runtime.ClassPool (
   getMethodTableReverse,
   getObjectSize,
   getFieldCount,
+  getFieldTypes,
   getMethodOffset,
   getFieldOffset,
   getStaticFieldAddr,
@@ -119,6 +120,18 @@ getFieldCount path = do
   let fsize = fromIntegral $ M.size $ ciFieldMap ci
   return fsize
 
+-- TODO: not implemented yet. will return empty map!
+getStaticFieldTypes :: B.ByteString -> IO [(Int32, FieldSignature)]
+getStaticFieldTypes path = do
+  ci <- getClassInfo path
+  return $ map (\(x, y) -> (x, fieldSignature y)) $ M.toList (ciStaticFieldTypeMap ci)
+
+-- TODO: not very well tested
+getFieldTypes :: B.ByteString -> IO [(Int32, FieldSignature)]
+getFieldTypes path = do
+  ci <- getClassInfo path
+  return $ map (\(x, y) -> (x, fieldSignature y)) $ M.toList (ciFieldTypeMap ci)
+
 getStaticFieldAddr :: CPtrdiff -> IO CPtrdiff
 getStaticFieldAddr from = do
   trapmap <- getTrapMap
@@ -157,7 +170,8 @@ readClass path = do
             return $ Just sc
           else return Nothing
 
-      (staticmap, fieldmap) <- calculateFields cfile superclass
+      ((staticmap, statictypemap), (fieldmap, fieldtypemap)) <-
+        calculateFields cfile superclass
       (methodmap, mbase) <- calculateMethodMap cfile superclass
       immap <- getInterfaceMethodMap
 
@@ -188,7 +202,17 @@ readClass path = do
       setVirtualMap $ M.insert mbase path virtual_map
 
       class_map <- getClassMap
-      let new_ci = ClassInfo path cfile staticmap fieldmap methodmap mbase False
+      let new_ci = ClassInfo
+                   { ciName = path
+                   , ciFile = cfile
+                   , ciStaticMap = staticmap
+                   , ciStaticFieldTypeMap = statictypemap
+                   , ciFieldMap = fieldmap
+                   , ciFieldTypeMap = fieldtypemap
+                   , ciMethodMap = methodmap
+                   , ciMethodBase = mbase
+                   , ciInitDone = False
+                   }
       setClassMap $ M.insert path new_ci class_map
 
       -- add Class to Hierarchy
@@ -239,7 +263,8 @@ loadInterface path = do
     getname p y = p `B.append` methodName y `B.append` encode (methodSignature y)
 
 
-calculateFields :: Class Direct -> Maybe ClassInfo -> IO (FieldMap, FieldMap)
+calculateFields :: Class Direct -> Maybe ClassInfo
+                -> IO ((FieldMap, FieldTypeMap), (FieldMap, FieldTypeMap))
 calculateFields cf superclass = do
     -- TODO(bernhard): correct sizes. int only atm
 
@@ -250,21 +275,27 @@ calculateFields cf superclass = do
     let sm = zipbase (fromIntegral $ ptrToIntPtr staticbase) sfields
     -- new fields "overwrite" old ones, if they have the same name
     let staticmap = sm `M.union` sc_sm
+    let statictypemap = M.empty -- TODO
 
     let sc_im = getsupermap superclass ciFieldMap
+    let sc_imtype = getsupermap superclass ciFieldTypeMap
     -- "+ (2*ptrsize)" for the method table pointer and GC data
     let max_off = (+ (2*ptrSize)) $ fromIntegral $ M.size sc_im * ptrSize
     let im = zipbase max_off ifields
+    let imtype = zipbasetype max_off ifields
     -- new fields "overwrite" old ones, if they have the same name
     let fieldmap = im `M.union` sc_im
+    let fieldtypemap = imtype `M.union` sc_imtype
 
-    return (staticmap, fieldmap)
+    return ((staticmap, statictypemap), (fieldmap, fieldtypemap))
   where
     zipbase :: Int32 -> [Field Direct] -> FieldMap
     zipbase base = foldr (\(x,y) -> M.insert (fieldName y) (x + base)) M.empty . zip [0,ptrSize..]
+    zipbasetype :: Int32 -> [Field Direct] -> FieldTypeMap
+    zipbasetype base = foldr(\(x,y) -> M.insert (x + base) y) M.empty . zip [0,ptrSize..]
 
 -- helper
-getsupermap :: Maybe ClassInfo -> (ClassInfo -> FieldMap) -> FieldMap
+getsupermap :: Maybe ClassInfo -> (ClassInfo -> M.Map k v) -> M.Map k v
 getsupermap superclass getter = case superclass of Just x -> getter x; Nothing -> M.empty
 
 
