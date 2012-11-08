@@ -6,6 +6,7 @@
 module Compiler.Mate.Frontend.MkGraph
   ( SimStack(..)
   , LabelLookup(..)
+  , addExceptionBlocks
   , resolveReferences
   , resetPC
   , mkBlocks
@@ -49,6 +50,8 @@ data LabelLookup = LabelLookup
   , blockEnds :: M.Map Label [Var]
   , simStack :: SimStack
   , instructions :: [J.Instruction]
+  , exceptionMap :: ExceptionMap Word16
+  , handlerStarts :: S.Set Int32
   , pcOffset :: Int32 }
 
 type LabelState a = StateT LabelLookup SimpleUniqueMonad a
@@ -67,6 +70,11 @@ w162i32 w16 = fromIntegral i16
 w82i32 :: Word8 -> Int32
 w82i32 w8 = fromIntegral i8
  where i8 = fromIntegral w8 :: Int8
+
+addExceptionBlocks :: LabelState ()
+addExceptionBlocks = do
+  hstarts <- S.toList <$> handlerStarts <$> get
+  forM_ hstarts $ addPC . fromIntegral
 
 -- forward references wouldn't be a problem, but backwards are
 resolveReferences :: LabelState ()
@@ -101,9 +109,10 @@ resolveReferences = do
         _ -> return ()
     addPCs :: Int32 -> Word16 -> J.Instruction -> LabelState ()
     addPCs pc rel ins = do addPC (pc + insnLength ins); addPC (pc + (w162i32 rel))
-    addPC :: Int32 -> LabelState ()
-    addPC bcoff = do
-      modify (\s -> s { blockEntries = S.insert bcoff (blockEntries s) })
+
+addPC :: Int32 -> LabelState ()
+addPC bcoff = do
+  modify (\s -> s { blockEntries = S.insert bcoff (blockEntries s) })
 
 mkMethod :: Graph (MateIR Var) C C -> LabelState (Graph (MateIR Var) O C)
 mkMethod g = do
@@ -131,6 +140,12 @@ mkBlock = do
   pc <- pcOffset <$> get
   l <- addLabel pc
   let f' = IRLabel l
+  -- push JRef for Exceptionblock, which is passed via %eax
+  isExceptionHandler <- S.member pc <$> handlerStarts <$> get
+  if isExceptionHandler
+    then apush2 (VReg JRef preeax)
+    else return ()
+  -- fixup block boundaries
   be <- (M.lookup l) <$> blockEnds <$> get
   case be of
     Nothing -> return ()

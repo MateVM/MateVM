@@ -8,7 +8,7 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.ByteString.Lazy as B
 import Data.Maybe
-import Control.Applicative hiding ((<*>))
+import Data.Word
 
 import Harpy
 import Harpy.X86Disassembler
@@ -21,6 +21,8 @@ import JVM.Converter
 import Compiler.Hoopl hiding (Label)
 
 import Control.Monad.State
+import Control.Applicative hiding ((<*>))
+import Control.Arrow
 
 import Text.Printf
 import Compiler.Mate.Debug
@@ -61,16 +63,40 @@ pipeline cls meth jvminsn = do
     printfJit $ printf "\n"
     return (entry, trapmap)
   where
+    mname = methodName meth
+    codeseg = fromMaybe
+              (error $ "codeseg " ++ (show . toString) mname ++ " not found")
+              (attrByName meth "Code")
+    decoded = decodeMethod codeseg
+    exmap :: ExceptionMap Word16
+    exmap = L.foldl' f M.empty $ codeExceptions decoded
+      where
+        f emap ce =
+          if M.member key emap
+            -- build list in reverse order, since matching order is important
+            then M.adjust (++ [value]) key emap
+            else M.insert key [value] emap
+            where
+              key = (&&&) eStartPC eEndPC ce
+              value = (&&&) g eHandlerPC ce
+                where
+                  g ce' = case eCatchType ce' of
+                      0 -> B.empty
+                      x -> buildClassID cls x
+    hstarts = S.fromList $ map (fromIntegral . eHandlerPC) $ codeExceptions decoded
     initstate = LabelLookup { labels = M.empty
                             , nextTargets = []
                             , blockEntries = S.empty
                             , blockEnds = M.empty
                             , simStack = SimStack [] 50000 cls meth []
                             , instructions = jvminsn
+                            , exceptionMap = exmap
+                            , handlerStarts = hstarts
                             , pcOffset = 0 }
     -- transform = foldl (liftM2 (|*><*|)) (return emptyClosedGraph) mkBlocks
     runAll prog = (runSimpleUniqueMonad . runStateT prog) initstate
     (graph, transstate) = runAll $ do
+      addExceptionBlocks
       resolveReferences
       refs <- blockEntries <$> get
       tracePipe (printf "refs: %s\n" (show refs)) $
