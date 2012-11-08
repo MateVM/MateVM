@@ -92,7 +92,7 @@ resolveReferences = do
         (IF_ACMP _ rel) -> addPCs pc rel ins
         (IFNULL rel) -> addPCs pc rel ins
         (IFNONNULL rel) -> addPCs pc rel ins
-        GOTO rel -> addPC (pc + w162i32 rel)
+        GOTO rel -> addPCs pc rel ins
         JSR _ -> error "addJumpTarget: JSR?!"
         GOTO_W _ -> error "addJumpTarget: GOTO_W?!"
         JSR_W _ -> error "addJumpTarget: JSR_W?!"
