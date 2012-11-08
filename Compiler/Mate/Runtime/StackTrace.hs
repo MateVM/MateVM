@@ -10,6 +10,7 @@ module Compiler.Mate.Runtime.StackTrace
 import Foreign
 import Foreign.C
 import Control.Monad
+import qualified Data.Map as M
 import Data.List
 import Data.String.Utils
 
@@ -28,8 +29,20 @@ cPtrToIntPtr = intPtrToPtr . fromIntegral
 stackFrames :: [StackDescription] -> CPtrdiff -> CPtrdiff -> IO [StackDescription]
 stackFrames accum prevRbp rebp = do 
     stblptr <- peek (cPtrToIntPtr rebp) :: IO Word32
+    reip <- peek (cPtrToIntPtr (prevRbp + 0x8)) :: IO Word32
     let sptr = castPtrToStablePtr $ intPtrToPtr $ fromIntegral stblptr
     stackinfo' <- deRefStablePtr sptr :: IO RuntimeStackInfo
+    printfMem $ printf "stackFrames: eip: %08x\n" (fromIntegral reip :: Word32)
+    printfMem $ printf "stackFrames: elem:\n"
+    case M.lookup reip (rsiGCPoints stackinfo') of
+      Nothing -> printfMem $ printf "stackFrames: no entry found :(\n"
+      Just points -> do
+        printfMem $ printf "stackFrames: found entry \\o/\n"
+        forM_ points $ \x -> do
+          let point :: Word32
+              -- TODO(bernhard): I'm not sure here, maybe s/rebp/prevRbp/
+              point = x + (fromIntegral rebp)
+          printfMem $ printf "stackFrames: candidate: %08x\n" point
     let accum' = StackDescription { base = rebp, end = prevRbp, stackinfo = stackinfo' } : accum
     if bottomOfStack stackinfo'
      then return accum' -- done here. bottomOfStack claims that there are no frames left
