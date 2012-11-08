@@ -78,8 +78,8 @@ pipeline cls meth jvminsn = do
       gs <- mkBlocks
       let g = L.foldl' (|*><*|) emptyClosedGraph gs
       mkMethod g
-    runFM :: SimpleFuelMonad a -> a
-    runFM = runSimpleUniqueMonad . runWithFuel infiniteFuel
+    runFM :: SimpleUniqueMonad a -> a
+    runFM = runSimpleUniqueMonad -- . runWithFuel infiniteFuel
     runOpts g = runFM $ do
       -- let nothingc = NothingC :: MaybeC O H.Label
       -- (_, f, _) <- analyzeAndRewriteBwd

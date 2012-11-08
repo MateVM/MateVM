@@ -26,9 +26,11 @@ mkLinear = concatMap lineariseBlock . postorder_dfs
   where
     -- see compiler/Lambdachine/Grin/RegAlloc.hs
     -- lineariseBlock :: Block (MateIR Var) C C -> [LinearIns Var]
-    lineariseBlock block = entry_ins ++ map Mid middles ++ tail_ins
+    lineariseBlock block = entry_ins
+                           ++ map Mid (blockToList middles)
+                           ++ tail_ins
       where
-        (entry, middles, tailb) = blockToNodeList block
+        (entry, middles, tailb) = blockSplitAny block
         entry_ins :: [LinearIns Var]
         entry_ins = case entry of JustC n -> [Fst n]; NothingC -> []
         tail_ins :: [LinearIns Var]
