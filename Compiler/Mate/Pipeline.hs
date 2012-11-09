@@ -84,7 +84,8 @@ pipeline cls meth jvminsn = do
                   g ce' = case eCatchType ce' of
                       0 -> B.empty
                       x -> buildClassID cls x
-    hstarts = S.fromList $ map (fromIntegral . eHandlerPC) $ codeExceptions decoded
+    hstarts = S.fromList $ map (fromIntegral . eHandlerPC)
+                         $ codeExceptions decoded
     initstate = LabelLookup { labels = M.empty
                             , nextTargets = []
                             , blockEntries = S.empty

@@ -14,6 +14,7 @@ public class Exception8 {
 	}
 
 	public static void foo() throws FooEx {
+		System.out.printf("hello world\n");
 		try {
 			throw new FooEx();
 		} catch (FooEx2 _) {

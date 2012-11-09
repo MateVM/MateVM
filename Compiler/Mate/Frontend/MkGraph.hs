@@ -82,7 +82,9 @@ addExceptionBlocks = do
   forM_ hstarts $ addPC . fromIntegral
   -- split on a try block
   tstarts <- map IIM.lowerBound <$> IM.keys <$> exceptionMap <$> get
+  tends   <- map IIM.upperBound <$> IM.keys <$> exceptionMap <$> get
   forM_ tstarts $ addPC . fromIntegral
+  forM_ tends   $ addPC . (+1) . fromIntegral
 
 -- forward references wouldn't be a problem, but backwards are
 resolveReferences :: LabelState ()
