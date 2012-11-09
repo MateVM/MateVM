@@ -17,6 +17,7 @@ import Harpy hiding (fst)
 
 import Compiler.Mate.Types
 import Compiler.Mate.Backend.NativeSizes
+import Compiler.Mate.Runtime.JavaObjects
 import {-# SOURCE #-} Compiler.Mate.Runtime.MethodPool
 import Compiler.Mate.Runtime.ClassPool
 import Compiler.Mate.Backend.X86CodeGenerator
@@ -57,18 +58,18 @@ mateHandler reip reax rebx _ {- resi -} rebp resp retarr = do
     (Just (VirtualCall True  mi io_offset)) ->
         patchWithHarpy (patchInvoke mi rebx reax io_offset) wbr >>= delFalse
     Nothing -> do
-      {-
       -- TODO(bernhard) check if it was segfault
       ex <- allocAndInitObject "java/lang/NullPointerException"
       -- push exception ref on the stack
       let lesp = wbEsp wbr - 4
       poke (intPtrToPtr . fromIntegral $ lesp) ex
       handleExceptionPatcher (wbr { wbEax = ex, wbEsp = lesp}) >>= delFalse
-      -}
+      {-
       error $ "getTrapType: abort :-( eip: "
            ++ showHex (fromIntegral reip :: Word32) ".   "
            ++ concatMap (`showHex` ", ") (M.keys tmap)
            ++ "\nebx: " ++ showHex (fromIntegral rebx :: Word32) "."
+      -}
   when deleteMe $ setTrapMap $ M.delete reipw32 tmap
   pokeReg 0x0 wbEip ret_wbr
   pokeReg 0x4 wbEbp ret_wbr
