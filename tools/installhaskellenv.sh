@@ -29,7 +29,7 @@ cabal update
 cabal install cabal-install $CABAL_OPT
 export PATH=~/.cabal/bin:$PATH
 cabal update
-cabal install missingh heap plugins split bimap disassembler $CABAL_OPT_NEW
+cabal install missingh heap plugins split bimap disassembler intervalmap $CABAL_OPT_NEW
 
 # cabal install hs-java $CABAL_OPT_NEW
 gitinstall git://github.com/MateVM/hs-java.git
