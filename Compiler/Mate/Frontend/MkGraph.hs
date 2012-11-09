@@ -28,7 +28,7 @@ import qualified JVM.Assembler as J
 import JVM.Assembler hiding (Instruction)
 import JVM.ClassFile
 import Compiler.Hoopl
-import Harpy hiding (Label)
+import Harpy hiding (Label, fst)
 
 import Compiler.Mate.Debug
 import Compiler.Mate.Types
@@ -73,8 +73,12 @@ w82i32 w8 = fromIntegral i8
 
 addExceptionBlocks :: LabelState ()
 addExceptionBlocks = do
+  -- split on a new exception handler block
   hstarts <- S.toList <$> handlerStarts <$> get
   forM_ hstarts $ addPC . fromIntegral
+  -- split on a try block
+  tstarts <- map fst <$> M.keys <$> exceptionMap <$> get
+  forM_ tstarts $ addPC . fromIntegral
 
 -- forward references wouldn't be a problem, but backwards are
 resolveReferences :: LabelState ()
