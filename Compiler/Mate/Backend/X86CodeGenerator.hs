@@ -18,6 +18,7 @@ import Data.Int
 import Data.Word
 import Data.Maybe
 import Data.List hiding (and)
+import Data.Ord
 import Data.Binary.IEEE754
 
 import Control.Applicative hiding ((<*>))
@@ -994,15 +995,16 @@ handleExceptionPatcher wbr = do
               case res of
                 Just x -> return x
                 Nothing -> searchRegion rs
-        -- due to reversing the list, we get the innermost range at
-        -- nested try/catch statements
-        let entries = exmap `IM.containing` weip
-        searchRegion . reverse . map fst $ entries
+        searchRegion . map fst $ exmap `IM.containing` weip
           where
             findHandler :: IM.Interval Word32 -> ExceptionMap Word32 -> IO (Maybe WriteBackRegs)
             findHandler key exmap = do
               printfEx $ printf "key is: %s\n" (show key)
-              let handlerObjs = exmap IM.! key
+              -- reverse the list to get the innermost handler (see
+              -- ./tests/Exception11.java )
+              let handlerObjs = reverse
+                              $ sortBy (comparing snd)
+                              $ exmap IM.! key
               printfEx $ printf "handlerObjs: %s\n" (show handlerObjs)
 
               let myMapM :: (a -> IO (Maybe Word32)) -> [a] -> IO (Maybe WriteBackRegs)
