@@ -12,6 +12,7 @@ import Prelude hiding (and)
 
 import qualified Data.Set as S
 import qualified Data.Map as M
+import qualified Data.IntervalMap as IM
 import qualified Data.ByteString.Lazy as B
 import Data.Int
 import Data.Word
@@ -30,7 +31,7 @@ import JVM.ClassFile hiding (methodName)
 import Data.Binary
 import Data.BinaryState
 
-import Harpy
+import Harpy hiding (fst)
 import Harpy.X86Disassembler
 
 import qualified Compiler.Hoopl as H
@@ -56,6 +57,9 @@ compileStateInit cls m = CompileState
     { floatConsts = M.empty
     , traps = M.empty
     , classf = cls
+    , tryBlock = Nothing
+    , exHandler = M.empty
+    , exTable = IM.empty
     , gcpoints = M.empty
     , methodName = m }
 
@@ -63,11 +67,19 @@ data CompileState = CompileState
   { floatConsts :: M.Map Label Float
   , traps :: TrapMap
   , classf :: Class Direct
+  , tryBlock :: Maybe (Word32, [(B.ByteString, Word32)])
+  , exHandler :: M.Map Word32 Word32 {- JVM PC -> x86 EIP -}
+  , exTable :: ExceptionMap Word32
   , gcpoints :: GCPoints
   , methodName :: B.ByteString }
 
 i32tow32 :: Int32 -> Word32
 i32tow32 = fromIntegral
+
+modifyState :: (CompileState -> CompileState) -> CodeGen e CompileState ()
+modifyState f = do
+  s <- getState
+  setState (f s)
 
 compileLinear :: M.Map Int32 H.Label -> [LinearIns HVar]
               -> CodeGen e CompileState ([Instruction], NativeWord, TrapMap)
@@ -88,61 +100,101 @@ compileLinear lbls linsn = do
   let lmap :: M.Map H.Label Label
       lmap = M.fromList bblabels
   let retseq = do mov esp ebp; pop ebp; pop ebp; ret
-  let compileIns (Fst (IRLabel h)) = defineLabel $ lmap M.! h
+  let compileIns (Fst (IRLabel hlabel hmap maybeHandler)) = do
+        defineLabel $ lmap M.! hlabel
+        reip <- getCurrentOffset
+        -- liftIO $ printf "maybeHandler: %s\n" (show maybeHandler)
+        -- liftIO $ printf "hmap: %s\n\n" (show hmap)
+        case maybeHandler of
+          Nothing -> return ()
+          Just jvmpc -> do
+            modifyState (\s -> s {exHandler = M.insert jvmpc reip (exHandler s)})
+        case hmap of
+          [] -> return ()
+          table -> modifyState (\s -> s {tryBlock = Just (reip, table)})
       compileIns (Mid ins) = girEmitOO ins
-      compileIns (Lst ins) = case ins of
-        -- TODO: signed values
-        IRIfElse jcmp src1 src2 h1 h2 -> do
-          let l1 = lmap M.! h1
-          let l2 = lmap M.! h2
-          case (src1, src2) of -- attention: swap args
-            (HIReg s1, HIReg s2) -> do
-              cmp s2 s1
-            (SpillIReg d1, HIReg s2) -> do
-              cmp s2 (d1, ebp)
-            (SpillIReg d1, SpillIReg d2) -> do
-              mov eax (d2, ebp)
-              cmp eax (d1, ebp)
-            (SpillRReg d1, SpillRReg d2) -> do
-              mov eax (d2, ebp)
-              cmp eax (d1, ebp)
-            (HIConstant c, HIReg s1) -> do
-              cmp s1 (i32tow32 c)
-            (HIReg s1, HIConstant c) -> do
-              mov eax (i32tow32 c)
-              cmp eax s1
-            (SpillIReg d1, HIConstant c) -> do
-              mov eax (i32tow32 c)
-              cmp eax (d1, ebp)
-            (HIConstant c, SpillIReg s1) -> do
-              cmp (s1, ebp) (i32tow32 c)
-            x -> error $ "IRifelse: not impl. yet" ++ show x
-          case jcmp of
-            C_EQ -> je  l1; C_NE -> jne l1
-            C_LT -> jl  l1; C_GT -> jg  l1
-            C_GE -> jge l1; C_LE -> jle l1
-          jmp l2
-        IRJump h -> jmp (lmap M.! h)
-        IRReturn Nothing -> retseq
-        IRReturn (Just (HIReg r)) -> do mov eax r; retseq
-        IRReturn (Just (HIConstant c)) -> do mov eax (i32tow32 c); retseq
-        IRReturn (Just (SpillIReg d)) -> do
-          let src = (d, ebp)
-          mov eax src
-          retseq
-        IRReturn (Just (SpillRReg d)) -> do
-          let src = (d, ebp)
-          mov eax src
-          retseq
-        IRReturn (Just (HFReg r)) -> do
-          movss xmm7 r
-          retseq
-        IRReturn x -> error $ "IRReturn: impl. me: " ++ show x
+      compileIns (Lst ins) = do
+        case ins of
+          -- TODO: signed values
+          IRIfElse jcmp src1 src2 h1 h2 -> do
+            let l1 = lmap M.! h1
+            let l2 = lmap M.! h2
+            case (src1, src2) of -- attention: swap args
+              (HIReg s1, HIReg s2) -> do
+                cmp s2 s1
+              (SpillIReg d1, HIReg s2) -> do
+                cmp s2 (d1, ebp)
+              (SpillIReg d1, SpillIReg d2) -> do
+                mov eax (d2, ebp)
+                cmp eax (d1, ebp)
+              (SpillRReg d1, SpillRReg d2) -> do
+                mov eax (d2, ebp)
+                cmp eax (d1, ebp)
+              (HIConstant c, HIReg s1) -> do
+                cmp s1 (i32tow32 c)
+              (HIReg s1, HIConstant c) -> do
+                mov eax (i32tow32 c)
+                cmp eax s1
+              (SpillIReg d1, HIConstant c) -> do
+                mov eax (i32tow32 c)
+                cmp eax (d1, ebp)
+              (HIConstant c, SpillIReg s1) -> do
+                cmp (s1, ebp) (i32tow32 c)
+              x -> error $ "IRifelse: not impl. yet" ++ show x
+            case jcmp of
+              C_EQ -> je  l1; C_NE -> jne l1
+              C_LT -> jl  l1; C_GT -> jg  l1
+              C_GE -> jge l1; C_LE -> jle l1
+            jmp l2
+          IRJump h -> jmp (lmap M.! h)
+          IRReturn Nothing -> retseq
+          IRReturn (Just (HIReg r)) -> do mov eax r; retseq
+          IRReturn (Just (HIConstant c)) -> do mov eax (i32tow32 c); retseq
+          IRReturn (Just (SpillIReg d)) -> do
+            let src = (d, ebp)
+            mov eax src
+            retseq
+          IRReturn (Just (SpillRReg d)) -> do
+            let src = (d, ebp)
+            mov eax src
+            retseq
+          IRReturn (Just (HFReg r)) -> do
+            movss xmm7 r
+            retseq
+          IRReturn x -> error $ "IRReturn: impl. me: " ++ show x
+        st <- getState
+        case tryBlock st of
+          Nothing -> do
+            return ()
+          Just (start_ip, hmap) -> do
+            end_ip <- getCurrentOffset
+            -- TODO: end_ip - 1?
+            let key = IM.ClosedInterval start_ip end_ip
+            case IM.lookup key (exTable st) of
+              Nothing -> do
+                let newmap = IM.insert (IM.ClosedInterval start_ip end_ip) hmap
+                modifyState (\s -> s { exTable = newmap (exTable s) })
+              Just hmap_old -> do
+                let newmap = IM.insert (IM.ClosedInterval start_ip end_ip) (hmap ++ hmap_old)
+                modifyState (\s -> s { exTable = newmap (exTable s) })
+        modifyState (\s -> s { tryBlock = Nothing })
   forM_ linsn $ \ins -> do
     newNamedLabel ("ir: " ++ show ins) >>= defineLabel
     compileIns ins
+  exTab <- exTable <$> getState
+  liftIO $ printf "exTab: %s\n" (show exTab)
+  exHandls <- exHandler <$> getState
+  liftIO $ printf "exHandls: %s\n" (show exHandls)
   let exmap :: ExceptionMap Word32
-      exmap = M.empty -- TODO
+      exmap = foldl'
+              (\db key -> IM.update
+                          (\entries ->
+                            Just $
+                             map (\(cn, x) -> (cn, exHandls M.! x)) entries
+                          ) key db
+              )
+              exTab
+              (IM.keys exTab)
   mname <- methodName <$> getState
   gcpts <- gcpoints <$> getState
   liftIO $ printfJit "gcpoints:\n"
@@ -673,8 +725,20 @@ girEmitOO (IRPrep SaveRegs regs) = do
 girEmitOO (IRPrep RestoreRegs regs) = do
   forM_ (S.toList regs) $ \(HIReg x) -> do
     mov x (Disp (fromJust (saveReg x)), ebp)
-girEmitOO (IRMisc1 jins _) = do
+girEmitOO (IRMisc1 jins vreg) = do
   case jins of
+    ATHROW -> do
+      case vreg of
+        HIReg x -> mov eax x
+        SpillRReg d -> mov eax (d, ebp)
+        SpillIReg d -> mov eax (d, ebp)
+        y -> error $ "emit: misc1: athrow: " ++ show y
+      trapaddr <- emitSigIllTrap 2
+      let patcher wbr = do
+            emitSigIllTrap 2
+            liftIO $ handleExceptionPatcher wbr
+      s <- getState
+      setState (s { traps = M.insert trapaddr (ThrowException patcher) (traps s) })
     CHECKCAST _ -> do
       nop -- TODO ..
     x -> error $ "emit: misc1: " ++ show x
@@ -915,12 +979,12 @@ handleExceptionPatcher wbr = do
         stackinfo <- deRefStablePtr sptr :: IO RuntimeStackInfo
         let exmap = rsiExceptionMap stackinfo
         printfEx $ printf "methodname: %s\n" (toString $ rsiMethodname stackinfo)
-        printfEx $ printf "size: %d\n" (M.size exmap)
-        printfEx $ printf "exmap: %s\n" (show $ M.toList exmap)
+        printfEx $ printf "size: %d\n" (IM.size exmap)
+        printfEx $ printf "exmap: %s\n" (show exmap)
 
         -- find the handler in a region. if there isn't a proper
         -- handler, go to the caller method (i.e. unwind the stack)
-        let searchRegion :: [(Word32, Word32)] -> IO WriteBackRegs
+        let searchRegion :: [IM.Interval Word32] -> IO WriteBackRegs
             searchRegion [] = do
               printfEx "unwind stack now. good luck(x)\n\n"
               unwindStack rebp
@@ -930,22 +994,15 @@ handleExceptionPatcher wbr = do
               case res of
                 Just x -> return x
                 Nothing -> searchRegion rs
-        -- is the EIP somewhere in the range?
-        let matchingIPs = filter (\(x, y) -> weip >= x && weip <= y)
-        -- if `fst' is EQ, sort via `snd', but reverse
-        let ipSorter (x1, y1) (x2, y2) =
-              case x1 `compare` x2 of
-                EQ -> case y1 `compare` y2 of
-                        LT -> GT; GT -> LT; EQ -> EQ
-                x -> x
         -- due to reversing the list, we get the innermost range at
         -- nested try/catch statements
-        searchRegion . reverse . sortBy ipSorter . matchingIPs . M.keys $ exmap
+        let entries = exmap `IM.containing` weip
+        searchRegion . reverse . map fst $ entries
           where
-            findHandler :: (Word32, Word32) -> ExceptionMap Word32 -> IO (Maybe WriteBackRegs)
+            findHandler :: IM.Interval Word32 -> ExceptionMap Word32 -> IO (Maybe WriteBackRegs)
             findHandler key exmap = do
               printfEx $ printf "key is: %s\n" (show key)
-              let handlerObjs = exmap M.! key
+              let handlerObjs = exmap IM.! key
               printfEx $ printf "handlerObjs: %s\n" (show handlerObjs)
 
               let myMapM :: (a -> IO (Maybe Word32)) -> [a] -> IO (Maybe WriteBackRegs)

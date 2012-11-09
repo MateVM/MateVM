@@ -16,6 +16,8 @@ module Compiler.Mate.Frontend.MkGraph
 import qualified Data.List as L
 import qualified Data.Set as S
 import qualified Data.Map as M
+import qualified Data.IntervalMap as IM
+import qualified Data.IntervalMap.Interval as IIM
 import qualified Data.ByteString.Lazy as B
 import Data.Int
 import Data.Word
@@ -35,6 +37,8 @@ import Compiler.Mate.Types
 import Compiler.Mate.Frontend.IR
 import Compiler.Mate.Frontend.StupidRegisterAllocation
 
+import Debug.Trace
+
 data SimStack = SimStack
   { stack :: [Var]
   , regcnt :: Integer
@@ -50,7 +54,7 @@ data LabelLookup = LabelLookup
   , blockEnds :: M.Map Label [Var]
   , simStack :: SimStack
   , instructions :: [J.Instruction]
-  , exceptionMap :: ExceptionMap Word16
+  , exceptionMap :: ExceptionMap Int32
   , handlerStarts :: S.Set Int32
   , pcOffset :: Int32 }
 
@@ -77,7 +81,7 @@ addExceptionBlocks = do
   hstarts <- S.toList <$> handlerStarts <$> get
   forM_ hstarts $ addPC . fromIntegral
   -- split on a try block
-  tstarts <- map fst <$> M.keys <$> exceptionMap <$> get
+  tstarts <- map IIM.lowerBound <$> IM.keys <$> exceptionMap <$> get
   forM_ tstarts $ addPC . fromIntegral
 
 -- forward references wouldn't be a problem, but backwards are
@@ -141,16 +145,23 @@ mkBlocks = do
 mkBlock :: LabelState (Graph (MateIR Var) C C)
 mkBlock = do
   modify (\s -> s { nextTargets = [] })
+  handlermap <- exceptionMap <$> get
   pc <- pcOffset <$> get
   l <- addLabel pc
-  let f' = IRLabel l
   -- push JRef for Exceptionblock, which is passed via %eax
   isExceptionHandler <- S.member pc <$> handlerStarts <$> get
-  if isExceptionHandler
-    then apush2 (VReg JRef preeax)
-    else return ()
+  handlerStart <- if isExceptionHandler
+    then do
+      apush2 (VReg JRef preeax)
+      return $ Just $ fromIntegral pc
+    else return Nothing
+  let extable = map (\(x,y) -> (x, fromIntegral y))
+                $ concatMap snd
+                $ handlermap `IM.containing` pc
+  let f' = IRLabel l extable handlerStart
   -- fixup block boundaries
-  be <- (M.lookup l) <$> blockEnds <$> get
+  be <- trace (printf "pc: %d\nhstart: %s\nextable: %s\n" pc (show handlerStart) (show extable)) $
+        (M.lookup l) <$> blockEnds <$> get
   case be of
     Nothing -> return ()
     Just ts -> forM_ ts $ \x -> do
@@ -473,6 +484,9 @@ tir i@(INSTANCEOF _) = do
   nv <- newvar JInt
   apush nv
   return [IRMisc2 i nv y]
+tir i@ATHROW = do
+  y <- apop
+  return [IRMisc1 i y]
 tir x = error $ "tir: " ++ show x
 
 tirArray objtype w8 = do

@@ -15,6 +15,7 @@ module Compiler.Mate.Frontend.IR
  , varType
  ) where
 
+import qualified Data.ByteString.Lazy as B
 import qualified Data.Set as S
 import Data.Word
 import Data.Int
@@ -26,8 +27,12 @@ import Harpy hiding (Label)
 
 import Compiler.Mate.Types
 
+type HandlerMap = [(B.ByteString {- exception class -}
+                   , Word32 {- handler entry -}
+                   )]
+type MaybeHandler = Maybe Word32
 data MateIR t e x where
-  IRLabel :: Label -> MateIR t C O
+  IRLabel :: Label -> HandlerMap -> MaybeHandler -> MateIR t C O
   IROp :: (Show t) => OpType -> t -> t -> t -> MateIR t O O
   IRStore :: (Show t) => RTPool t
                       -> t {- objectref -}
@@ -108,14 +113,14 @@ varType (VReg t _) = t
 varType JRefNull = JRef
 
 instance NonLocal (MateIR Var) where
-  entryLabel (IRLabel l) = l
+  entryLabel (IRLabel l _ _) = l
   successors (IRJump l) = [l]
   successors (IRIfElse _ _ _ l1 l2) = [l1, l2]
   successors (IRReturn _) = []
 
 {- show -}
 instance Show (MateIR t e x) where
-  show (IRLabel l) = printf "label: %s:\n" (show l)
+  show (IRLabel l hmap handlerstart) = printf "label: %s:\n\texceptions: %s\n\thandlerstart? %s\n" (show l) (show hmap) (show handlerstart)
   show (IROp op vr v1 v2) = printf "\t%s %s,  %s, %s" (show op) (show vr) (show v1) (show v2)
   show (IRLoad rt obj dst) = printf "\t%s(%s) -> %s" (show obj) (show rt) (show dst)
   show (IRStore rt obj src) = printf "\t%s(%s) <- %s" (show obj) (show rt) (show src)

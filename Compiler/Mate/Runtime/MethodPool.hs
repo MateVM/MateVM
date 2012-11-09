@@ -5,6 +5,7 @@ module Compiler.Mate.Runtime.MethodPool where
 import Data.Binary
 import Data.String.Utils
 import qualified Data.Map as M
+import qualified Data.IntervalMap as IM
 import qualified Data.Set as S
 import qualified Data.ByteString.Lazy as B
 import System.Plugins
@@ -55,7 +56,7 @@ getMethodEntry mi@(MethodInfo method cm sig) = do
             if S.member ACC_NATIVE flags
               then do
                 let scm = toString cm; smethod = toString method
-                    ret fp = return $ CompiledMethod (funPtrToAddr fp) M.empty
+                    ret fp = return $ CompiledMethod (funPtrToAddr fp) IM.empty
                 case scm of
                   "jmate/lang/MateRuntime" ->
                     case smethod of
@@ -75,7 +76,7 @@ getMethodEntry mi@(MethodInfo method cm sig) = do
                         symbol = sym1 ++ "__" ++ smethod ++ "__" ++ sym2
                     printfMp $ printf "native-call: symbol: %s\n" symbol
                     nf <- loadNativeFunction symbol
-                    let nf' = CompiledMethod nf M.empty
+                    let nf' = CompiledMethod nf IM.empty
                     setMethodMap $ M.insert mi nf' mmap
                     return nf'
               else do

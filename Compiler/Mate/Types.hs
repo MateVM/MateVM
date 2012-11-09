@@ -29,6 +29,7 @@ import Data.Int
 import Data.Functor
 import Data.Word
 import qualified Data.Map as M
+import qualified Data.IntervalMap as IM
 import qualified Data.ByteString.Lazy as B
 
 import Data.IORef
@@ -38,12 +39,11 @@ import Harpy
 import Foreign.C.Types
 
 import JVM.ClassFile
-import JVM.Assembler
 
 import Compiler.Mate.Backend.NativeSizes
 
 
-type ExceptionMap a = M.Map (a, a) [(B.ByteString, a)]
+type ExceptionMap a = IM.IntervalMap a [(B.ByteString, a)]
 data RuntimeStackInfo = RuntimeStackInfo
   { rsiMethodname :: B.ByteString
   , rsiExceptionMap :: ExceptionMap NativeWord

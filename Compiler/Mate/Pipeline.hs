@@ -5,10 +5,11 @@ module Compiler.Mate.Pipeline
 
 import qualified Data.List as L
 import qualified Data.Map as M
+import qualified Data.IntervalMap as IM
 import qualified Data.Set as S
 import qualified Data.ByteString.Lazy as B
 import Data.Maybe
-import Data.Word
+import Data.Int
 
 import Harpy
 import Harpy.X86Disassembler
@@ -68,17 +69,17 @@ pipeline cls meth jvminsn = do
               (error $ "codeseg " ++ (show . toString) mname ++ " not found")
               (attrByName meth "Code")
     decoded = decodeMethod codeseg
-    exmap :: ExceptionMap Word16
-    exmap = L.foldl' f M.empty $ codeExceptions decoded
+    exmap :: ExceptionMap Int32
+    exmap = L.foldl' f IM.empty $ codeExceptions decoded
       where
         f emap ce =
-          if M.member key emap
+          if IM.member key emap
             -- build list in reverse order, since matching order is important
-            then M.adjust (++ [value]) key emap
-            else M.insert key [value] emap
+            then IM.adjust (++ [value]) key emap
+            else IM.insert key [value] emap
             where
-              key = (&&&) eStartPC eEndPC ce
-              value = (&&&) g eHandlerPC ce
+              key = IM.ClosedInterval (fromIntegral $ eStartPC ce) (fromIntegral $ (eEndPC ce) - 1)
+              value = (&&&) g (fromIntegral . eHandlerPC) ce
                 where
                   g ce' = case eCatchType ce' of
                       0 -> B.empty

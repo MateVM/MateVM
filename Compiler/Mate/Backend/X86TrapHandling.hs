@@ -16,7 +16,6 @@ import JVM.ClassFile
 import Harpy hiding (fst)
 
 import Compiler.Mate.Types
-import Compiler.Mate.Runtime.JavaObjects
 import Compiler.Mate.Backend.NativeSizes
 import {-# SOURCE #-} Compiler.Mate.Runtime.MethodPool
 import Compiler.Mate.Runtime.ClassPool
@@ -35,7 +34,7 @@ type MateHandlerType = CPtrdiff -> CPtrdiff -> CPtrdiff ->
                        CUIntPtr -> IO ()
 foreign export ccall mateHandler :: MateHandlerType
 mateHandler :: MateHandlerType
-mateHandler reip reax rebx resi rebp resp retarr = do
+mateHandler reip reax rebx _ {- resi -} rebp resp retarr = do
   tmap <- getTrapMap
   printfTrap "----------------------\nenter matehandler\n"
   let reipw32 = fromIntegral reip

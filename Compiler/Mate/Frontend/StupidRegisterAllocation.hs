@@ -98,7 +98,7 @@ stupidRegAlloc preAssigned linsn = evalState regAlloc' startmapping
     assignReg :: LinearIns Var -> State MappedRegs (LinearIns HVar)
     assignReg lv = case lv of
       Fst x -> case x of
-        IRLabel x' -> return $ Fst $ IRLabel x'
+        IRLabel x' y z -> return $ Fst $ IRLabel x' y z
       Mid ins -> case ins of
         IROp op dst src1 src2 -> do
           dstnew <- doAssign dst
