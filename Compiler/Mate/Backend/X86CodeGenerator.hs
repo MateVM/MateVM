@@ -182,9 +182,9 @@ compileLinear lbls linsn = do
     newNamedLabel ("ir: " ++ show ins) >>= defineLabel
     compileIns ins
   exTab <- exTable <$> getState
-  liftIO $ printf "exTab: %s\n" (show exTab)
+  -- liftIO $ printf "exTab: %s\n" (show exTab)
   exHandls <- exHandler <$> getState
-  liftIO $ printf "exHandls: %s\n" (show exHandls)
+  -- liftIO $ printf "exHandls: %s\n" (show exHandls)
   let exmap :: ExceptionMap Word32
       exmap = foldl'
               (\db key -> IM.update

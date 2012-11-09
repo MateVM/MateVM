@@ -124,7 +124,8 @@ addPC bcoff = do
 
 mkMethod :: Graph (MateIR Var) C C -> LabelState (Graph (MateIR Var) O C)
 mkMethod g = do
-  entryseq <- mkLast <$> IRJump <$> addLabel 0
+  hs <- handlerStarts <$> get
+  entryseq <- mkLast <$> IRExHandler <$> mapM addLabel (S.toList hs ++ [0])
   return $ entryseq |*><*| g
 
 mkBlocks :: LabelState [Graph (MateIR Var) C C]
@@ -160,7 +161,7 @@ mkBlock = do
                 $ handlermap `IM.containing` pc
   let f' = IRLabel l extable handlerStart
   -- fixup block boundaries
-  be <- trace (printf "pc: %d\nhstart: %s\nextable: %s\n" pc (show handlerStart) (show extable)) $
+  be <- -- trace (printf "pc: %d\nhstart: %s\nextable: %s\n" pc (show handlerStart) (show extable)) $
         (M.lookup l) <$> blockEnds <$> get
   case be of
     Nothing -> return ()

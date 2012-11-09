@@ -2,6 +2,7 @@ package tests;
 
 public class Exception3 {
 	public static void main(String []args) {
+		System.out.printf("wtf\n");
 		try {
 			throw new NullPointerException();
 		} catch (NullPointerException _) {
