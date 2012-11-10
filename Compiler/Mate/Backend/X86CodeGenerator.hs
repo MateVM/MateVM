@@ -1,4 +1,5 @@
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE RankNTypes #-}
 module Compiler.Mate.Backend.X86CodeGenerator
   ( compileLinear
   , handleExceptionPatcher
@@ -225,184 +226,112 @@ compileLinear lbls linsn = do
 i322w32 :: Int32 -> Word32
 i322w32 = fromIntegral
 
-girEmitOO :: MateIR HVar O O -> CodeGen e CompileState ()
-girEmitOO (IROp And dst' src1' src2') = do
-    ge dst' src1' src2'
-  where
-    ge :: HVar -> HVar -> HVar -> CodeGen e CompileState ()
-    ge (SpillIReg d) (HIConstant c1) (HIConstant c2) = do
-      let c = i32tow32 (c1 .&. c2)
-      mov (d, ebp) c
-    ge (SpillIReg d) (SpillIReg s1) (HIConstant c2) = do
-      let dst = (d, ebp)
-      mov eax (i32tow32 c2)
-      and eax (s1, ebp)
-      mov dst eax
-    ge x y z = error $ printf "emit: irop: and: %s = %s && %s" (show x) (show y) (show z)
-girEmitOO (IROp Add dst' src1' src2') =
-    ge dst' src1' src2'
-  where
-    ge :: HVar -> HVar -> HVar -> CodeGen e CompileState ()
-    ge (HIReg dst) (HIReg src1) (HIReg src2)
-        | dst == src1 = add src1 src2
-        | dst == src2 = add src2 src1
-        | otherwise = do mov dst src1; add dst src2
-    ge dst (HIConstant c1) (HIConstant c2) = do
-      let ci = i32tow32 (c1 + c2)
-      case dst of
-        HIReg d -> mov d ci
-        SpillIReg d -> mov (d, ebp) ci
-        SpillRReg d -> mov (d, ebp) ci
-        x -> error $ "emit: op: add: dst + const + const: " ++ show x
-    ge (HIReg dst) (HIConstant c1) (HIReg src2) = do
-      mov dst src2
-      when (c1 /= 0) $ add dst (fromIntegral c1 :: Word32)
-    ge (HIReg dst) (HIConstant c1) (SpillIReg disp) = do
-      let src2 = (disp, ebp)
-      mov dst src2
-      when (c1 /= 0) $ add dst (fromIntegral c1 :: Word32)
-    ge dst@(HIReg _) src1@(HIConstant _) (SpillRReg dr) = do
-      ge dst src1 (SpillIReg dr)
-    ge (HIReg dst) (SpillIReg disp) (HIReg src2) = do
-      let src1 = (disp, ebp)
-      mov dst src2
-      add dst src1
-    ge (HIReg dst) (SpillIReg s1) (SpillIReg s2) = do
-      let src1 = (s1, ebp)
-      let src2 = (s2, ebp)
-      mov dst src2
-      add dst src1
-    ge (HIReg dst) src1 c1@(HIConstant _) = ge (HIReg dst) c1 src1
-    ge (HIReg dst) src1 spill@(SpillIReg _) = ge (HIReg dst) spill src1
-    ge (HIReg dst) spill@(SpillIReg _) src2 = ge (HIReg dst) src2 spill
-    ge (SpillIReg disp) (HIReg src1) (HIReg src2) = do
-      let dst = (disp, ebp)
-      mov dst src1
-      add dst src2
-    ge (SpillIReg disp) (HIReg src1) (SpillIReg s2) = do
-      let dst = (disp, ebp)
-      let src2 = (s2, ebp)
-      mov eax src2
-      add eax src1
-      mov dst eax
-    ge (SpillIReg disp) (SpillIReg s1) (SpillIReg s2) = do
-      let src1 = (s1, ebp)
-      let src2 = (s2, ebp)
-      let dst = (disp, ebp)
-      mov eax src2
-      add eax src1
-      mov dst eax
-    ge dst@(SpillIReg _) src1@(SpillIReg _) src2@(HIReg _) = do
-      ge dst src2 src1
-    ge (SpillIReg disp) (HIReg src1) (HIConstant c) = do
-      let dst = (disp, ebp)
-      mov dst src1
-      when (c /= 0) $ add dst (i32tow32 c)
-    ge dst@(SpillIReg _) src1@(HIConstant _) src2@(HIReg _) = do
-      ge dst src2 src1
-    ge (SpillIReg disp) (SpillIReg src1) (HIConstant c) = do
-      let dst = (disp, ebp)
-      let s1 = (src1, ebp)
-      if c == 0
-        then do
-          mov eax s1
-          mov dst eax
-        else do
-          mov eax s1
-          mov dst (i32tow32 c)
-          add dst eax
-    ge dst@(SpillIReg _) (SpillRReg src1) c@(HIConstant _) = do
-      ge dst (SpillIReg src1) c
-    ge dst@(SpillIReg _) c@(HIConstant _) src@(SpillIReg _) = do
-      ge dst src c
-    ge (SpillRReg disp) o1@(HIReg _) o2@(HIConstant _) = do
-      ge (SpillIReg disp) o1 o2
-    ge (SpillRReg disp) (SpillRReg src1) o2 = do
-      ge (SpillIReg disp) (SpillIReg src1) o2
+select :: forall a b e s.
+          (Sub a b, And a b, Add a b) =>
+          OpType -> a -> b -> CodeGen e s ()
+select Add = add
+select Sub = sub
+select And = and
 
-    ge (HFReg dst) (HFReg src1) (HFReg src2) = do
-      movss dst src2
-      addss dst src1
-    ge (HFReg dst) (HFConstant c1) (HFConstant c2) = do
-      let f = c1 + c2
-      c <- newNamedLabel ("float constant: " ++ show f)
-      s <- getState
-      setState (s { floatConsts = M.insert c f (floatConsts s)})
-      movss dst c
-    ge (HFReg dst) (HFReg src) (HFConstant 0) =
-      movss dst src
-    ge (HFReg dst) (HFReg src) (HIConstant 0) =
-      movss dst src
-    ge (SpillFReg d) c1@(HFConstant _) c2@(HFConstant _) = do
-      let dst = (d, ebp)
-      ge (HFReg xmm7) c1 c2
-      movss dst xmm7
-    ge (SpillFReg d) (HFReg src) (HFConstant 0) = do
-      let dst = (d, ebp)
-      movss dst src
-    ge (HFReg dst) (SpillFReg d) (HFConstant 0) = do
-      let src = (d, ebp)
-      movss dst src
-    ge p1 p2 p3 = error $ "girEmit (add): " ++ show p1 ++ ", " ++ show p2 ++ ", " ++ show p3
-girEmitOO (IROp Sub dst' src1' src2') = do
-    ge dst' src1' src2'
+girEmitOO :: MateIR HVar O O -> CodeGen e CompileState ()
+girEmitOO (IROp operation dst' src1' src2') =
+    case operation of
+      Mul -> girMul
+      _ -> case (operation, dst', src1', src2') of
+        -- handle special add cases (move instructions)
+        (Add, HIReg dst, HIReg src1, HIConstant 0) -> mov dst src1
+        (Add, SpillRReg d, SpillRReg s1, HIConstant 0) -> do
+          mov eax (s1, ebp)
+          mov (d, ebp) eax
+        (Add, SpillIReg d, SpillIReg s1, HIConstant 0) -> do
+          mov eax (s1, ebp)
+          mov (d, ebp) eax
+        (Add, SpillIReg d, SpillRReg s1, HIConstant 0) -> do
+          mov eax (s1, ebp)
+          mov (d, ebp) eax
+        (Add, SpillIReg d, HIReg r1, HIConstant 0) -> mov (d, ebp) r1
+        (Add, SpillRReg d, HIReg r1, HIConstant 0) -> mov (d, ebp) r1
+        (Add, HIReg dst, SpillIReg r1, HIConstant 0) -> mov dst (r1, ebp)
+        (Add, HIReg dst, SpillRReg r1, HIConstant 0) -> mov dst (r1, ebp)
+        (Add, HIReg dst, HIConstant c1, HIConstant 0) -> mov dst (i322w32 c1)
+        (Add, SpillIReg d, HIConstant c1, HIConstant 0) ->
+          mov (d, ebp) (i322w32 c1)
+        (Add, SpillRReg d, HIConstant c1, HIConstant 0) ->
+          mov (d, ebp) (i322w32 c1)
+        -- general case
+        _ -> ge (select operation) dst' src1' src2'
   where
-    ge :: HVar -> HVar -> HVar -> CodeGen e s ()
-    ge (HIReg dst) (HIReg src1) (HIReg src2) = do
-      mov dst src2; sub dst src1
-    ge (HIReg dst) (HIConstant i32) (HIReg src2) = do
-      mov dst src2; sub dst (i322w32 i32)
-    ge (HIReg dst) (HIConstant i32) (SpillIReg s2) = do
+    ge :: (forall a b. (Sub a b, And a b, Add a b)
+                       => a -> b -> CodeGen e s ())
+          -> HVar -> HVar -> HVar -> CodeGen e s ()
+    ge opx (HIReg dst) (HIReg src1) (HIReg src2) = do
+      mov dst src2; opx dst src1
+    ge opx (HIReg dst) (HIConstant i32) (HIReg src2) = do
+      mov dst src2; opx dst (i322w32 i32)
+    ge opx (HIReg dst) (HIReg src1) (HIConstant i32) = do
+      mov dst (i322w32 i32)
+      opx dst src1
+    ge opx (SpillIReg d) (HIReg src1) (HIConstant i32) = do
+      let dst = (d, ebp)
+      mov dst (i322w32 i32)
+      opx dst src1
+    ge opx (HIReg dst) (HIConstant i32) (SpillIReg s2) = do
       let src2 = (s2, ebp)
-      mov dst src2; sub dst (i322w32 i32)
-    ge (HIReg dst) (HIReg src1) (SpillIReg s2) = do
+      mov dst src2; opx dst (i322w32 i32)
+    ge opx (HIReg dst) (HIReg src1) (SpillIReg s2) = do
       let src2 = (s2, ebp)
       mov dst src2
-      sub dst src1
-    ge (HIReg dst) (SpillIReg s1) (SpillIReg s2) = do
+      opx dst src1
+    ge opx (HIReg dst) (SpillIReg s1) (SpillIReg s2) = do
       let src1 = (s1, ebp)
       let src2 = (s2, ebp)
       mov dst src2
-      sub dst src1
-    ge (HIReg dst) (SpillIReg s1) (HIReg src2) = do
+      opx dst src1
+    ge opx (HIReg dst) (SpillIReg s1) (HIReg src2) = do
       let src1 = (s1, ebp)
       mov dst src2
-      sub dst src1
-    ge (SpillIReg d) (HIConstant c) (HIReg src2) = do
+      opx dst src1
+    ge opx (SpillIReg d) (HIConstant c) (HIReg src2) = do
       let dst = (d, ebp)
       mov dst src2
-      sub dst (i32tow32 c)
-    ge (SpillIReg d) (HIConstant c) (SpillIReg s2) = do
+      opx dst (i32tow32 c)
+    ge opx (SpillIReg d) (HIConstant c) (SpillIReg s2) = do
       let dst = (d, ebp)
       let src2 = (s2, ebp)
       mov eax src2
-      sub eax (i32tow32 c)
+      opx eax (i32tow32 c)
       mov dst eax
-    ge (SpillIReg d) (HIReg src1) (HIReg src2) = do
+    ge opx (SpillIReg d) (HIReg src1) (HIReg src2) = do
       let dst = (d, ebp)
       mov dst src2
-      sub dst src1
-    ge (SpillIReg d) (SpillIReg s1) (HIReg src2) = do
+      opx dst src1
+    ge opx (SpillIReg d) (SpillIReg s1) (HIReg src2) = do
       let dst = (d, ebp)
       let src1 = (s1, ebp)
       mov eax src2
-      sub eax src1
+      opx eax src1
       mov dst eax
-    ge (SpillIReg d) (SpillIReg s1) (SpillIReg s2) = do
+    ge opx (SpillIReg d) (SpillIReg s1) (SpillIReg s2) = do
       let dst = (d, ebp)
       let src1 = (s1, ebp)
       let src2 = (s2, ebp)
       mov eax src2
-      sub eax src1
+      opx eax src1
       mov dst eax
-    ge _ _ _ = error $ "sub: not impl.: " ++ show dst' ++ ", "
-                     ++ show src1' ++ ", " ++ show src2'
-girEmitOO (IROp Mul dst' src1' src2') = do
-    -- edx is killed by `mul' instruction
-    when isNotEdx $ push edx
-    gm dst' src1' src2'
-    when isNotEdx $ pop edx
-  where
+    ge opx (SpillIReg d) (SpillIReg s1) (HIConstant c2) = do
+      let dst = (d, ebp)
+      let src1 = (s1, ebp)
+      mov eax (i322w32 c2)
+      opx eax src1
+      mov dst eax
+    ge _ _ _ _ = error $ "opx: not impl.: " ++ show operation ++ ": "
+                         ++ show dst' ++ ", " ++ show src1' ++ ", "
+                         ++ show src2'
+    girMul = do
+      -- edx is killed by `mul' instruction
+      when isNotEdx $ push edx
+      gm dst' src1' src2'
+      when isNotEdx $ pop edx
     isNotEdx = case dst' of
                 HIReg dst -> dst /= edx
                 _ -> True
