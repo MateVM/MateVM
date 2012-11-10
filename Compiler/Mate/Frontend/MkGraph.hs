@@ -37,7 +37,7 @@ import Compiler.Mate.Types
 import Compiler.Mate.Frontend.IR
 import Compiler.Mate.Frontend.StupidRegisterAllocation
 
-import Debug.Trace
+-- import Debug.Trace
 
 data SimStack = SimStack
   { stack :: [Var]
@@ -492,6 +492,7 @@ tir i@ATHROW = do
   return [IRMisc1 i y]
 tir x = error $ "tir: " ++ show x
 
+tirArray :: MateObjType -> Word8 -> State SimStack [MateIR Var O O]
 tirArray objtype w8 = do
   len <- apop
   let len' = case len of

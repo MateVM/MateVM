@@ -9,6 +9,7 @@ module Compiler.Mate.Runtime.ClassPool (
   getMethodTableReverse,
   getObjectSize,
   getFieldCount,
+  getStaticFieldTypes,
   getFieldTypes,
   getMethodOffset,
   getFieldOffset,

@@ -149,6 +149,7 @@ compileLinear lbls linsn = do
               C_GE -> jge l1; C_LE -> jle l1
             jmp l2
           IRJump h -> jmp (lmap M.! h)
+          IRExHandler _ -> error $ "emit: IRExHandlers: should not happen"
           IRReturn Nothing -> retseq
           IRReturn (Just (HIReg r)) -> do mov eax r; retseq
           IRReturn (Just (HIConstant c)) -> do mov eax (i32tow32 c); retseq
@@ -232,6 +233,7 @@ select :: forall a b e s.
 select Add = add
 select Sub = sub
 select And = and
+select x = error $ "codegen: select: not impl.: " ++ show x
 
 girEmitOO :: MateIR HVar O O -> CodeGen e CompileState ()
 girEmitOO (IROp operation dst' src1' src2') =

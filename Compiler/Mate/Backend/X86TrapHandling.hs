@@ -23,7 +23,7 @@ import Compiler.Mate.Runtime.ClassPool
 import Compiler.Mate.Backend.X86CodeGenerator
 
 import Compiler.Mate.Debug
-import Numeric
+-- import Numeric
 
 import Harpy.X86Disassembler
 
