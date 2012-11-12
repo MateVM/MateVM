@@ -9,7 +9,7 @@ module Compiler.Mate.Backend.X86CodeGenerator
   , compileStateInit
   ) where
 
-import Prelude hiding (and)
+import Prelude hiding (and, div)
 
 import qualified Data.Set as S
 import qualified Data.Map as M
@@ -239,6 +239,8 @@ girEmitOO :: MateIR HVar O O -> CodeGen e CompileState ()
 girEmitOO (IROp operation dst' src1' src2') =
     case operation of
       Mul -> girMul
+      Div -> girDiv eax -- result is in eax
+      Rem -> girDiv edx -- result is in edx
       ShiftRightLogical -> girShift shr
       ShiftRightArth -> girShift sar
       ShiftLeft -> girShift sal
@@ -408,6 +410,28 @@ girEmitOO (IROp operation dst' src1' src2') =
       so eax cl
       mov (d, ebp) eax
     gs _ d s1 s2 = error $ printf "emit: impl.: %s = %s `%s` %s\n" (show d) (show s1) (show operation) (show s2)
+
+    isNotEbx = case dst' of
+                HIReg dst -> dst /= ebx
+                _ -> True
+    girDiv resreg = do -- `div' destroys eax and edx
+      when isNotEdx $ push edx
+      when isNotEbx $ push ebx
+      case src1' of
+        HIReg s1 -> mov ebx s1
+        SpillIReg d1 -> mov ebx (d1, ebp)
+      case src2' of
+        HIReg s2 -> mov eax s2
+        SpillIReg d2 -> mov eax (d2, ebp)
+      xor edx edx
+      div ebx
+      -- move result (depending on the operation) into destination
+      case dst' of
+        HIReg d -> mov d resreg
+        SpillIReg d -> mov (d, ebp) resreg
+      when isNotEbx $ pop ebx
+      when isNotEdx $ pop edx
+
 girEmitOO (IRInvoke (RTPoolCall cpidx mapping) haveReturn ct) = do
   let static = girStatic cpidx haveReturn ct mapping
   let virtual = girVirtual cpidx haveReturn ct mapping

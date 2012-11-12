@@ -66,6 +66,8 @@ data OpType
   = Add
   | Sub
   | Mul
+  | Div
+  | Rem
   | And
   | ShiftLeft
   | ShiftRightArth
