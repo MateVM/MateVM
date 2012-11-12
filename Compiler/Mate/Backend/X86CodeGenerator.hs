@@ -10,7 +10,7 @@ module Compiler.Mate.Backend.X86CodeGenerator
   , compileStateInit
   ) where
 
-import Prelude hiding (and, div)
+import Prelude hiding (and, div, or)
 
 import qualified Data.Set as S
 import qualified Data.Map as M
@@ -19,7 +19,7 @@ import qualified Data.ByteString.Lazy as B
 import Data.Int
 import Data.Word
 import Data.Maybe
-import Data.List hiding (and)
+import Data.List hiding (and, or)
 import Data.Ord
 import Data.Binary.IEEE754
 
@@ -229,11 +229,13 @@ i322w32 :: Int32 -> Word32
 i322w32 = fromIntegral
 
 select :: forall a b e s.
-          (Sub a b, And a b, Add a b) =>
+          (Sub a b, And a b, Add a b, Or a b, Xor a b) =>
           OpType -> a -> b -> CodeGen e s ()
 select Add = add
 select Sub = sub
 select And = and
+select Or = or
+select Xor = xor
 select x = error $ "codegen: select: not impl.: " ++ show x
 
 girEmitOO :: MateIR HVar O O -> CodeGen e CompileState ()
@@ -269,7 +271,7 @@ girEmitOO (IROp operation dst' src1' src2') =
         -- general case
         _ -> ge (select operation) dst' src1' src2'
   where
-    ge :: (forall a b. (Sub a b, And a b, Add a b)
+    ge :: (forall a b. (Sub a b, And a b, Add a b, Or a b, Xor a b)
                        => a -> b -> CodeGen e s ())
           -> HVar -> HVar -> HVar -> CodeGen e s ()
     ge opx (HIReg dst) (HIReg src1) (HIReg src2) = do

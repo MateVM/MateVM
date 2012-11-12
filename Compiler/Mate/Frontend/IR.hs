@@ -69,6 +69,8 @@ data OpType
   | Div
   | Rem
   | And
+  | Or
+  | Xor
   | ShiftLeft
   | ShiftRightArth
   | ShiftRightLogical
