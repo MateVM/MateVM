@@ -165,12 +165,16 @@ mkBlock = do
   -- fixup block boundaries
   be <- -- trace (printf "pc: %d\nhstart: %s\nextable: %s\n" pc (show handlerStart) (show extable)) $
         (M.lookup l) <$> blockEnds <$> get
-  case be of
-    Nothing -> return ()
-    Just ts -> forM_ ts $ \x -> do
-                apush2 x
+  fixup <- case be of
+    Nothing -> return []
+    Just ts -> forM ts $ \x -> do
+                 st <- get
+                 let (nv, state') = runState (newvar $ varType x) (simStack st)
+                 put $ st { simStack = state'}
+                 apush2 nv
+                 return $ IROp Add nv x (nul (varType x))
   (ms', l') <- toMid
-  return $ mkFirst f' <*> mkMiddles ms' <*> mkLast l'
+  return $ mkFirst f' <*> mkMiddles (fixup ++ ms') <*> mkLast l'
 
 addLabel :: Int32 -> LabelState Label
 addLabel boff = do
@@ -275,14 +279,15 @@ handleBlockEnd = do
     then do
       forM [500000 .. (500000 + len - 1)] $ \r -> do
         x <- apop2
+        let vreg = VReg (varType x) r
         targets <- nextTargets <$> get
         forM targets $ \t -> do
           be <- M.lookup t <$> blockEnds <$> get
           let be' = case be of
                       Just x' -> x'
                       Nothing -> []
-          modify (\s -> s { blockEnds = M.insert t (x:be') (blockEnds s)})
-        return (IROp Add (VReg (varType x) r) x (nul (varType x)))
+          modify (\s -> s { blockEnds = M.insert t (vreg:be') (blockEnds s)})
+        return (IROp Add vreg x (nul (varType x)))
     else return []
 
 insnLength :: Integral a => J.Instruction -> a

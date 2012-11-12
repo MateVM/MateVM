@@ -9,10 +9,12 @@ public class TypeStuff1 {
 	}
 
 	public static void second() {
+		System.out.printf("WAT?!\n");
 		System.out.printf("success2? %d\n", equal(10) ? 1 : 0);
 	}
 
 	public static boolean equal (int len) {
+		System.out.printf("equal\n");
 		return true;
 	}
 }
