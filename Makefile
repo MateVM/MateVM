@@ -12,7 +12,7 @@ B_RELEASE := $(BUILD)/release
 B_STATIC := $(BUILD)/static
 B_COVERAGE := $(BUILD)/coverage
 B_DEBUG := $(BUILD)/debug
-PACKAGES_ := bytestring harpy hs-java plugins
+PACKAGES_ := bytestring harpy hs-java plugins hoopl
 PACKAGES := $(addprefix -package ,$(PACKAGES_))
 
 
@@ -106,7 +106,7 @@ clean:
 		.hpc all.tix
 
 ghci: mate.static
-	ghci -I. $(PACKAGES) -outputdir $(B_STATIC) Mate.hs $(GHC_CPP)
+	ghci -I. -fobject-code $(PACKAGES) -outputdir $(B_STATIC) Mate.hs $(GHC_CPP)
 
 tags: mate.static
 	@# @-fforce-recomp, see
