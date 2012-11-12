@@ -239,6 +239,9 @@ girEmitOO :: MateIR HVar O O -> CodeGen e CompileState ()
 girEmitOO (IROp operation dst' src1' src2') =
     case operation of
       Mul -> girMul
+      ShiftRightLogical -> girShift shr
+      ShiftRightArth -> girShift sar
+      ShiftLeft -> girShift sal
       _ -> case (operation, dst', src1', src2') of
         -- handle special add cases (move instructions)
         (Add, HIReg dst, HIReg src1, HIConstant 0) -> mov dst src1
@@ -376,6 +379,35 @@ girEmitOO (IROp operation dst' src1' src2') =
       mul src1
       mov (dst, ebp) eax
     gm d s1 s2 = error $ printf "emit: impl. mul: %s = %s * %s\n" (show d) (show s1) (show s2)
+
+    isNotEcx = case dst' of
+                HIReg dst -> dst /= ecx
+                _ -> True
+    girShift :: (forall a b. (Shr a b, Sar a b, Sal a b)
+                          => a -> b -> CodeGen e s ())
+             -> CodeGen e s ()
+    girShift shiftop = do
+      when isNotEcx $ push ecx
+      gs shiftop dst' src1' src2'
+      when isNotEcx $ pop ecx
+    gs :: (forall a b. (Shr a b, Sar a b, Sal a b)
+                    => a -> b -> CodeGen e s ())
+          -> HVar -> HVar -> HVar -> CodeGen e s ()
+    gs so (HIReg dst) (HIReg src1) (HIReg src2) = do
+      mov ecx src1
+      mov dst src2
+      so dst cl
+    gs so (SpillIReg d) (HIConstant c1) (SpillIReg s2) = do
+      mov ecx (i322w32 c1)
+      mov eax (s2, ebp)
+      so eax cl
+      mov (d, ebp) eax
+    gs so (SpillIReg d) (SpillIReg s1) (SpillIReg s2) = do
+      mov ecx (s1, ebp)
+      mov eax (s2, ebp)
+      so eax cl
+      mov (d, ebp) eax
+    gs _ d s1 s2 = error $ printf "emit: impl.: %s = %s `%s` %s\n" (show d) (show s1) (show operation) (show s2)
 girEmitOO (IRInvoke (RTPoolCall cpidx mapping) haveReturn ct) = do
   let static = girStatic cpidx haveReturn ct mapping
   let virtual = girVirtual cpidx haveReturn ct mapping

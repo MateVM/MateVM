@@ -67,6 +67,9 @@ data OpType
   | Sub
   | Mul
   | And
+  | ShiftLeft
+  | ShiftRightArth
+  | ShiftRightLogical
   deriving Show
 
 data HVar

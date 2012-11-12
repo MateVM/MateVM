@@ -368,6 +368,7 @@ fieldType2VarType x = error $ "fieldType2VarType: " ++ show x
 
 tir :: J.Instruction -> State SimStack [MateIR Var O O]
 tir ACONST_NULL = do apush $ JRefNull; return []
+tir ICONST_M1 = tir (BIPUSH 0xff) -- (-1)
 tir ICONST_0 = tir (BIPUSH 0)
 tir ICONST_1 = tir (BIPUSH 1)
 tir ICONST_2 = tir (BIPUSH 2)
@@ -467,6 +468,9 @@ tir POP = do apop; return []
 tir IADD = tirOpInt Add JInt
 tir ISUB = tirOpInt Sub JInt
 tir IMUL = tirOpInt Mul JInt
+tir IUSHR = tirOpInt ShiftRightLogical JInt
+tir ISHR = tirOpInt ShiftRightArth JInt
+tir ISHL = tirOpInt ShiftLeft JInt
 tir FADD = tirOpInt Add JFloat
 tir I2C = do
   x <- apop
