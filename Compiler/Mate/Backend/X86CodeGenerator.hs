@@ -260,6 +260,9 @@ girEmitOO (IROp operation dst' src1' src2') =
         (Add, SpillIReg d, SpillRReg s1, HIConstant 0) -> do
           mov eax (s1, ebp)
           mov (d, ebp) eax
+        (Add, SpillRReg d, SpillIReg s1, HIConstant 0) -> do
+          mov eax (s1, ebp)
+          mov (d, ebp) eax
         (Add, SpillIReg d, HIReg r1, HIConstant 0) -> mov (d, ebp) r1
         (Add, SpillRReg d, HIReg r1, HIConstant 0) -> mov (d, ebp) r1
         (Add, HIReg dst, SpillIReg r1, HIConstant 0) -> mov dst (r1, ebp)
@@ -709,6 +712,11 @@ girEmitOO (IRStore (RTIndex idx typ) dst src) = do
       mov ebx (typeSize typ :: Word32)
       mul ebx
       add eax (0xc :: Word32)
+    SpillRReg d -> do
+      mov eax (d, ebp)
+      mov ebx (typeSize typ :: Word32)
+      mul ebx
+      add eax (0xc :: Word32)
     y -> error $ "girEmitOO: irstore: rtindex: idx1: " ++ show y
   case dst of
     HIReg d -> add eax d
@@ -728,6 +736,7 @@ girEmitOO (IRStore (RTIndex idx typ) dst src) = do
     HIConstant i -> mov (Disp ((+0xc) . (*(typeSize typ)) $ i32tow32 i), eax) ebx
     HIReg _ -> mov (Disp 0, eax) ebx
     SpillIReg _ -> mov (Disp 0, eax) ebx
+    SpillRReg _ -> mov (Disp 0, eax) ebx
     y -> error $ "girEmitOO: irstore: rtindex: idx2: " ++ show y
   when isNotEbx $ pop ebx
   when isNotEdx $ pop edx
