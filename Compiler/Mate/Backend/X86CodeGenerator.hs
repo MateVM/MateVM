@@ -1,5 +1,6 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Compiler.Mate.Backend.X86CodeGenerator
   ( compileLinear
   , handleExceptionPatcher
@@ -420,15 +421,32 @@ girEmitOO (IROp operation dst' src1' src2') =
       case src1' of
         HIReg s1 -> mov ebx s1
         SpillIReg d1 -> mov ebx (d1, ebp)
+        HIConstant c1 -> mov ebx (i322w32 c1)
+        y -> error $ "emit: girDiv: src1: " ++ show y
       case src2' of
         HIReg s2 -> mov eax s2
         SpillIReg d2 -> mov eax (d2, ebp)
-      xor edx edx
+        HIConstant c2 -> mov eax (i322w32 c2)
+        y -> error $ "emit: girDiv: src2: " ++ show y
+
+      -- guard for exception
+      lokay <- newNamedLabel "lokay"
+      cmp ebx (0 :: Word32)
+      jne lokay
+      -- if null, then create exception-object in signal handler
+      trapaddr <- emitSigIllTrap 2
+      let patcher wbr = do
+            emitSigIllTrap 2
+            liftIO $ do
+              ex <- allocAndInitObject "java/lang/ArithmeticException"
+              handleExceptionPatcher (wbr { wbEax = ex })
+      modifyState (\s -> s { traps = M.insert trapaddr (ThrowException patcher) (traps s) })
+      lokay @@ xor edx edx
       div ebx
-      -- move result (depending on the operation) into destination
-      case dst' of
+      case dst' of -- move result (depending on the operation) into destination
         HIReg d -> mov d resreg
         SpillIReg d -> mov (d, ebp) resreg
+        y -> error $ "emit: girDiv: dst: " ++ show y
       when isNotEbx $ pop ebx
       when isNotEdx $ pop edx
 
