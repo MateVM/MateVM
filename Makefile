@@ -84,10 +84,15 @@ coverage: mate.hpc $(TIX_FILES)
 	@hpc markup $(B_COVERAGE)/coverage.tix --destdir=$(B_COVERAGE)/html > /dev/null
 	@echo "see ./$(B_COVERAGE)/html for a HTML report"
 
+CALLHPX = $(basename $<).call
+matehpc = ./mate.hpc $(1) $(basename $<) > /dev/null
 # call it only with -j1 !
 $(B_COVERAGE)/tix/%.tix: %.class mate.hpc
 	@echo "doing coverage of $(basename $<)..."
-	@./mate.hpc $(basename $<) > /dev/null
+	@rm -rf mate.hpc.tix
+	@if [ -f $(CALLHPX) ]; \
+		then $(call matehpc,`cat $(CALLHPX)`); \
+		else $(call matehpc,); fi
 	@mv mate.hpc.tix $@
 
 %.gdb: %.class mate
