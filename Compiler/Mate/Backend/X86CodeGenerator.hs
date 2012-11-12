@@ -22,6 +22,7 @@ import Data.Maybe
 import Data.List hiding (and, or)
 import Data.Ord
 import Data.Binary.IEEE754
+import qualified Data.Bits as DB
 
 import Control.Applicative hiding ((<*>))
 import Control.Monad
@@ -334,6 +335,15 @@ girEmitOO (IROp operation dst' src1' src2') =
       mov eax (i322w32 c2)
       opx eax src1
       mov dst eax
+    ge _ (SpillIReg d) (HIConstant c1) (HIConstant c2) = do
+      let res = i322w32 $ case operation of
+                  Add -> c1 + c2
+                  And -> c1 .&. c2
+                  Or -> c1 .|. c2
+                  Xor -> c1 `DB.xor` c2
+                  Sub -> error "emit: ge: opx: not sure if c1 - c2 or c2 - c1"
+                  y -> error $ "emit: ge: opx: constant: " ++ show y
+      mov (d, ebp) res
     ge _ _ _ _ = error $ "opx: not impl.: " ++ show operation ++ ": "
                          ++ show dst' ++ ", " ++ show src1' ++ ", "
                          ++ show src2'

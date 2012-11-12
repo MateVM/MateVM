@@ -27,9 +27,11 @@ public class WhileArray1 {
 		/* stolen from the equals implementation of java.lang.String of
 		 * GNU Classpath */
 		int x = 0, y = 0;
+		System.out.printf("equal: len is %d\n", len);
 		while (--len >= 0) {
-			System.out.printf("idx: x: %d, y: %d\n", x, y);
+			System.out.printf("\tidx: x: %d, y: %d\n", x, y);
 			if (a.arr[x++] != b.arr[y++]) {
+				System.out.printf("\tcmp failed, return false\n");
 				return false;
 			}
 		}
