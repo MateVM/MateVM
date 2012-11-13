@@ -77,9 +77,6 @@ data CompileState = CompileState
   , gcpoints :: GCPoints
   , methodName :: B.ByteString }
 
-i32tow32 :: Int32 -> Word32
-i32tow32 = fromIntegral
-
 modifyState :: (CompileState -> CompileState) -> CodeGen e CompileState ()
 modifyState f = do
   s <- getState
@@ -135,15 +132,15 @@ compileLinear lbls linsn = do
                 mov eax (d2, ebp)
                 cmp eax (d1, ebp)
               (HIConstant c, HIReg s1) -> do
-                cmp s1 (i32tow32 c)
+                cmp s1 (i32Tow32 c)
               (HIReg s1, HIConstant c) -> do
-                mov eax (i32tow32 c)
+                mov eax (i32Tow32 c)
                 cmp eax s1
               (SpillIReg d1, HIConstant c) -> do
-                mov eax (i32tow32 c)
+                mov eax (i32Tow32 c)
                 cmp eax (d1, ebp)
               (HIConstant c, SpillIReg s1) -> do
-                cmp (s1, ebp) (i32tow32 c)
+                cmp (s1, ebp) (i32Tow32 c)
               x -> error $ "IRifelse: not impl. yet" ++ show x
             case jcmp of
               C_EQ -> je  l1; C_NE -> jne l1
@@ -159,13 +156,13 @@ compileLinear lbls linsn = do
               y -> error $ "emit: IRSwitch: src: " ++ show y
             forM_ table $ \x -> case x of
                 (Just val, label) -> do
-                  cmp eax (i322w32 val)
+                  cmp eax (i32Tow32 val)
                   je (lmap M.! label)
                 (Nothing, label) -> do
                   jmp (lmap M.! label)
           IRReturn Nothing -> retseq
           IRReturn (Just (HIReg r)) -> do mov eax r; retseq
-          IRReturn (Just (HIConstant c)) -> do mov eax (i32tow32 c); retseq
+          IRReturn (Just (HIConstant c)) -> do mov eax (i32Tow32 c); retseq
           IRReturn (Just (SpillIReg d)) -> do
             let src = (d, ebp)
             mov eax src
@@ -237,9 +234,6 @@ compileLinear lbls linsn = do
   tm <- traps <$> getState
   return (d, ep, tm)
 
-i322w32 :: Int32 -> Word32
-i322w32 = fromIntegral
-
 select :: forall a b e s.
           (Sub a b, And a b, Add a b, Or a b, Xor a b) =>
           OpType -> a -> b -> CodeGen e s ()
@@ -278,11 +272,11 @@ girEmitOO (IROp operation dst' src1' src2') =
         (Add, SpillRReg d, HIReg r1, HIConstant 0) -> mov (d, ebp) r1
         (Add, HIReg dst, SpillIReg r1, HIConstant 0) -> mov dst (r1, ebp)
         (Add, HIReg dst, SpillRReg r1, HIConstant 0) -> mov dst (r1, ebp)
-        (Add, HIReg dst, HIConstant c1, HIConstant 0) -> mov dst (i322w32 c1)
+        (Add, HIReg dst, HIConstant c1, HIConstant 0) -> mov dst (i32Tow32 c1)
         (Add, SpillIReg d, HIConstant c1, HIConstant 0) ->
-          mov (d, ebp) (i322w32 c1)
+          mov (d, ebp) (i32Tow32 c1)
         (Add, SpillRReg d, HIConstant c1, HIConstant 0) ->
-          mov (d, ebp) (i322w32 c1)
+          mov (d, ebp) (i32Tow32 c1)
         -- general case
         _ -> ge (select operation) dst' src1' src2'
   where
@@ -292,17 +286,17 @@ girEmitOO (IROp operation dst' src1' src2') =
     ge opx (HIReg dst) (HIReg src1) (HIReg src2) = do
       mov dst src2; opx dst src1
     ge opx (HIReg dst) (HIConstant i32) (HIReg src2) = do
-      mov dst src2; opx dst (i322w32 i32)
+      mov dst src2; opx dst (i32Tow32 i32)
     ge opx (HIReg dst) (HIReg src1) (HIConstant i32) = do
-      mov dst (i322w32 i32)
+      mov dst (i32Tow32 i32)
       opx dst src1
     ge opx (SpillIReg d) (HIReg src1) (HIConstant i32) = do
       let dst = (d, ebp)
-      mov dst (i322w32 i32)
+      mov dst (i32Tow32 i32)
       opx dst src1
     ge opx (HIReg dst) (HIConstant i32) (SpillIReg s2) = do
       let src2 = (s2, ebp)
-      mov dst src2; opx dst (i322w32 i32)
+      mov dst src2; opx dst (i32Tow32 i32)
     ge opx (HIReg dst) (HIReg src1) (SpillIReg s2) = do
       let src2 = (s2, ebp)
       mov dst src2
@@ -319,12 +313,12 @@ girEmitOO (IROp operation dst' src1' src2') =
     ge opx (SpillIReg d) (HIConstant c) (HIReg src2) = do
       let dst = (d, ebp)
       mov dst src2
-      opx dst (i32tow32 c)
+      opx dst (i32Tow32 c)
     ge opx (SpillIReg d) (HIConstant c) (SpillIReg s2) = do
       let dst = (d, ebp)
       let src2 = (s2, ebp)
       mov eax src2
-      opx eax (i32tow32 c)
+      opx eax (i32Tow32 c)
       mov dst eax
     ge opx (SpillIReg d) (HIReg src1) (HIReg src2) = do
       let dst = (d, ebp)
@@ -346,11 +340,11 @@ girEmitOO (IROp operation dst' src1' src2') =
     ge opx (SpillIReg d) (SpillIReg s1) (HIConstant c2) = do
       let dst = (d, ebp)
       let src1 = (s1, ebp)
-      mov eax (i322w32 c2)
+      mov eax (i32Tow32 c2)
       opx eax src1
       mov dst eax
     ge _ (SpillIReg d) (HIConstant c1) (HIConstant c2) = do
-      let res = i322w32 $ case operation of
+      let res = i32Tow32 $ case operation of
                   Add -> c1 + c2
                   And -> c1 .&. c2
                   Or -> c1 .|. c2
@@ -378,7 +372,7 @@ girEmitOO (IROp operation dst' src1' src2') =
       mul (sd1, ebp)
       mov dst eax
     gm (HIReg dst) (HIReg src1) (HIConstant c2) = do
-      mov eax (i32tow32 c2)
+      mov eax (i32Tow32 c2)
       mul src1
       mov dst eax
     gm (SpillIReg dst) (HIReg src1) (HIReg src2) = do
@@ -386,14 +380,14 @@ girEmitOO (IROp operation dst' src1' src2') =
       mul src2
       mov (dst, ebp) eax
     gm (SpillIReg dst) (HIConstant c1) (HIReg src2) = do
-      mov eax (i32tow32 c1)
+      mov eax (i32Tow32 c1)
       mul src2
       mov (dst, ebp) eax
     gm dst@(SpillIReg _) src1@(HIReg _) src2@(HIConstant _) = do
       gm dst src2 src1
     gm (SpillIReg dst) (HIConstant c1) (SpillIReg s2) = do
       let src2 = (s2, ebp)
-      mov eax (i32tow32 c1)
+      mov eax (i32Tow32 c1)
       mul src2
       mov (dst, ebp) eax
     gm (SpillIReg dst) (SpillIReg s1) (SpillIReg s2) = do
@@ -404,7 +398,7 @@ girEmitOO (IROp operation dst' src1' src2') =
       mov (dst, ebp) eax
     gm (SpillIReg dst) (SpillIReg s1) (HIConstant c2) = do
       let src1 = (s1, ebp)
-      mov eax (i32tow32 c2)
+      mov eax (i32Tow32 c2)
       mul src1
       mov (dst, ebp) eax
     gm d s1 s2 = error $ printf "emit: impl. mul: %s = %s * %s\n" (show d) (show s1) (show s2)
@@ -427,7 +421,7 @@ girEmitOO (IROp operation dst' src1' src2') =
       mov dst src2
       so dst cl
     gs so (SpillIReg d) (HIConstant c1) (SpillIReg s2) = do
-      mov ecx (i322w32 c1)
+      mov ecx (i32Tow32 c1)
       mov eax (s2, ebp)
       so eax cl
       mov (d, ebp) eax
@@ -447,12 +441,12 @@ girEmitOO (IROp operation dst' src1' src2') =
       case src1' of
         HIReg s1 -> mov ebx s1
         SpillIReg d1 -> mov ebx (d1, ebp)
-        HIConstant c1 -> mov ebx (i322w32 c1)
+        HIConstant c1 -> mov ebx (i32Tow32 c1)
         y -> error $ "emit: girDiv: src1: " ++ show y
       case src2' of
         HIReg s2 -> mov eax s2
         SpillIReg d2 -> mov eax (d2, ebp)
-        HIConstant c2 -> mov eax (i322w32 c2)
+        HIConstant c2 -> mov eax (i32Tow32 c2)
         y -> error $ "emit: girDiv: src2: " ++ show y
 
       -- guard for exception
@@ -631,7 +625,7 @@ girEmitOO (IRLoad (RTIndex idx typ) src dst) = do
   when isNotEdx $ push edx
   when isNotEbx $ push ebx
   case idx of
-    HIConstant i -> mov eax (((i32tow32 i) * (typeSize typ)) + 0xc)
+    HIConstant i -> mov eax (((i32Tow32 i) * (typeSize typ)) + 0xc)
     HIReg i -> do
       mov eax i
       mov ebx (typeSize typ :: Word32)
@@ -670,7 +664,7 @@ girEmitOO (IRStore (RTPool x) obj src) = do
           case src of
             HIReg s1 -> mov eax s1
             SpillIReg d -> mov eax (d, ebp)
-            HIConstant i -> mov eax (i32tow32 i)
+            HIConstant i -> mov eax (i32Tow32 i)
             _ -> error "girEmitOO: IRStore: static field"
           trapaddr <- getCurrentOffset
           mov (Addr 0) eax
@@ -687,7 +681,7 @@ girEmitOO (IRStore (RTPool x) obj src) = do
             HIReg s1 -> mov ebx s1
             SpillIReg d -> mov ebx (d, ebp)
             SpillRReg d -> mov ebx (d, ebp)
-            HIConstant c -> mov ebx (i32tow32 c)
+            HIConstant c -> mov ebx (i32Tow32 c)
             x' -> error $ "girEmitOO: IRStore: putfield2: " ++ show x'
           -- like: 4581fc6b  89 98 30 7b 00 00 movl   %ebx,31536(%eax)
           trapaddr <- emitSigIllTrap 6
@@ -736,7 +730,7 @@ girEmitOO (IRStore (RTIndex idx typ) dst src) = do
     y -> error $ "girEmitOO: irstore: rtindex: dst: " ++ show y
   -- store array elem
   case src of
-    HIConstant i -> mov ebx (i32tow32 i)
+    HIConstant i -> mov ebx (i32Tow32 i)
     HIReg s -> do
       when (s == edx || s == ebx) $ error $ "irstore: rtindex: register not avail.2"
       mov ebx s
@@ -744,7 +738,7 @@ girEmitOO (IRStore (RTIndex idx typ) dst src) = do
     SpillRReg sd -> mov ebx (sd, ebp)
     y -> error $ "girEmitOO: irstore: rtindex: src: " ++ show y
   case idx of
-    HIConstant i -> mov (Disp ((+0xc) . (*(typeSize typ)) $ i32tow32 i), eax) ebx
+    HIConstant i -> mov (Disp ((+0xc) . (*(typeSize typ)) $ i32Tow32 i), eax) ebx
     HIReg _ -> mov (Disp 0, eax) ebx
     SpillIReg _ -> mov (Disp 0, eax) ebx
     SpillRReg _ -> mov (Disp 0, eax) ebx
@@ -754,7 +748,7 @@ girEmitOO (IRStore (RTIndex idx typ) dst src) = do
 girEmitOO ins@(IRStore _ _ _) = do
   error $ "irstore: emit: " ++ show ins
 girEmitOO (IRPush _ (HIReg x)) = push x
-girEmitOO (IRPush _ (HIConstant x)) = push (i32tow32 x)
+girEmitOO (IRPush _ (HIConstant x)) = push (i32Tow32 x)
 girEmitOO (IRPush _ (SpillIReg d)) = push (d, ebp)
 girEmitOO (IRPush _ (SpillRReg d)) = push (d, ebp)
 girEmitOO (IRPrep SaveRegs regs) = do
@@ -794,7 +788,7 @@ girEmitOO (IRMisc2 jins dst src) = do
         HIReg s -> mov eax s
         SpillIReg d -> mov eax (d, ebp)
         SpillRReg d -> mov eax (d, ebp)
-        HIConstant i -> mov eax (i32tow32 i)
+        HIConstant i -> mov eax (i32Tow32 i)
         x -> error $ "emit: misc2: instanceof: src: " ++ show x
       -- place something like `mov edx $mtable_of_objref' instead
       trapaddr <- emitSigIllTrap 4

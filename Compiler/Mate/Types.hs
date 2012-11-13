@@ -1,6 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Compiler.Mate.Types
-  ( ExceptionMap
+  ( w8Toi32
+  , w16Toi32
+  , w32Toi32
+  , i32Tow32
+  , ExceptionMap
   , RuntimeStackInfo(..)
   , StackDisp, GCPoint, GCPoints, GCSet, rootSet
   , JpcNpcMap
@@ -41,6 +45,21 @@ import Foreign.C.Types
 import JVM.ClassFile
 
 import Compiler.Mate.Backend.NativeSizes
+
+-- type helper
+w8Toi32 :: Word8 -> Int32
+w8Toi32 w8 = fromIntegral i8
+ where i8 = fromIntegral w8 :: Int8
+
+w16Toi32 :: Word16 -> Int32
+w16Toi32 w16 = fromIntegral i16
+  where i16 = fromIntegral w16 :: Int16
+
+w32Toi32 :: Word32 -> Int32
+w32Toi32 = fromIntegral
+
+i32Tow32 :: Int32 -> Word32
+i32Tow32 = fromIntegral
 
 
 type ExceptionMap a = IM.IntervalMap a [(B.ByteString, a)]

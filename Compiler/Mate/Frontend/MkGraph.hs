@@ -67,16 +67,6 @@ type LabelState a = StateT LabelLookup SimpleUniqueMonad a
 -- (<*>) ::     (GraphRep g, NonLocal n) => g n e O  -> g n O x -> g n e x
 -- (|*><*|) ::  (GraphRep g, NonLocal n) => g n e C  -> g n C x -> g n e x
 
-w162i32 :: Word16 -> Int32
-w162i32 w16 = fromIntegral i16
-  where i16 = fromIntegral w16 :: Int16
-
-w82i32 :: Word8 -> Int32
-w82i32 w8 = fromIntegral i8
- where i8 = fromIntegral w8 :: Int8
-
-w32toi32 :: Word32 -> Int32
-w32toi32 = fromIntegral
 
 addExceptionBlocks :: LabelState ()
 addExceptionBlocks = do
@@ -123,7 +113,7 @@ resolveReferences = do
     addPCs :: Int32 -> Word16 -> J.Instruction -> LabelState ()
     addPCs pc rel ins = do
       addPC (pc + insnLength ins)
-      addPC (pc + (w162i32 rel))
+      addPC (pc + (w16Toi32 rel))
     addSwitch :: Int32 -> Word32 -> [Word32] -> LabelState ()
     addSwitch pc def offs = do
       mapM_ (addPC . (+pc) . fromIntegral) offs
@@ -231,7 +221,7 @@ toMid = do
     toLast ins = do
       pc <- pcOffset <$> get
       let ifstuff jcmp rel op1 op2 = do
-            truejmp <- addLabel (pc + w162i32 rel)
+            truejmp <- addLabel (pc + w16Toi32 rel)
             falsejmp <- addLabel (pc + insnLength ins)
             incrementPC ins
             popInstruction
@@ -240,7 +230,7 @@ toMid = do
             y <- apop2
             switch <- forM switch' $ \(v, o) -> do
               offset <- addLabel $ pc + fromIntegral o
-              return (Just (w32toi32 v), offset)
+              return (Just (w32Toi32 v), offset)
             defcase <- addLabel $ pc + fromIntegral def
             incrementPC ins
             popInstruction
@@ -273,7 +263,7 @@ toMid = do
           unless (varType op1 == varType op2) $ error "toLast IF_ACMP: type mismatch"
           ifstuff jcmp rel op1 op2
         (GOTO rel) -> do
-          jump <- addLabel (pc + w162i32 rel)
+          jump <- addLabel (pc + w16Toi32 rel)
           incrementPC ins
           popInstruction
           return $ ([], IRJump jump)
@@ -402,8 +392,8 @@ tir ICONST_2 = tir (BIPUSH 2)
 tir ICONST_3 = tir (BIPUSH 3)
 tir ICONST_4 = tir (BIPUSH 4)
 tir ICONST_5 = tir (BIPUSH 5)
-tir (BIPUSH x) = do apush $ JIntValue (w82i32 x); return []
-tir (SIPUSH x) = do apush $ JIntValue (w162i32 x); return []
+tir (BIPUSH x) = do apush $ JIntValue (w8Toi32 x); return []
+tir (SIPUSH x) = do apush $ JIntValue (w16Toi32 x); return []
 tir FCONST_0 =  do apush $ JFloatValue 0; return []
 tir FCONST_1 =  do apush $ JFloatValue 1; return []
 tir FCONST_2 =  do apush $ JFloatValue 3; return []
@@ -415,7 +405,7 @@ tir (IINC x con) = do
   nv <- newvar JInt
   apush nv
   storeinsn <- tirStore x JInt
-  return $ [IROp Add nv y (JIntValue (w82i32 con))] ++ storeinsn
+  return $ [IROp Add nv y (JIntValue (w8Toi32 con))] ++ storeinsn
 tir (ALOAD_ x) = tir (ALOAD (imm2num x))
 tir (ALOAD x) = tirLoad x JRef
 tir (FLOAD_ x) = tir (FLOAD (imm2num x))
