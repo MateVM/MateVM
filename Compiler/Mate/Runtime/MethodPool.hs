@@ -5,7 +5,6 @@ module Compiler.Mate.Runtime.MethodPool where
 import Data.Binary
 import Data.String.Utils
 import qualified Data.Map as M
-import qualified Data.IntervalMap as IM
 import qualified Data.Set as S
 import qualified Data.ByteString.Lazy as B
 import System.Plugins
@@ -41,11 +40,10 @@ foreign import ccall "&printGCStats"
 foreign import ccall "&cloneObject"
   cloneObjectAddr :: FunPtr (CPtrdiff -> IO CPtrdiff)
 
-getMethodEntry :: MethodInfo -> IO (CPtrdiff, ExceptionMap NativeWord)
+getMethodEntry :: MethodInfo -> IO CPtrdiff
 getMethodEntry mi@(MethodInfo method cm sig) = do
   mmap <- getMethodMap
-
-  (CompiledMethod entrypoint exmap) <- case M.lookup mi mmap of
+  case M.lookup mi mmap of
     Nothing -> do
       cls <- getClassFile cm
       printfMp $ printf "getMethodEntry: no method \"%s\" found. compile it\n" (show mi)
@@ -56,7 +54,8 @@ getMethodEntry mi@(MethodInfo method cm sig) = do
             if S.member ACC_NATIVE flags
               then do
                 let scm = toString cm; smethod = toString method
-                    ret fp = return $ CompiledMethod (funPtrToAddr fp) IM.empty
+                    ret :: FunPtr a -> IO CPtrdiff
+                    ret = return . funPtrToAddr
                 case scm of
                   "jmate/lang/MateRuntime" ->
                     case smethod of
@@ -76,16 +75,14 @@ getMethodEntry mi@(MethodInfo method cm sig) = do
                         symbol = sym1 ++ "__" ++ smethod ++ "__" ++ sym2
                     printfMp $ printf "native-call: symbol: %s\n" symbol
                     nf <- loadNativeFunction symbol
-                    let nf' = CompiledMethod nf IM.empty
-                    setMethodMap $ M.insert mi nf' mmap
-                    return nf'
-              else do
+                    setMethodMap $ M.insert mi nf mmap
+                    return $ fromIntegral nf
+              else do -- plain java method
                 entry <- compile $ MethodInfo method (thisClass cls') sig
                 addMethodRef entry mi clsnames
-                return entry
+                return $ fromIntegral entry
         Nothing -> error $ printf "\"%s\" not found. abort" (toString method)
-    Just w32 -> return w32
-  return (fromIntegral entrypoint, exmap)
+    Just w32 -> return $ fromIntegral w32
 
 funPtrToAddr :: Num b => FunPtr a -> b
 funPtrToAddr = fromIntegral . ptrToIntPtr . castFunPtrToPtr
@@ -121,23 +118,17 @@ loadNativeFunction sym = do
     then error $ "dyn. loading of \"" ++ sym ++ "\" failed."
     else return $ fromIntegral $ ptrToIntPtr ptr
 
--- t_01 :: IO ()
--- t_01 = do
---   (entry, _) <- testCase "./tests/Fib.class" "fib"
---   let int_entry = ((fromIntegral $ ptrToIntPtr entry) :: NativeWord)
---   let mmap = M.insert ("fib" :: String) int_entry M.empty
---   mapM_ (\(x,y) -> printf "%s at 0x%08x\n" x y) $ M.toList mmap
---   mmap2ptr mmap >>= set_mmap
---   demo_mmap -- access Data.Map from C
-
-addMethodRef :: CompiledMethod -> MethodInfo -> [B.ByteString] -> IO ()
+addMethodRef :: NativeWord-> MethodInfo -> [B.ByteString] -> IO ()
 addMethodRef entry (MethodInfo mmname _ msig) clsnames = do
   mmap <- getMethodMap
-  let newmap = foldr (\i -> M.insert (MethodInfo mmname i msig) entry) M.empty clsnames
+  let newmap = foldr
+                  (\i -> M.insert (MethodInfo mmname i msig) entry)
+                  M.empty
+                  clsnames
   setMethodMap $ mmap `M.union` newmap
 
 
-compile :: MethodInfo -> IO CompiledMethod
+compile :: MethodInfo -> IO NativeWord
 compile methodinfo = do
   tmap <- getTrapMap
 
@@ -145,10 +136,10 @@ compile methodinfo = do
   printfJit $ printf "emit code of \"%s\" from \"%s\":\n"
                (toString $ methName methodinfo)
                (toString $ methClassName methodinfo)
-  (entry, new_tmap) <- compileMethod (methName methodinfo)
+  (entry, new_trapmap) <- compileMethod (methName methodinfo)
                                      (methSignature methodinfo)
                                      cls
-  setTrapMap $ tmap `M.union` new_tmap -- prefers elements in tmap
+  setTrapMap $ tmap `M.union` new_trapmap -- prefers elements in tmap
   printfJit $ printf "generated code of \"%s\" @ \"%s\" from \"%s\". DONE\n"
                (toString $ methName methodinfo)
                (show $ methSignature methodinfo)
@@ -163,8 +154,7 @@ compile methodinfo = do
   -- (2) on getLine, press CTRL+C
   -- (3) `br *0x<addr>'; obtain the address from the disasm above
   -- (4) `cont' and press enter
-  let exmap = undefined
-  return $ CompiledMethod entry exmap
+  return entry
 
 executeFuncPtr :: NativeWord -> IO ()
 executeFuncPtr entry =

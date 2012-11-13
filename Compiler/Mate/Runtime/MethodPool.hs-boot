@@ -9,7 +9,7 @@ import Compiler.Mate.Backend.NativeSizes
 import Foreign.C.Types
 
 
-addMethodRef :: CompiledMethod -> MethodInfo -> [B.ByteString] -> IO ()
-compile :: MethodInfo -> IO CompiledMethod
+addMethodRef :: NativeWord -> MethodInfo -> [B.ByteString] -> IO ()
+compile :: MethodInfo -> IO NativeWord
 executeFuncPtr :: NativeWord -> IO ()
-getMethodEntry :: MethodInfo -> IO (CPtrdiff, ExceptionMap NativeWord)
+getMethodEntry :: MethodInfo -> IO CPtrdiff

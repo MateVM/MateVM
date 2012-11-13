@@ -10,7 +10,6 @@ module Compiler.Mate.Types
   , TrapPatcher, TrapPatcherEax
   , ExceptionHandler
   , WriteBackRegs(..)
-  , CompiledMethod(..)
   , TrapMap, MethodMap, ClassMap, FieldMap, FieldTypeMap
   , StringMap, VirtualMap, InterfaceMap
   , InterfaceMethodMap
@@ -113,12 +112,8 @@ data StaticFieldInfo = StaticFieldInfo {
 
 
 
-data CompiledMethod = CompiledMethod {
-  methodEntryPoint :: NativeWord,
-  -- TODO(bernhard): remove exceptionmap?
-  methodExceptionMap :: ExceptionMap NativeWord }
--- B.ByteString = name of method
-type MethodMap = M.Map MethodInfo CompiledMethod
+-- NativeWord = entry of method
+type MethodMap = M.Map MethodInfo NativeWord
 
 data MethodInfo = MethodInfo {
   methName :: B.ByteString,
