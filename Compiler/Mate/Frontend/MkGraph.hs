@@ -347,6 +347,7 @@ fieldType2VarType (ObjectType _) = JRef
 fieldType2VarType (Array _ _) = JRef -- fieldType2VarType ty -- TODO
 fieldType2VarType x = error $ "fieldType2VarType: " ++ show x
 
+-- tir = transform to IR
 tir :: J.Instruction -> ParseState [MateIR Var O O]
 tir ACONST_NULL = do apush $ JRefNull; return []
 tir ICONST_M1 = tir (BIPUSH 0xff) -- (-1)
@@ -552,15 +553,46 @@ tirInvoke ct ident = do
                       JRef -> preeax
       let nv = VReg x prereg
       movtarget <- newvar x
-      tracePipe(printf "return: %s@%s\n" (show prereg) (show x)) $apush movtarget
-      let movretval = IROp Add movtarget nv (JIntValue 0)
-      return (Just nv, Just movretval)
+      tracePipe (printf "return: %s@%s\n" (show prereg) (show x)) $
+        apush movtarget
+      return (Just nv, Just $ IROp Add movtarget nv (JIntValue 0))
     Nothing -> return (Nothing, Nothing)
   let r = (IRPrep SaveRegs S.empty): pushes ++
           [IRInvoke (RTPoolCall ident []) targetreg ct, IRPrep RestoreRegs S.empty]
   case maybemov of
     Nothing -> return r
     Just m -> return $ r ++ [m]
+
+maybeArgument :: Word8 -> VarType -> ParseState Var
+maybeArgument x t = do
+  meth <- method <$> get
+  let genVReg :: (Disp -> HVar) -> Integer
+              -> Word8 -> VarType
+              -> (Integer, (HVar, VarType))
+      genVReg constructor a w8 t' =
+        (a,
+           (constructor . Disp . (+0xc) . fromIntegral $ (ptrSize * w8)
+           , t')
+        )
+  if x < methodArgs meth
+    then do
+      (tup', assign') <- case t of
+       JFloat -> do
+         let assign = preFloats !! (fromIntegral x)
+         let tup = (assign, (HFReg . XMMReg . fromIntegral $ x, JFloat))
+         return (tup, assign)
+       _ -> do
+         let assign = preArgs !! (fromIntegral x)
+         let constr = case t of
+                  JRef -> SpillRReg
+                  JInt -> SpillIReg
+                  JFloat -> error "can't happen"
+         let tup = genVReg constr assign x JInt
+         return (tup, assign)
+      modify (\s -> s { preRegs = tup' : (preRegs s) })
+      return $ VReg t assign'
+    else return $ VReg t (fromIntegral x)
+
 
 tirLoad' :: Word8 -> VarType -> ParseState ()
 tirLoad' x t = do
@@ -580,36 +612,6 @@ tirLoad x t = do
   nv <- newvar t
   apush nv
   return [IROp Add nv vreg (nul t)]
-
-maybeArgument :: Word8 -> VarType -> ParseState Var
-maybeArgument x t = do
-  meth <- method <$> get
-  let genVReg :: (Disp -> HVar) -> Integer
-              -> Word8 -> VarType
-              -> (Integer, (HVar, VarType))
-      genVReg constructor a w8 t' =
-        (a,
-           (constructor . Disp . (+0xc) . fromIntegral $ (ptrSize * w8)
-           , t'))
-  if x < methodArgs meth
-    then do
-      case t of
-       JFloat -> do
-         let assign = preFloats !! (fromIntegral x)
-         let tup = (assign, (HFReg . XMMReg . fromIntegral $ x, JFloat))
-         modify (\s -> s { preRegs = tup : (preRegs s) })
-         return $ VReg t assign
-       JRef -> do
-         let assign = preArgs !! (fromIntegral x)
-         let tup = genVReg SpillRReg assign x JInt
-         modify (\s -> s { preRegs = tup : (preRegs s) })
-         return $ VReg t assign
-       JInt -> do
-         let assign = preArgs !! (fromIntegral x)
-         let tup = genVReg SpillIReg assign x JInt
-         modify (\s -> s { preRegs = tup : (preRegs s) })
-         return $ VReg t assign
-    else return $ VReg t (fromIntegral x)
 
 
 tirStore :: Word8 -> VarType -> ParseState[MateIR Var O O]
