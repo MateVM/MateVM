@@ -107,7 +107,7 @@ allocAndInitObject p = do
   mtable <- getMethodTable p
   poke (plusPtr objptr 0) mtable
   poke (plusPtr objptr 4) (0x1337babe :: CPtrdiff)
-  entry <- getMethodEntry mi
+  entry <- lookupMethodEntry mi
   let fptr = (castPtrToFunPtr . intPtrToPtr . fromIntegral $ entry) :: FunPtr (CPtrdiff -> IO ())
   code_ref fptr obj
   return obj

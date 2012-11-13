@@ -124,7 +124,7 @@ patchInvoke (MethodInfo methname _ msig)  method_table table2patch io_offset wbr
   liftIO $ printfTrap $ printf "cls stuff: %s\n" (toString cls)
   let newmi = MethodInfo methname cls msig
   offset <- liftIO io_offset
-  entryAddr <- liftIO $ getMethodEntry newmi
+  entryAddr <- liftIO $ lookupMethodEntry newmi
   call32Eax (Disp offset)
   -- patch entry in table
   let call_insn = intPtrToPtr . fromIntegral $ table2patch + fromIntegral offset

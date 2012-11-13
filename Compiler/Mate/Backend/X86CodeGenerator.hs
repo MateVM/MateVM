@@ -812,7 +812,7 @@ girStatic cpidx haveReturn ct mapping = do
   -- like: call $0x01234567
   calladdr <- emitSigIllTrap 5
   let patcher wbr = do
-        entryAddr <- liftIO $ getMethodEntry l
+        entryAddr <- liftIO $ lookupMethodEntry l
         call (fromIntegral (entryAddr - (wbEip wbr + 5)) :: NativeWord)
         return wbr
   setGCPoint mapping

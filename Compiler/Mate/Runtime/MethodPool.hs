@@ -1,6 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
-module Compiler.Mate.Runtime.MethodPool where
+module Compiler.Mate.Runtime.MethodPool
+  ( lookupMethodEntry
+  , executeFuncPtr
+  ) where
 
 import Data.Binary
 import Data.String.Utils
@@ -40,8 +43,8 @@ foreign import ccall "&printGCStats"
 foreign import ccall "&cloneObject"
   cloneObjectAddr :: FunPtr (CPtrdiff -> IO CPtrdiff)
 
-getMethodEntry :: MethodInfo -> IO CPtrdiff
-getMethodEntry mi@(MethodInfo method cm sig) = do
+lookupMethodEntry:: MethodInfo -> IO CPtrdiff
+lookupMethodEntry mi@(MethodInfo method cm sig) = do
   mmap <- getMethodMap
   case M.lookup mi mmap of
     Nothing -> do
@@ -79,7 +82,7 @@ getMethodEntry mi@(MethodInfo method cm sig) = do
                     return $ fromIntegral nf
               else do -- plain java method
                 entry <- compile $ MethodInfo method (thisClass cls') sig
-                addMethodRef entry mi clsnames
+                insertCompiledMethod entry mi clsnames
                 return $ fromIntegral entry
         Nothing -> error $ printf "\"%s\" not found. abort" (toString method)
     Just w32 -> return $ fromIntegral w32
@@ -118,8 +121,8 @@ loadNativeFunction sym = do
     then error $ "dyn. loading of \"" ++ sym ++ "\" failed."
     else return $ fromIntegral $ ptrToIntPtr ptr
 
-addMethodRef :: NativeWord-> MethodInfo -> [B.ByteString] -> IO ()
-addMethodRef entry (MethodInfo mmname _ msig) clsnames = do
+insertCompiledMethod :: NativeWord -> MethodInfo -> [B.ByteString] -> IO ()
+insertCompiledMethod entry (MethodInfo mmname _ msig) clsnames = do
   mmap <- getMethodMap
   let newmap = foldr
                   (\i -> M.insert (MethodInfo mmname i msig) entry)

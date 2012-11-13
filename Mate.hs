@@ -62,13 +62,11 @@ parseArgs _ _ = parseArgs ["-"] False
 executeMain :: B.ByteString -> Class Direct -> IO ()
 executeMain bclspath cls = do 
   initGC --required on some platforms. [todo bernhard: maybe this should be moved somewhere else - maybe at a global place where vm initialization takes place
-  let methods = classMethods cls; methods :: [Method Direct]
-  case find (\x -> methodName x == "main") methods of
+  case find ((==) "main" . methodName) (classMethods cls) of
     Just m -> do
       let mi = MethodInfo "main" bclspath $ methodSignature m
-      entry <- compile mi
-      addMethodRef entry mi [bclspath]
+      entry <- lookupMethodEntry mi
       printfInfo "executing `main' now:\n"
-      executeFuncPtr entry
+      executeFuncPtr (fromIntegral entry)
       printfInfo "Well, goodbye Sir!\n"
     Nothing -> error "main not found"
