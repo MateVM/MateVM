@@ -7,7 +7,6 @@ module Compiler.Mate.Types
   , ExceptionMap
   , RuntimeStackInfo(..)
   , StackDisp, GCPoint, GCPoints, GCSet, rootSet
-  , JpcNpcMap
   , TrapPatcher, TrapPatcherEax
   , ExceptionHandler
   , WriteBackRegs(..)
@@ -85,9 +84,6 @@ type GCSet = [(Word32 {- ebp -}, GCPoint)]
 -- arrays, ... ?)
 rootSet :: GCSet -> [Word32]
 rootSet = concatMap (\(base, points) -> map (+base) points)
-
--- java byte code PC -> native PC
-type JpcNpcMap = M.Map Int Word32
 
 -- NativeWord = point of method call in generated code
 -- MethodInfo = relevant information about callee

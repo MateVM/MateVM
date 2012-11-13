@@ -131,3 +131,9 @@ patchInvoke (MethodInfo methname _ msig)  method_table table2patch io_offset wbr
   liftIO $ poke call_insn entryAddr
   liftIO $ printfTrap $ printf "patched virtual call: 0x%08x\n" (fromIntegral entryAddr :: Word32)
   return wbr
+
+-- harpy helper (don't cut immediates)
+
+-- call disp32(%eax)
+call32Eax :: Disp -> CodeGen e s ()
+call32Eax (Disp disp32) = emit8 0xff >> emit8 0x90 >> emit32 disp32

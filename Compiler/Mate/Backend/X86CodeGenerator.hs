@@ -4,9 +4,6 @@
 module Compiler.Mate.Backend.X86CodeGenerator
   ( compileLinear
   , handleExceptionPatcher
-  , call32Eax
-  , push32RelEax
-  , mov32RelEbxEax
   , compileStateInit
   ) where
 
@@ -683,13 +680,12 @@ girEmitOO (IRStore (RTPool x) obj src) = do
             SpillRReg d -> mov ebx (d, ebp)
             HIConstant c -> mov ebx (i32Tow32 c)
             x' -> error $ "girEmitOO: IRStore: putfield2: " ++ show x'
-          -- like: 4581fc6b  89 98 30 7b 00 00 movl   %ebx,31536(%eax)
+          -- like: 89 98 77 66 37 13       mov    %ebx,0x13376677(%eax)
           trapaddr <- emitSigIllTrap 6
           let patcher wbr = do
                 let (cname, fname) = buildFieldOffset cls x
                 offset <- liftIO $ fromIntegral <$> getFieldOffset cname fname
-                -- mov32RelEbxEax (Disp offset) -- set field
-                mov (Disp offset, eax) ebx
+                mov32RelEbxEax (Disp offset) -- set field
                 return wbr
           pop ebx
           s <- getState
@@ -943,21 +939,6 @@ callMallocGCPoint regmapping = do
 push32 :: Word32 -> CodeGen e s ()
 push32 imm32 = emit8 0x68 >> emit32 imm32
 
--- call disp32(%eax)
-call32Eax :: Disp -> CodeGen e s ()
-call32Eax (Disp disp32) = emit8 0xff >> emit8 0x90 >> emit32 disp32
-
--- push disp32(%eax)
-push32RelEax :: Disp -> CodeGen e s ()
-push32RelEax (Disp disp32) = emit8 0xff >> emit8 0xb0 >> emit32 disp32
-
-{-
--- mov disp32(%eax), %ebx
-mov32EbxRelEax :: Disp -> CodeGen e s ()
-mov32EbxRelEax (Disp d32) = emit8 0x67 >> emit8 0x8b >> emit8 0x98
-                            >> emit32 d32
--}
-
 -- mov %ebx, disp32(%eax)
 mov32RelEbxEax :: Disp -> CodeGen e s ()
 mov32RelEbxEax (Disp disp32) = emit8 0x89 >> emit8 0x98 >> emit32 disp32
@@ -971,7 +952,6 @@ emitSigIllTrap traplen = do
   -- fill rest up with NOPs
   sequence_ [nop | _ <- [1 .. (traplen - 2)]]
   return trapaddr
--- /helper
 
 getCurrentOffset :: CodeGen e s Word32
 getCurrentOffset = do
