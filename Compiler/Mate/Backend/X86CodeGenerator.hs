@@ -152,6 +152,17 @@ compileLinear lbls linsn = do
             jmp l2
           IRJump h -> jmp (lmap M.! h)
           IRExHandler _ -> error $ "emit: IRExHandlers: should not happen"
+          IRSwitch src table -> do
+            case src of
+              HIReg s -> mov eax s
+              SpillIReg d -> mov eax (d, ebp)
+              y -> error $ "emit: IRSwitch: src: " ++ show y
+            forM_ table $ \x -> case x of
+                (Just val, label) -> do
+                  cmp eax (i322w32 val)
+                  je (lmap M.! label)
+                (Nothing, label) -> do
+                  jmp (lmap M.! label)
           IRReturn Nothing -> retseq
           IRReturn (Just (HIReg r)) -> do mov eax r; retseq
           IRReturn (Just (HIConstant c)) -> do mov eax (i32tow32 c); retseq

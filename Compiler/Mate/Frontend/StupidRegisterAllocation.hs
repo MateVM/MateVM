@@ -142,6 +142,9 @@ stupidRegAlloc preAssigned linsn = evalState regAlloc' startmapping
           cmp2new <- doAssign cmp2
           return $ Lst $ IRIfElse jcmp cmp1new cmp2new l1 l2
         IRExHandler t -> return $ Lst $ IRExHandler t
+        IRSwitch reg t -> do
+          regnew <- doAssign reg
+          return $ Lst $ IRSwitch regnew t
         IRReturn (Just b) -> do
           bnew <- Just <$> doAssign b
           return $ Lst $ IRReturn bnew

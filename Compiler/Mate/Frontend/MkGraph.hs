@@ -75,6 +75,9 @@ w82i32 :: Word8 -> Int32
 w82i32 w8 = fromIntegral i8
  where i8 = fromIntegral w8 :: Int8
 
+w32toi32 :: Word32 -> Int32
+w32toi32 = fromIntegral
+
 addExceptionBlocks :: LabelState ()
 addExceptionBlocks = do
   -- split on a new exception handler block
@@ -114,11 +117,19 @@ resolveReferences = do
         JSR _ -> error "addJumpTarget: JSR?!"
         GOTO_W _ -> error "addJumpTarget: GOTO_W?!"
         JSR_W _ -> error "addJumpTarget: JSR_W?!"
-        TABLESWITCH _ _ _ _ _ -> error "addJumpTarget: tableswitch"
-        LOOKUPSWITCH _ _ _ _ -> error "addJumpTarget: lookupswitch"
+        TABLESWITCH _ def _ _ offs -> addSwitch pc def offs
+        LOOKUPSWITCH _ def _ switch' -> addSwitch pc def $ map snd switch'
         _ -> return ()
     addPCs :: Int32 -> Word16 -> J.Instruction -> LabelState ()
-    addPCs pc rel ins = do addPC (pc + insnLength ins); addPC (pc + (w162i32 rel))
+    addPCs pc rel ins = do
+      addPC (pc + insnLength ins)
+      addPC (pc + (w162i32 rel))
+    addSwitch :: Int32 -> Word32 -> [Word32] -> LabelState ()
+    addSwitch pc def offs = do
+      mapM_ (addPC . (+pc) . fromIntegral) offs
+      addPC $ pc + fromIntegral def
+
+
 
 addPC :: Int32 -> LabelState ()
 addPC bcoff = do
@@ -225,6 +236,15 @@ toMid = do
             incrementPC ins
             popInstruction
             return $ ([], IRIfElse jcmp op1 op2 truejmp falsejmp)
+      let switchins def switch' = do
+            y <- apop2
+            switch <- forM switch' $ \(v, o) -> do
+              offset <- addLabel $ pc + fromIntegral o
+              return (Just (w32toi32 v), offset)
+            defcase <- addLabel $ pc + fromIntegral def
+            incrementPC ins
+            popInstruction
+            return $ ([], IRSwitch y $ switch ++ [(Nothing, defcase)])
       (ret1, ret2) <- case ins of
         RETURN -> do
           incrementPC ins
@@ -257,6 +277,8 @@ toMid = do
           incrementPC ins
           popInstruction
           return $ ([], IRJump jump)
+        TABLESWITCH _ def low high offs -> switchins def $ zip [low..high] offs
+        LOOKUPSWITCH _ def _ switch -> switchins def switch
         _ -> do -- fallthrough case
           next <- addLabel (pc + insnLength ins)
           insIR <- normalIns ins

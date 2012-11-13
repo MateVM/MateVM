@@ -57,6 +57,7 @@ data MateIR t e x where
   IRJump :: Label -> MateIR t O C
   IRIfElse :: (Show t) => CMP -> t -> t -> Label -> Label -> MateIR t O C
   IRExHandler :: [Label] -> MateIR t O C -- dummy instruction to reference exception handler
+  IRSwitch :: (Show t) => t -> [(Maybe Int32, Label)] -> MateIR t O C
   IRReturn :: (Show t) => Maybe t -> MateIR t O C
 
 data CallingConv = SaveRegs | RestoreRegs deriving (Show, Eq)
@@ -127,6 +128,7 @@ instance NonLocal (MateIR Var) where
   successors (IRJump l) = [l]
   successors (IRIfElse _ _ _ l1 l2) = [l1, l2]
   successors (IRExHandler t) = t
+  successors (IRSwitch _ t) = map snd t
   successors (IRReturn _) = []
 
 {- show -}
@@ -140,6 +142,7 @@ instance Show (MateIR t e x) where
   show (IRJump l) = printf "\tjump %s" (show l)
   show (IRIfElse jcmp v1 v2 l1 l2) = printf "\tif (%s `%s` %s) then %s else %s" (show v1) (show jcmp) (show v2) (show l1) (show l2)
   show (IRExHandler t) = printf "\texhandler: %s" (show t)
+  show (IRSwitch reg t) = printf "\tswitch(%s) -> %s" (show reg) (show t)
   show (IRReturn b) = printf "\treturn (%s)" (show b)
   show (IRMisc1 jins x) = printf "\tmisc1: \"%s\": %s" (show jins) (show x)
   show (IRMisc2 jins x y) = printf "\tmisc2: \"%s\": %s %s " (show jins) (show x) (show y)
