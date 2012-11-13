@@ -191,16 +191,20 @@ toMid = do
     ins <- head <$> instructions <$> get
     entries <- blockEntries <$> get
     if S.member (pc + insnLength ins) entries
-      then toLast ins
+      then do
+        res <- toLast ins
+        incrementPC ins
+        popInstruction
+        return res
       else do
         insIR <- normalIns ins
+        incrementPC ins
+        popInstruction
         (insn, lastins) <- toMid
         return (insIR ++ insn, lastins)
   where
     normalIns ins = do
       insIR <- tir ins
-      incrementPC ins
-      popInstruction
       return insIR
 
     toLast :: J.Instruction -> ParseState ([MateIR Var O O], MateIR Var O C)
@@ -209,8 +213,6 @@ toMid = do
       let ifstuff jcmp rel op1 op2 = do
             truejmp <- addLabel (pc + w16Toi32 rel)
             falsejmp <- addLabel (pc + insnLength ins)
-            incrementPC ins
-            popInstruction
             return $ ([], IRIfElse jcmp op1 op2 truejmp falsejmp)
       let switchins def switch' = do
             y <- apop
@@ -218,14 +220,9 @@ toMid = do
               offset <- addLabel $ pc + fromIntegral o
               return (Just (w32Toi32 v), offset)
             defcase <- addLabel $ pc + fromIntegral def
-            incrementPC ins
-            popInstruction
             return $ ([], IRSwitch y $ switch ++ [(Nothing, defcase)])
       (ret1, ret2) <- case ins of
-        RETURN -> do
-          incrementPC ins
-          popInstruction
-          return $ ([], IRReturn Nothing)
+        RETURN -> return $ ([], IRReturn Nothing)
         ARETURN -> returnSomething JRef
         IRETURN -> returnSomething JInt
         LRETURN -> error "toLast: LReturn"
@@ -250,8 +247,6 @@ toMid = do
           ifstuff jcmp rel op1 op2
         (GOTO rel) -> do
           jump <- addLabel (pc + w16Toi32 rel)
-          incrementPC ins
-          popInstruction
           return $ ([], IRJump jump)
         TABLESWITCH _ def low high offs -> switchins def $ zip [low..high] offs
         LOOKUPSWITCH _ def _ switch -> switchins def switch
@@ -263,8 +258,6 @@ toMid = do
       return (ret1 ++ foo, ret2)
       where
         returnSomething t = do
-          incrementPC ins
-          popInstruction
           r <- apop
           unless (varType r == t) $ error "toLast return: type mismatch"
           return $ ([], IRReturn $ Just r)
