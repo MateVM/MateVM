@@ -24,6 +24,7 @@ import Data.Word
 import Control.Applicative hiding ((<*>))
 import Control.Monad
 import Control.Monad.State
+import Control.Arrow
 
 import qualified JVM.Assembler as J
 import JVM.Assembler hiding (Instruction)
@@ -200,8 +201,7 @@ toMid = do
         insIR <- normalIns ins
         incrementPC ins
         popInstruction
-        (insn, lastins) <- toMid
-        return (insIR ++ insn, lastins)
+        first (insIR ++) <$> toMid
   where
     normalIns ins = do
       insIR <- tir ins
