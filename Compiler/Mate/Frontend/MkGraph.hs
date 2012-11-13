@@ -4,8 +4,7 @@
      * introducing (typed) virtual registers and constants
 -}
 module Compiler.Mate.Frontend.MkGraph
-  ( SimStack(..)
-  , LabelLookup(..)
+  ( ParseState'(..)
   , addExceptionBlocks
   , resolveReferences
   , resetPC
@@ -39,48 +38,41 @@ import Compiler.Mate.Frontend.StupidRegisterAllocation
 
 -- import Debug.Trace
 
-data SimStack = SimStack
-  { stack :: [Var]
-  , regcnt :: Integer
-  , classf :: Class Direct
-  , method :: Method Direct
+data ParseState' = ParseState'
+  { labels :: M.Map Int32 Label {- store offset -> label -}
+
+  , nextTargets :: [Label] {- only valid per block. needed for block fixups -}
+  , blockInterfaces :: M.Map Label [Var] {- store interface map for basic blocks -}
+  , blockEntries :: S.Set Int32 {- store block entries (data gained from first pass) -}
+
+  , pcOffset :: Int32 {- programm counter -}
+  , stack :: [Var] {- simulation stack -}
+  , regcnt :: Integer {- counter for virtual registers -}
+  , classf :: Class Direct {- reference to class of processed method -}
+  , method :: Method Direct {- reference to processed method -}
   , preRegs :: [(Integer, (HVar, VarType))]
+
+  , instructions :: [J.Instruction] {- instructions to process -}
+  , exceptionMap :: ExceptionMap Int32 {- map of try-blocks, with references to handler -}
+  , handlerStarts :: S.Set Int32 {- set of handler starts -}
   }
 
-data LabelLookup = LabelLookup
-  { labels :: M.Map Int32 Label
-  , nextTargets :: [Label]
-  , blockEntries :: S.Set Int32
-  , blockEnds :: M.Map Label [Var]
-  , simStack :: SimStack
-  , instructions :: [J.Instruction]
-  , exceptionMap :: ExceptionMap Int32
-  , handlerStarts :: S.Set Int32
-  , pcOffset :: Int32 }
-
-type LabelState a = StateT LabelLookup SimpleUniqueMonad a
-
--- mkFirst ::    GraphRep g              =>   n C O  -> g n C O
--- mkMiddle  :: (GraphRep g, NonLocal n) =>   n O O  -> g n O O
--- mkMiddles :: (GraphRep g, NonLocal n) =>  [n O O] -> g n O O
--- mkLast ::     GraphRep g =>                n O C  -> g n O C
--- (<*>) ::     (GraphRep g, NonLocal n) => g n e O  -> g n O x -> g n e x
--- (|*><*|) ::  (GraphRep g, NonLocal n) => g n e C  -> g n C x -> g n e x
+type ParseState a = StateT ParseState' SimpleUniqueMonad a
 
 
-addExceptionBlocks :: LabelState ()
+addExceptionBlocks :: ParseState ()
 addExceptionBlocks = do
   -- split on a new exception handler block
   hstarts <- S.toList <$> handlerStarts <$> get
   forM_ hstarts $ addPC . fromIntegral
   -- split on a try block
-  tstarts <- map IIM.lowerBound <$> IM.keys <$> exceptionMap <$> get
-  tends   <- map IIM.upperBound <$> IM.keys <$> exceptionMap <$> get
-  forM_ tstarts $ addPC . fromIntegral
-  forM_ tends   $ addPC . (+1) . fromIntegral
+  exKeys <- IM.keys <$> exceptionMap <$> get
+  forM_ (map IIM.lowerBound exKeys) $ addPC . fromIntegral
+  -- increment in order to get next block (cf. decrement in 
+  forM_ (map IIM.upperBound exKeys) $ addPC . (+1) . fromIntegral
 
 -- forward references wouldn't be a problem, but backwards are
-resolveReferences :: LabelState ()
+resolveReferences :: ParseState ()
 resolveReferences = do
     jvminsn <- instructions <$> get
     pc <- pcOffset <$> get
@@ -96,7 +88,7 @@ resolveReferences = do
         popInstruction
         resolveReferences
   where
-    addJumpTarget :: J.Instruction -> Int32 -> LabelState ()
+    addJumpTarget :: J.Instruction -> Int32 -> ParseState ()
     addJumpTarget ins pc = case ins of
         (IF _ rel) -> addPCs pc rel ins
         (IF_ICMP _ rel) -> addPCs pc rel ins
@@ -110,28 +102,27 @@ resolveReferences = do
         TABLESWITCH _ def _ _ offs -> addSwitch pc def offs
         LOOKUPSWITCH _ def _ switch' -> addSwitch pc def $ map snd switch'
         _ -> return ()
-    addPCs :: Int32 -> Word16 -> J.Instruction -> LabelState ()
+    addPCs :: Int32 -> Word16 -> J.Instruction -> ParseState ()
     addPCs pc rel ins = do
       addPC (pc + insnLength ins)
       addPC (pc + (w16Toi32 rel))
-    addSwitch :: Int32 -> Word32 -> [Word32] -> LabelState ()
+    addSwitch :: Int32 -> Word32 -> [Word32] -> ParseState ()
     addSwitch pc def offs = do
       mapM_ (addPC . (+pc) . fromIntegral) offs
       addPC $ pc + fromIntegral def
 
-
-
-addPC :: Int32 -> LabelState ()
+addPC :: Int32 -> ParseState ()
 addPC bcoff = do
   modify (\s -> s { blockEntries = S.insert bcoff (blockEntries s) })
 
-mkMethod :: Graph (MateIR Var) C C -> LabelState (Graph (MateIR Var) O C)
+
+mkMethod :: Graph (MateIR Var) C C -> ParseState (Graph (MateIR Var) O C)
 mkMethod g = do
   hs <- handlerStarts <$> get
   entryseq <- mkLast <$> IRExHandler <$> mapM addLabel (S.toList hs ++ [0])
   return $ entryseq |*><*| g
 
-mkBlocks :: LabelState [Graph (MateIR Var) C C]
+mkBlocks :: ParseState [Graph (MateIR Var) C C]
 mkBlocks = do
   pc <- pcOffset <$> get
   entries <- blockEntries <$> get
@@ -146,7 +137,7 @@ mkBlocks = do
       else error $ "mkBlocks: something wrong here. pc: " ++ show pc ++
                    "\ninsn: " ++ show jvminsn
 
-mkBlock :: LabelState (Graph (MateIR Var) C C)
+mkBlock :: ParseState (Graph (MateIR Var) C C)
 mkBlock = do
   modify (\s -> s { nextTargets = [] })
   handlermap <- exceptionMap <$> get
@@ -156,7 +147,7 @@ mkBlock = do
   isExceptionHandler <- S.member pc <$> handlerStarts <$> get
   handlerStart <- if isExceptionHandler
     then do
-      apush2 (VReg JRef preeax)
+      apush (VReg JRef preeax)
       return $ Just $ fromIntegral pc
     else return Nothing
   let extable = map (\(x,y) -> (x, fromIntegral y))
@@ -165,19 +156,17 @@ mkBlock = do
   let f' = IRLabel l extable handlerStart
   -- fixup block boundaries
   be <- -- trace (printf "pc: %d\nhstart: %s\nextable: %s\n" pc (show handlerStart) (show extable)) $
-        (M.lookup l) <$> blockEnds <$> get
+        (M.lookup l) <$> blockInterfaces <$> get
   fixup <- case be of
     Nothing -> return []
     Just ts -> forM ts $ \x -> do
-                 st <- get
-                 let (nv, state') = runState (newvar $ varType x) (simStack st)
-                 put $ st { simStack = state'}
-                 apush2 nv
+                 nv <- newvar $ varType x
+                 apush nv
                  return $ IROp Add nv x (nul (varType x))
   (ms', l') <- toMid
   return $ mkFirst f' <*> mkMiddles (fixup ++ ms') <*> mkLast l'
 
-addLabel :: Int32 -> LabelState Label
+addLabel :: Int32 -> ParseState Label
 addLabel boff = do
   lmap <- labels <$> get
   if M.member boff lmap
@@ -188,13 +177,13 @@ addLabel boff = do
       modify (\s -> s {nextTargets = label : (nextTargets s) })
       return label
 
-popInstruction :: LabelState ()
+popInstruction :: ParseState ()
 popInstruction = do
   i <- instructions <$> get
   when (null i) $ error "popInstruction: something is really wrong here"
   modify (\s -> s { instructions = tail i })
 
-toMid :: LabelState ([MateIR Var O O], MateIR Var O C)
+toMid :: ParseState ([MateIR Var O O], MateIR Var O C)
 toMid = do
     pc <- pcOffset <$> get
     insns <- instructions <$> get
@@ -209,15 +198,12 @@ toMid = do
         return (insIR ++ insn, lastins)
   where
     normalIns ins = do
-      -- st <- get
-      st <- (tracePipe $ printf "tir': %s\n" (show ins)) get
-      let (insIR, state') = runState (tir ins) (simStack st)
-      put $ st { simStack = state'}
+      insIR <- tir ins
       incrementPC ins
       popInstruction
       return insIR
 
-    toLast :: J.Instruction -> LabelState ([MateIR Var O O], MateIR Var O C)
+    toLast :: J.Instruction -> ParseState ([MateIR Var O O], MateIR Var O C)
     toLast ins = do
       pc <- pcOffset <$> get
       let ifstuff jcmp rel op1 op2 = do
@@ -227,7 +213,7 @@ toMid = do
             popInstruction
             return $ ([], IRIfElse jcmp op1 op2 truejmp falsejmp)
       let switchins def switch' = do
-            y <- apop2
+            y <- apop
             switch <- forM switch' $ \(v, o) -> do
               offset <- addLabel $ pc + fromIntegral o
               return (Just (w32Toi32 v), offset)
@@ -247,19 +233,19 @@ toMid = do
         DRETURN -> error "toLast: DReturn"
         (IF jcmp rel) -> do
           let op1 = JIntValue 0
-          op2 <- apop2
+          op2 <- apop
           unless (varType op2 == JInt) $ error "toLast IF: type mismatch"
           ifstuff jcmp rel op1 op2
         (IFNULL _) -> error "toLast: IFNULL"
         (IFNONNULL _) -> error "toLast: IFNONNULL"
         (IF_ICMP jcmp rel) -> do
-          op1 <- apop2
-          op2 <- apop2
+          op1 <- apop
+          op2 <- apop
           unless (varType op1 == varType op2) $ error "toLast IF_ICMP: type mismatch"
           ifstuff jcmp rel op1 op2
         (IF_ACMP jcmp rel) -> do
-          op1 <- apop2
-          op2 <- apop2
+          op1 <- apop
+          op2 <- apop
           unless (varType op1 == varType op2) $ error "toLast IF_ACMP: type mismatch"
           ifstuff jcmp rel op1 op2
         (GOTO rel) -> do
@@ -279,26 +265,26 @@ toMid = do
         returnSomething t = do
           incrementPC ins
           popInstruction
-          r <- apop2
+          r <- apop
           unless (varType r == t) $ error "toLast return: type mismatch"
           return $ ([], IRReturn $ Just r)
 
-handleBlockEnd :: LabelState [MateIR Var O O]
+handleBlockEnd :: ParseState [MateIR Var O O]
 handleBlockEnd = do
-  st <- simStack <$> get
+  st <- get
   let len = L.genericLength $ stack $ st
   if len > 0
     then do
       forM [500000 .. (500000 + len - 1)] $ \r -> do
-        x <- apop2
+        x <- apop
         let vreg = VReg (varType x) r
         targets <- nextTargets <$> get
         forM targets $ \t -> do
-          be <- M.lookup t <$> blockEnds <$> get
+          be <- M.lookup t <$> blockInterfaces <$> get
           let be' = case be of
                       Just x' -> x'
                       Nothing -> []
-          modify (\s -> s { blockEnds = M.insert t (vreg:be') (blockEnds s)})
+          modify (\s -> s { blockInterfaces = M.insert t (vreg:be') (blockInterfaces s)})
         return (IROp Add vreg x (nul (varType x)))
     else return []
 
@@ -318,27 +304,12 @@ insnLength x = case x of
   where
     len = fromIntegral . B.length . encodeInstructions . (:[]) $ x
 
-incrementPC :: J.Instruction -> LabelState ()
+incrementPC :: J.Instruction -> ParseState ()
 incrementPC ins = modify (\s -> s { pcOffset = pcOffset s + insnLength ins})
 
-resetPC :: [J.Instruction] -> LabelState ()
+resetPC :: [J.Instruction] -> ParseState ()
 resetPC jvmins = do
   modify (\s -> s { pcOffset = 0, instructions = jvmins })
-
--- helper
-apush2 :: Var -> LabelState ()
-apush2 x = do
-  st <- simStack <$> get
-  let st' = st { stack = x : (stack st) }
-  modify (\s -> s { simStack = st'})
-
-apop2 :: LabelState Var
-apop2 = do
-  st <- get
-  let lol = simStack st
-  when (null . stack $ lol) $ error "apop2: something is really wrong here"
-  modify (\s -> s { simStack = lol { stack = tail (stack lol)} } )
-  return . head . stack $ lol
 
 imm2num :: Num a => IMM -> a
 imm2num I0 = 0
@@ -383,7 +354,7 @@ fieldType2VarType (ObjectType _) = JRef
 fieldType2VarType (Array _ _) = JRef -- fieldType2VarType ty -- TODO
 fieldType2VarType x = error $ "fieldType2VarType: " ++ show x
 
-tir :: J.Instruction -> State SimStack [MateIR Var O O]
+tir :: J.Instruction -> ParseState [MateIR Var O O]
 tir ACONST_NULL = do apush $ JRefNull; return []
 tir ICONST_M1 = tir (BIPUSH 0xff) -- (-1)
 tir ICONST_0 = tir (BIPUSH 0)
@@ -518,7 +489,7 @@ tir i@ATHROW = do
   return [IRMisc1 i y]
 tir x = error $ "tir: " ++ show x
 
-tirArray :: MateObjType -> Word8 -> State SimStack [MateIR Var O O]
+tirArray :: MateObjType -> Word8 -> ParseState [MateIR Var O O]
 tirArray objtype w8 = do
   len <- apop
   let len' = case len of
@@ -528,7 +499,7 @@ tirArray objtype w8 = do
   apush nv
   return [IRLoad (RTArray w8 objtype [] len') JRefNull nv]
 
-tirArrayLoad :: VarType -> State SimStack [MateIR Var O O]
+tirArrayLoad :: VarType -> ParseState [MateIR Var O O]
 tirArrayLoad t = do
   idx <- apop
   arr <- apop
@@ -545,7 +516,7 @@ tirArrayLoad t = do
              , IROp And nv' nv (JIntValue 0xff)]
     _ -> return [IRLoad (RTIndex idx t) arr nv]
 
-tirArrayStore :: VarType -> State SimStack [MateIR Var O O]
+tirArrayStore :: VarType -> ParseState [MateIR Var O O]
 tirArrayStore t = do
   value <- apop
   idx <- apop
@@ -563,7 +534,7 @@ tirArrayStore t = do
              , IRStore (RTIndex idx t) arr nv ]
     _ -> return [IRStore (RTIndex idx t) arr value]
 
-tirInvoke :: CallType -> Word16 -> State SimStack [MateIR Var O O]
+tirInvoke :: CallType -> Word16 -> ParseState [MateIR Var O O]
 tirInvoke ct ident = do
   cls <- classf <$> get
   let (varts, mret) = methodType (ct /= CallStatic) cls ident
@@ -602,7 +573,7 @@ tirInvoke ct ident = do
     Nothing -> return r
     Just m -> return $ r ++ [m]
 
-tirLoad' :: Word8 -> VarType -> State SimStack ()
+tirLoad' :: Word8 -> VarType -> ParseState ()
 tirLoad' x t = do
   vreg <- maybeArgument x t
   apush vreg
@@ -614,7 +585,7 @@ nul t = case t of
   JRef -> JRefNull
   x -> error $ "tirLoad: nul: " ++ show x
 
-tirLoad :: Word8 -> VarType -> State SimStack [MateIR Var O O]
+tirLoad :: Word8 -> VarType -> ParseState [MateIR Var O O]
 tirLoad x t = do
   tirLoad' x t
   vreg <- apop
@@ -622,7 +593,7 @@ tirLoad x t = do
   apush nv
   return [IROp Add nv vreg (nul t)]
 
-maybeArgument :: Word8 -> VarType -> State SimStack Var
+maybeArgument :: Word8 -> VarType -> ParseState Var
 maybeArgument x t = do
   meth <- method <$> get
   let genVReg :: (Disp -> HVar) -> Integer
@@ -658,14 +629,14 @@ maybeArgument x t = do
     else return $ VReg t (fromIntegral x)
 
 
-tirStore :: Word8 -> VarType -> State SimStack [MateIR Var O O]
+tirStore :: Word8 -> VarType -> ParseState[MateIR Var O O]
 tirStore w8 t = do
   x <- apop
   unless (t == varType x) $ error "tirStore: type mismatch"
   vreg <- maybeArgument w8 t
   return [IROp Add vreg x (nul t)]
 
-tirOpInt :: OpType -> VarType -> State SimStack [MateIR Var O O]
+tirOpInt :: OpType -> VarType -> ParseState [MateIR Var O O]
 tirOpInt op t = do
   x <- apop; y <- apop
   nv <- newvar t; apush nv
@@ -673,19 +644,19 @@ tirOpInt op t = do
   -- unless (t == varType x && t == varType y) $ error "tirOpInt: type mismatch"
   return [IROp op nv x y]
 
-newvar :: VarType -> State SimStack Var
+newvar :: VarType -> ParseState Var
 newvar t = do
   sims <- get
   put $ sims { regcnt = regcnt sims + 1 }
   return $ VReg t $ regcnt sims
 
-apush :: Var -> State SimStack ()
+apush :: Var -> ParseState ()
 apush x = do
   s <- stack <$> get
   sims <- get
   put $ sims { stack = x : s }
 
-apop :: State SimStack Var
+apop :: ParseState Var
 apop = do
   simstack <- stack <$> get
   when (null simstack) $ error "apop: stack is empty"

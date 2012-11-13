@@ -78,34 +78,40 @@ pipeline cls meth jvminsn = do
             then IM.adjust (++ [value]) key emap
             else IM.insert key [value] emap
             where
-              key = IM.ClosedInterval (fromIntegral $ eStartPC ce) (fromIntegral $ (eEndPC ce) - 1)
+              -- decrement end by one to get correct ranges
+              key = IM.ClosedInterval (fromIntegral $ eStartPC ce)
+                                      (fromIntegral $ eEndPC ce - 1)
               value = (&&&) g (fromIntegral . eHandlerPC) ce
                 where
                   g ce' = case eCatchType ce' of
                       0 -> B.empty
                       x -> buildClassID cls x
+    hstarts :: S.Set Int32
     hstarts = S.fromList $ map (fromIntegral . eHandlerPC)
                          $ codeExceptions decoded
-    initstate = LabelLookup { labels = M.empty
+    initstate :: ParseState'
+    initstate = ParseState' { labels = M.empty
                             , nextTargets = []
+                            , blockInterfaces = M.empty
                             , blockEntries = S.empty
-                            , blockEnds = M.empty
-                            , simStack = SimStack [] 50000 cls meth []
+
+                            , pcOffset = 0
+                            , stack = []
+                            , regcnt = 50000
+                            , classf = cls
+                            , method = meth
+                            , preRegs = []
+
                             , instructions = jvminsn
                             , exceptionMap = exmap
-                            , handlerStarts = hstarts
-                            , pcOffset = 0 }
-    -- transform = foldl (liftM2 (|*><*|)) (return emptyClosedGraph) mkBlocks
+                            , handlerStarts = hstarts }
     runAll prog = (runSimpleUniqueMonad . runStateT prog) initstate
     (graph, transstate) = runAll $ do
       addExceptionBlocks
       resolveReferences
-      refs <- blockEntries <$> get
-      tracePipe (printf "refs: %s\n" (show refs)) $
-        resetPC jvminsn
+      resetPC jvminsn
       gs <- mkBlocks
-      let g = L.foldl' (|*><*|) emptyClosedGraph gs
-      mkMethod g
+      mkMethod $ L.foldl' (|*><*|) emptyClosedGraph gs
     runFM :: SimpleUniqueMonad a -> a
     runFM = runSimpleUniqueMonad -- . runWithFuel infiniteFuel
     runOpts g = runFM $ do
@@ -121,7 +127,7 @@ pipeline cls meth jvminsn = do
     optgraph = runOpts graph
     lbls = labels transstate
     linear = mkLinear optgraph
-    ra = stupidRegAlloc (preRegs . simStack $ transstate) linear
+    ra = stupidRegAlloc (preRegs transstate) linear
 
 prettyHeader :: String -> IO ()
 prettyHeader str = do
