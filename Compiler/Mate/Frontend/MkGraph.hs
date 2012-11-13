@@ -420,11 +420,11 @@ tir (NEW x) = do
 tir (ANEWARRAY _) = tirArray ReferenceType 10 -- for int. TODO?
 tir (NEWARRAY w8) = tirArray PrimitiveType w8
 tir ARRAYLENGTH = do
-  arr <- apop
-  when (varType arr /= JRef) $ error "tir: arraylength: type mismatch"
+  array <- apop
+  when (varType array /= JRef) $ error "tir: arraylength: type mismatch"
   nv <- newvar JInt
   apush nv
-  return [IRLoad RTNone arr nv]
+  return [IRLoad RTNone array nv]
 tir AALOAD = tirArrayLoad JRef
 tir IALOAD = tirArrayLoad JInt
 tir CALOAD = tirArrayLoad JChar
@@ -495,8 +495,8 @@ tirArray objtype w8 = do
 tirArrayLoad :: VarType -> ParseState [MateIR Var O O]
 tirArrayLoad t = do
   idx <- apop
-  arr <- apop
-  when (varType arr /= JRef) $ error "tir: aaload: type mismatch1"
+  array <- apop
+  when (varType array /= JRef) $ error "tir: aaload: type mismatch1"
   when (varType idx /= JInt) $ error "tir: aaload: type mismatch2"
   nv <- newvar t
   apush nv
@@ -505,17 +505,17 @@ tirArrayLoad t = do
       _ <- apop
       nv' <- newvar JChar
       apush nv'
-      return [ IRLoad (RTIndex idx t) arr nv
+      return [ IRLoad (RTIndex idx t) array nv
              , IROp And nv' nv (JIntValue 0xff)]
-    _ -> return [IRLoad (RTIndex idx t) arr nv]
+    _ -> return [IRLoad (RTIndex idx t) array nv]
 
 tirArrayStore :: VarType -> ParseState [MateIR Var O O]
 tirArrayStore t = do
   value <- apop
   idx <- apop
-  arr <- apop
+  array <- apop
   -- TODO: WTF?
-  when (varType arr /= JRef) $ error $ "tir: tirArrayStore: type mismatch1: " ++ show (varType arr)
+  when (varType array /= JRef) $ error $ "tir: tirArrayStore: type mismatch1: " ++ show (varType array)
   when (varType idx /= JInt) $ error $ "tir: tirArrayStore: type mismatch2: " ++ show (varType idx)
   -- TODO: `char arr[] = new char[1]; arr[0] = 0x1337'
   --       is legal and withouth I2C.
@@ -524,8 +524,8 @@ tirArrayStore t = do
     JChar -> do
       nv <- newvar JChar
       return [ IROp And nv value (JIntValue 0xff)
-             , IRStore (RTIndex idx t) arr nv ]
-    _ -> return [IRStore (RTIndex idx t) arr value]
+             , IRStore (RTIndex idx t) array nv ]
+    _ -> return [IRStore (RTIndex idx t) array value]
 
 tirInvoke :: CallType -> Word16 -> ParseState [MateIR Var O O]
 tirInvoke ct ident = do
