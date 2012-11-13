@@ -165,7 +165,6 @@ stupidRegAlloc preAssigned linsn = evalState regAlloc' startmapping
           unpackFloatReg (HFReg _) = True
           unpackFloatReg _ = False
       let unpacker = case t of
-                       JChar -> unpackIntReg
                        JInt -> unpackIntReg
                        JRef -> unpackIntReg
                        JFloat -> unpackFloatReg
@@ -197,7 +196,6 @@ stupidRegAlloc preAssigned linsn = evalState regAlloc' startmapping
             then do
               let disp = stackCnt mr
               let spill = case t of
-                            JChar -> SpillIReg (Disp disp)
                             JInt -> SpillIReg (Disp disp)
                             JFloat -> SpillFReg (Disp disp)
                             JRef -> SpillRReg (Disp disp)
@@ -217,7 +215,6 @@ stupidRegAlloc preAssigned linsn = evalState regAlloc' startmapping
         availRegs t = do
           inuse <- regsInUse t
           let allregs = case t of
-                  JChar -> allIntRegs
                   JInt -> allIntRegs
                   JRef -> allIntRegs
                   JFloat -> allFloatRegs

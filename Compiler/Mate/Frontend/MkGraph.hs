@@ -340,8 +340,8 @@ methodArgs meth = isStatic $ L.genericLength args
 
 fieldType2VarType :: FieldType -> VarType
 fieldType2VarType IntType = JInt
-fieldType2VarType CharByte = JChar
-fieldType2VarType BoolType = JInt -- TODO: is this okay?
+fieldType2VarType CharByte = JInt
+fieldType2VarType BoolType = JInt
 fieldType2VarType FloatType = JFloat
 fieldType2VarType (ObjectType _) = JRef
 fieldType2VarType (Array _ _) = JRef -- fieldType2VarType ty -- TODO
@@ -384,9 +384,8 @@ tir (PUTFIELD x) = do
   src <- apop
   obj <- apop
   unless (JRef == varType obj) $ error "putfield: type mismatch"
-  -- TODO: char shit...
-  -- cls <- classf <$> get
-  -- unless (fieldType cls x == varType src) $ error "putfield: type mismatch2"
+  cls <- classf <$> get
+  unless (fieldType cls x == varType src) $ error "putfield: type mismatch2"
   return [IRStore (RTPool x) obj src]
 tir (GETFIELD x) = do
   obj <- apop
@@ -425,12 +424,12 @@ tir ARRAYLENGTH = do
   nv <- newvar JInt
   apush nv
   return [IRLoad RTNone array nv]
-tir AALOAD = tirArrayLoad JRef
-tir IALOAD = tirArrayLoad JInt
-tir CALOAD = tirArrayLoad JChar
-tir AASTORE = tirArrayStore JRef
-tir IASTORE = tirArrayStore JInt
-tir CASTORE = tirArrayStore JChar
+tir AALOAD = tirArrayLoad JRef Nothing
+tir IALOAD = tirArrayLoad JInt Nothing
+tir CALOAD = tirArrayLoad JInt (Just 0xff)
+tir AASTORE = tirArrayStore JRef Nothing
+tir IASTORE = tirArrayStore JInt Nothing
+tir CASTORE = tirArrayStore JInt (Just 0xff)
 tir DUP = do
   x <- apop
   apush x
@@ -461,9 +460,9 @@ tir FADD = tirOpInt Add JFloat
 tir I2C = do
   x <- apop
   when (varType x /= JInt) $ error "tir: i2c: type mismatch"
-  nv <- newvar JChar
+  nv <- newvar JInt
   apush nv
-  return [IROp Add nv x (JIntValue 0)]
+  return [IROp And nv x (JIntValue 0xff)]
 tir (INVOKESTATIC ident) = tirInvoke CallStatic ident
 tir (INVOKESPECIAL ident) = tirInvoke CallSpecial ident
 tir (INVOKEVIRTUAL ident) = tirInvoke CallVirtual ident
@@ -492,38 +491,38 @@ tirArray objtype w8 = do
   apush nv
   return [IRLoad (RTArray w8 objtype [] len') JRefNull nv]
 
-tirArrayLoad :: VarType -> ParseState [MateIR Var O O]
-tirArrayLoad t = do
+tirArrayLoad :: VarType -> Maybe Int32 {- Mask -} -> ParseState [MateIR Var O O]
+tirArrayLoad t mask = do
   idx <- apop
   array <- apop
   when (varType array /= JRef) $ error "tir: aaload: type mismatch1"
   when (varType idx /= JInt) $ error "tir: aaload: type mismatch2"
   nv <- newvar t
   apush nv
-  case t of
-    JChar -> do
+  case mask of
+    Just m -> do
       _ <- apop
-      nv' <- newvar JChar
+      nv' <- newvar JInt
       apush nv'
       return [ IRLoad (RTIndex idx t) array nv
-             , IROp And nv' nv (JIntValue 0xff)]
+             , IROp And nv' nv (JIntValue m)]
     _ -> return [IRLoad (RTIndex idx t) array nv]
 
-tirArrayStore :: VarType -> ParseState [MateIR Var O O]
-tirArrayStore t = do
+tirArrayStore :: VarType -> Maybe Int32 {- Mask -} -> ParseState [MateIR Var O O]
+tirArrayStore t mask = do
   value <- apop
-  idx <- apop
+  idx <-   apop
   array <- apop
-  -- TODO: WTF?
-  when (varType array /= JRef) $ error $ "tir: tirArrayStore: type mismatch1: " ++ show (varType array)
-  when (varType idx /= JInt) $ error $ "tir: tirArrayStore: type mismatch2: " ++ show (varType idx)
-  -- TODO: `char arr[] = new char[1]; arr[0] = 0x1337'
-  --       is legal and withouth I2C.
-  -- when (varType value /= t) $ error $ "tir: tirArrayStore: type mismatch3: " ++ show t
-  case t of
-    JChar -> do
-      nv <- newvar JChar
-      return [ IROp And nv value (JIntValue 0xff)
+  when (varType array /= JRef) $
+    error $ "tir: tirArrayStore: type mismatch1: " ++ show (varType array)
+  when (varType idx /= JInt) $
+    error $ "tir: tirArrayStore: type mismatch2: " ++ show (varType idx)
+  when (varType value /= t) $
+    error $ "tir: tirArrayStore: type mismatch3: " ++ show t
+  case mask of
+    Just m -> do
+      nv <- newvar JInt
+      return [ IROp And nv value (JIntValue m)
              , IRStore (RTIndex idx t) array nv ]
     _ -> return [IRStore (RTIndex idx t) array value]
 
@@ -534,10 +533,8 @@ tirInvoke ct ident = do
   pushes <- tracePipe (printf "tirInvoke: varts: %s returns %s\n" (show varts) (show mret)) $
             forM (reverse $ zip varts [0..]) $ \(x, nr) -> do
     y <- apop
-    -- TODO: char shit...
-    -- unless (x == varType y) $ error "invoke: type mismatch"
+    unless (x == varType y) $ error "invoke: type mismatch"
     case x of
-      JChar -> return $ IRPush nr y
       JInt -> return $ IRPush nr y
       JRef -> return $ IRPush nr y
       JFloat -> do
@@ -553,7 +550,6 @@ tirInvoke ct ident = do
                       JInt -> preeax
                       JFloat -> prexmm7
                       JRef -> preeax
-                      y -> error $ "tirInvoke: prereg: " ++ show y
       let nv = VReg x prereg
       movtarget <- newvar x
       tracePipe(printf "return: %s@%s\n" (show prereg) (show x)) $apush movtarget
@@ -576,7 +572,6 @@ nul t = case t of
   JInt -> JIntValue 0
   JFloat -> JFloatValue 0
   JRef -> JRefNull
-  x -> error $ "tirLoad: nul: " ++ show x
 
 tirLoad :: Word8 -> VarType -> ParseState [MateIR Var O O]
 tirLoad x t = do
@@ -614,11 +609,6 @@ maybeArgument x t = do
          let tup = genVReg SpillIReg assign x JInt
          modify (\s -> s { preRegs = tup : (preRegs s) })
          return $ VReg t assign
-       JChar -> do
-         let assign = preArgs !! (fromIntegral x)
-         let tup = genVReg SpillIReg assign x JInt
-         modify (\s -> s { preRegs = tup : (preRegs s) })
-         return $ VReg t assign
     else return $ VReg t (fromIntegral x)
 
 
@@ -633,8 +623,7 @@ tirOpInt :: OpType -> VarType -> ParseState [MateIR Var O O]
 tirOpInt op t = do
   x <- apop; y <- apop
   nv <- newvar t; apush nv
-  -- TODO: char ...
-  -- unless (t == varType x && t == varType y) $ error "tirOpInt: type mismatch"
+  unless (t == varType x && t == varType y) $ error "tirOpInt: type mismatch"
   return [IROp op nv x y]
 
 newvar :: VarType -> ParseState Var

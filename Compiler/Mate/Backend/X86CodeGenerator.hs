@@ -960,7 +960,6 @@ getCurrentOffset = do
   return $ ep + offset
 
 typeSize :: Num a => VarType -> a
-typeSize JChar = 4
 typeSize JInt = 4
 typeSize JRef = 4
 typeSize x = error $ "typeSize: " ++ show x
