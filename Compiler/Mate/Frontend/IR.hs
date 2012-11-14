@@ -7,7 +7,7 @@ module Compiler.Mate.Frontend.IR
  , CallingConv(..)
  , CallType(..)
  , OpType(..)
- , HVar(..)
+ , HVarX86(..)
  , Var(..)
  , RTPool(..)
  , PreGCPoint
@@ -77,20 +77,19 @@ data OpType
   | ShiftRightLogical
   deriving Show
 
-data HVar
+data HVarX86
   = HIReg Reg32
   | HIConstant Int32
   | SpillIReg Disp
   | HFReg XMMReg
   | HFConstant Float
   | SpillFReg Disp
-  | SpillRReg Disp
   deriving (Eq, Ord)
 
 deriving instance Eq Disp
 deriving instance Ord Disp
 
-type PreGCPoint = [(HVar, VarType)]
+type PreGCPoint = [(HVarX86, VarType)]
 
 data RTPool t
   = RTPool Word16
@@ -148,14 +147,13 @@ instance Show (MateIR t e x) where
   show (IRMisc2 jins x y) = printf "\tmisc2: \"%s\": %s %s " (show jins) (show x) (show y)
   show (IRPrep typ regs) = printf "\tcall preps (%s): %s" (show typ) (show regs)
 
-instance Show HVar where
+instance Show HVarX86 where
   show (HIReg r32) = printf "%s" (show r32)
   show (HIConstant val) = printf "0x%08x" val
   show (SpillIReg (Disp d)) = printf "0x%02x(ebp[i])" d
   show (HFReg xmm) = printf "%s" (show xmm)
   show (HFConstant val) = printf "%2.2ff" val
   show (SpillFReg (Disp d)) = printf "0x%02x(ebp[f])" d
-  show (SpillRReg (Disp d)) = printf "0x%02x(ebp[r])" d
 
 instance Show Var where
   show (VReg t n) = printf "%s(%02d)" (show t) n

@@ -81,7 +81,7 @@ modifyState f = do
   setState (f s)
 
 
-compileLinear :: M.Map Int32 H.Label -> [LinearIns HVar]
+compileLinear :: M.Map Int32 H.Label -> [LinearIns HVarX86]
               -> CodeGen e CompileState ([Instruction], NativeWord, TrapMap)
 compileLinear lbls linsn = do
   -- entry sequence
@@ -122,9 +122,6 @@ compileLinear lbls linsn = do
               (SpillIReg d1, HIReg s2) -> do
                 cmp s2 (d1, ebp)
               (SpillIReg d1, SpillIReg d2) -> do
-                mov eax (d2, ebp)
-                cmp eax (d1, ebp)
-              (SpillRReg d1, SpillRReg d2) -> do
                 mov eax (d2, ebp)
                 cmp eax (d1, ebp)
               (HIConstant c, HIReg s1) -> do
@@ -227,7 +224,7 @@ select Or = or
 select Xor = xor
 select x = error $ "codegen: select: not impl.: " ++ show x
 
-girEmitOO :: MateIR HVar O O -> CodeGen e CompileState ()
+girEmitOO :: MateIR HVarX86 O O -> CodeGen e CompileState ()
 girEmitOO (IROp operation dst' src1' src2') =
     case operation of
       Mul -> girMul
@@ -239,33 +236,20 @@ girEmitOO (IROp operation dst' src1' src2') =
       _ -> case (operation, dst', src1', src2') of
         -- handle special add cases (move instructions)
         (Add, HIReg dst, HIReg src1, HIConstant 0) -> mov dst src1
-        (Add, SpillRReg d, SpillRReg s1, HIConstant 0) -> do
-          mov eax (s1, ebp)
-          mov (d, ebp) eax
         (Add, SpillIReg d, SpillIReg s1, HIConstant 0) -> do
           mov eax (s1, ebp)
           mov (d, ebp) eax
-        (Add, SpillIReg d, SpillRReg s1, HIConstant 0) -> do
-          mov eax (s1, ebp)
-          mov (d, ebp) eax
-        (Add, SpillRReg d, SpillIReg s1, HIConstant 0) -> do
-          mov eax (s1, ebp)
-          mov (d, ebp) eax
         (Add, SpillIReg d, HIReg r1, HIConstant 0) -> mov (d, ebp) r1
-        (Add, SpillRReg d, HIReg r1, HIConstant 0) -> mov (d, ebp) r1
         (Add, HIReg dst, SpillIReg r1, HIConstant 0) -> mov dst (r1, ebp)
-        (Add, HIReg dst, SpillRReg r1, HIConstant 0) -> mov dst (r1, ebp)
         (Add, HIReg dst, HIConstant c1, HIConstant 0) -> mov dst (i32Tow32 c1)
         (Add, SpillIReg d, HIConstant c1, HIConstant 0) ->
-          mov (d, ebp) (i32Tow32 c1)
-        (Add, SpillRReg d, HIConstant c1, HIConstant 0) ->
           mov (d, ebp) (i32Tow32 c1)
         -- general case
         _ -> ge (select operation) dst' src1' src2'
   where
     ge :: (forall a b. (Sub a b, And a b, Add a b, Or a b, Xor a b)
                        => a -> b -> CodeGen e s ())
-          -> HVar -> HVar -> HVar -> CodeGen e s ()
+          -> HVarX86 -> HVarX86 -> HVarX86 -> CodeGen e s ()
     ge _ (SpillIReg d) (HIConstant c1) (HIConstant c2) = do
       let res = i32Tow32 $ case operation of
                   Add -> c1 + c2
@@ -308,7 +292,7 @@ girEmitOO (IROp operation dst' src1' src2') =
 
     gs :: (forall a b. (Shr a b, Sar a b, Sal a b)
                     => a -> b -> CodeGen e s ())
-          -> HVar -> HVar -> HVar -> CodeGen e s ()
+          -> HVarX86 -> HVarX86 -> HVarX86 -> CodeGen e s ()
     gs so dst src1 src2 = do
       r2r eax src2
       r2r ecx src1
@@ -447,14 +431,10 @@ girEmitOO (IRLoad (RTIndex idx typ) src dst) = do
       case src of
         HIReg s -> if s == ebx then add eax (Disp 0, esp) else add eax s
         SpillIReg d -> do add eax (d, ebp)
-        SpillRReg d -> do add eax (d, ebp)
         y -> error $ "girEmitOO: irload: rtindex: src: " ++ show y
       case dst of
         HIReg d -> do mov d (Disp 0, eax)
         SpillIReg d -> do
-          mov ebx (Disp 0, eax)
-          mov (d, ebp) ebx
-        SpillRReg d -> do
           mov ebx (Disp 0, eax)
           mov (d, ebp) ebx
         y -> error $ "girEmitOO: irload: rtindex: dst: " ++ show y
@@ -494,7 +474,6 @@ girEmitOO (IRStore (RTIndex idx typ) dst src) = do
           case idx of
             HIReg i -> mov eax i
             SpillIReg d -> mov eax (d, ebp)
-            SpillRReg d -> mov eax (d, ebp)
             y -> error $ "emit: irstore: rtindex: idx: " ++ show y
           mov ebx (typeSize typ :: Word32)
           mul ebx
@@ -502,7 +481,6 @@ girEmitOO (IRStore (RTIndex idx typ) dst src) = do
       case dst of
         HIReg d -> if d == ebx then add eax (Disp 0, esp) else add eax d
         SpillIReg d -> add eax (d, ebp)
-        SpillRReg d -> add eax (d, ebp)
         y -> error $ "girEmitOO: irstore: rtindex: dst: " ++ show y
       -- store array elem
       r2r ebx src
@@ -515,7 +493,6 @@ girEmitOO ins@(IRStore _ _ _) = do
 girEmitOO (IRPush _ (HIReg x)) = push x
 girEmitOO (IRPush _ (HIConstant x)) = push (i32Tow32 x)
 girEmitOO (IRPush _ (SpillIReg d)) = push (d, ebp)
-girEmitOO (IRPush _ (SpillRReg d)) = push (d, ebp)
 girEmitOO (IRPrep SaveRegs regs) = do
   forM_ (S.toList regs) $ \(HIReg x) -> do
     mov (Disp (fromJust (saveReg x)), ebp) x
@@ -558,7 +535,7 @@ girEmitOO (IRMisc2 jins dst src) = do
     x -> error $ "emit: misc2: " ++ show x
 girEmitOO x = error $ "girEmitOO: insn not implemented: " ++ show x
 
-girStatic :: Word16 -> Maybe HVar -> CallType -> PreGCPoint
+girStatic :: Word16 -> Maybe HVarX86 -> CallType -> PreGCPoint
           -> CodeGen e CompileState ()
 girStatic cpidx haveReturn ct mapping = do
   cls <- classf <$> getState
@@ -585,7 +562,7 @@ girStatic cpidx haveReturn ct mapping = do
   s <- getState
   setState (s { traps = M.insert calladdr (StaticMethod patcher) (traps s) })
 
-girVirtual :: Word16 -> Maybe HVar -> CallType -> PreGCPoint
+girVirtual :: Word16 -> Maybe HVarX86 -> CallType -> PreGCPoint
            -> CodeGen e CompileState ()
 girVirtual cpidx haveReturn ct mapping = do
   let isInterface = ct == CallInterface
@@ -626,7 +603,7 @@ girVirtual cpidx haveReturn ct mapping = do
                         (VirtualCall isInterface mi offset)
                         (traps s) })
 
-setGCPoint :: [(HVar, VarType)] -> CodeGen e CompileState ()
+setGCPoint :: [(HVarX86, VarType)] -> CodeGen e CompileState ()
 setGCPoint mapping = do
   ip <- getCurrentOffset
   -- liftIO $ printfJit "setGCPoint: unfiltered:\n"
@@ -640,15 +617,14 @@ setGCPoint mapping = do
   setState (s { gcpoints = M.insert ip filtered (gcpoints s) })
 
 
-filterJRefs :: [(HVar, VarType)] -> GCPoint
+filterJRefs :: [(HVarX86, VarType)] -> GCPoint
 filterJRefs = mapMaybe frefs
   where
-    frefs (SpillRReg (Disp d), JRef) = Just d
-    frefs (SpillIReg _, JRef) = error "filterJRefs: can this happen? 1"
+    frefs (SpillIReg (Disp d), JRef) = Just d
     frefs (HIReg reg32, JRef) = saveReg reg32
     frefs _ = Nothing
 
-freeRegFor :: Reg32 -> HVar -> CodeGen e s r -> CodeGen e s r
+freeRegFor :: Reg32 -> HVarX86 -> CodeGen e s r -> CodeGen e s r
 freeRegFor r32 dst body = do
   let isNotDst =
         case dst of
@@ -663,26 +639,23 @@ freeRegFor r32 dst body = do
 class RegisterToHvar a b where
   r2r :: a -> b -> CodeGen e s ()
 
-instance RegisterToHvar HVar Word32 where
+instance RegisterToHvar HVarX86 Word32 where
   r2r (HIReg reg) src = mov reg src
   r2r (SpillIReg disp) src = mov (disp, ebp) src
-  r2r (SpillRReg disp) src = mov (disp, ebp) src
-  r2r i _ = error $ "r2r HVar Word32: " ++ show i
+  r2r i _ = error $ "r2r HVarX86 Word32: " ++ show i
 
-instance RegisterToHvar HVar Reg32 where
+instance RegisterToHvar HVarX86 Reg32 where
   r2r (HIReg reg) src = mov reg src
   r2r (SpillIReg disp) src = mov (disp, ebp) src
-  r2r (SpillRReg disp) src = mov (disp, ebp) src
-  r2r i _ = error $ "r2r HVar Reg32: " ++ show i
+  r2r i _ = error $ "r2r HVarX86 Reg32: " ++ show i
 
-instance RegisterToHvar Reg32 HVar where
+instance RegisterToHvar Reg32 HVarX86 where
   r2r dst (HIReg reg) = mov dst reg
   r2r dst (SpillIReg disp) = mov dst (disp, ebp)
-  r2r dst (SpillRReg disp) = mov dst (disp, ebp)
   r2r dst (HIConstant i32) = mov dst (i32Tow32 i32)
-  r2r _ not_yet = error $ "r2r Reg32 HVar: not impl. yet: " ++ show not_yet
+  r2r _ not_yet = error $ "r2r Reg32 HVarX86: not impl. yet: " ++ show not_yet
 
-hvarIsConst :: HVar -> Bool
+hvarIsConst :: HVarX86 -> Bool
 hvarIsConst (HIConstant _) = True
 hvarIsConst (HFConstant _) = True
 hvarIsConst _ = False

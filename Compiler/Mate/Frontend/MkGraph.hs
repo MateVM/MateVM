@@ -51,7 +51,7 @@ data ParseState' = ParseState'
   , regcnt :: Integer {- counter for virtual registers -}
   , classf :: Class Direct {- reference to class of processed method -}
   , method :: Method Direct {- reference to processed method -}
-  , preRegs :: [(Integer, (HVar, VarType))]
+  , preRegs :: [(Integer, (HVarX86, VarType))]
 
   , instructions :: [J.Instruction] {- instructions to process -}
   , exceptionMap :: ExceptionMap Int32 {- map of try-blocks, with references to handler -}
@@ -566,9 +566,9 @@ tirInvoke ct ident = do
 maybeArgument :: Word8 -> VarType -> ParseState Var
 maybeArgument x t = do
   meth <- method <$> get
-  let genVReg :: (Disp -> HVar) -> Integer
+  let genVReg :: (Disp -> HVarX86) -> Integer
               -> Word8 -> VarType
-              -> (Integer, (HVar, VarType))
+              -> (Integer, (HVarX86, VarType))
       genVReg constructor a w8 t' =
         (a,
            (constructor . Disp . (+0xc) . fromIntegral $ (ptrSize * w8)
@@ -584,7 +584,7 @@ maybeArgument x t = do
        _ -> do
          let assign = preArgs !! (fromIntegral x)
          let constr = case t of
-                  JRef -> SpillRReg
+                  JRef -> SpillIReg
                   JInt -> SpillIReg
                   JFloat -> error "can't happen"
          let tup = genVReg constr assign x JInt
