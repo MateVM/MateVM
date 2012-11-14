@@ -422,8 +422,7 @@ girEmitOO (IRLoad (RTPoolCall x mapping) (HIConstant 0) dst) = do
             restoreRegs
             mtable <- liftIO $ getMethodTable objname
             mov (Disp 0, eax) mtable
-            --mov (Disp 4, eax) (0x1337babe :: Word32)
-            mov (Disp 4, eax) (0::Word32)
+            mov (Disp 4, eax) (0 :: Word32)
             r2r dst eax
             return wbr
       s <- getState
@@ -512,22 +511,16 @@ girEmitOO (IRLoad (RTIndex idx typ) src dst) = do
     freeRegFor ebx dst $ do
       case idx of
         HIConstant i -> mov eax (((i32Tow32 i) * (typeSize typ)) + 0xc)
-        HIReg i -> do
-          mov eax i
+        _ -> do
+          case idx of
+            HIReg i -> mov eax i
+            SpillIReg d -> mov eax (d, ebp)
+            y -> error $ "girEmitOO: irload: rtindex: idx: " ++ show y
           mov ebx (typeSize typ :: Word32)
           mul ebx
           add eax (0xc :: Word32)
-        SpillIReg d -> do
-          mov eax (d, ebp)
-          mov ebx (typeSize typ :: Word32)
-          mul ebx
-          add eax (0xc :: Word32)
-        y -> error $ "girEmitOO: irload: rtindex: idx1: " ++ show y
       case src of
-        HIReg s -> do
-          if s == ebx
-            then add eax (Disp 0, esp)
-            else add eax s
+        HIReg s -> if s == ebx then add eax (Disp 0, esp) else add eax s
         SpillIReg d -> do add eax (d, ebp)
         SpillRReg d -> do add eax (d, ebp)
         y -> error $ "girEmitOO: irload: rtindex: src: " ++ show y
@@ -572,27 +565,17 @@ girEmitOO (IRStore (RTIndex idx typ) dst src) = do
     freeRegFor ebx dst $ do
       case idx of
         HIConstant _ -> mov eax (0 :: Word32)
-        HIReg i -> do
-          mov eax i
+        _ -> do
+          case idx of
+            HIReg i -> mov eax i
+            SpillIReg d -> mov eax (d, ebp)
+            SpillRReg d -> mov eax (d, ebp)
+            y -> error $ "emit: irstore: rtindex: idx: " ++ show y
           mov ebx (typeSize typ :: Word32)
           mul ebx
           add eax (0xc :: Word32)
-        SpillIReg d -> do
-          mov eax (d, ebp)
-          mov ebx (typeSize typ :: Word32)
-          mul ebx
-          add eax (0xc :: Word32)
-        SpillRReg d -> do
-          mov eax (d, ebp)
-          mov ebx (typeSize typ :: Word32)
-          mul ebx
-          add eax (0xc :: Word32)
-        y -> error $ "girEmitOO: irstore: rtindex: idx1: " ++ show y
       case dst of
-        HIReg d -> do
-          if d == ebx
-            then add eax (Disp 0, esp)
-            else add eax d
+        HIReg d -> if d == ebx then add eax (Disp 0, esp) else add eax d
         SpillIReg d -> add eax (d, ebp)
         SpillRReg d -> add eax (d, ebp)
         y -> error $ "girEmitOO: irstore: rtindex: dst: " ++ show y
@@ -600,10 +583,7 @@ girEmitOO (IRStore (RTIndex idx typ) dst src) = do
       r2r ebx src
       case idx of
         HIConstant i -> mov (Disp ((+0xc) . (*(typeSize typ)) $ i32Tow32 i), eax) ebx
-        HIReg _ -> mov (Disp 0, eax) ebx
-        SpillIReg _ -> mov (Disp 0, eax) ebx
-        SpillRReg _ -> mov (Disp 0, eax) ebx
-        y -> error $ "girEmitOO: irstore: rtindex: idx2: " ++ show y
+        _ -> mov (Disp 0, eax) ebx
 
 girEmitOO ins@(IRStore _ _ _) = do
   error $ "irstore: emit: " ++ show ins
