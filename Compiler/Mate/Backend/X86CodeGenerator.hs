@@ -428,6 +428,7 @@ girEmitOO (IRLoad (RTPoolCall x mapping) (HIConstant 0) dst) = do
       s <- getState
       setState (s { traps = M.insert trapaddr (NewObject patcher) (traps s) })
     e -> error $ "emit irload: missing impl.: " ++ show e
+
 girEmitOO (IRLoad (RTPool x) (HIConstant 0) dst) = do
   cls <- classf <$> getState
   case constsPool cls M.! x of
@@ -444,6 +445,7 @@ girEmitOO (IRLoad (RTPool x) (HIConstant 0) dst) = do
       s <- getState
       setState (s { traps = M.insert trapaddr sfi (traps s) })
     e -> error $ "emit: irload2: missing impl.: " ++ show e
+
 girEmitOO (IRLoad (RTPool x) src dst) = do
   cls <- classf <$> getState
   case constsPool cls M.! x of
@@ -461,6 +463,7 @@ girEmitOO (IRLoad (RTPool x) src dst) = do
       s <- getState
       setState (s { traps = M.insert trapaddr ofp (traps s) })
     y -> error $ "emit: irload: missing impl.: getfield or something: " ++ show y
+
 girEmitOO (IRLoad (RTArray ta objType regmapping arrlen) (HIConstant 0) dst) = do
   let tsize = case decodeS (0 :: Integer) (B.pack [ta]) of
                 T_INT -> 4
@@ -477,29 +480,16 @@ girEmitOO (IRLoad (RTArray ta objType regmapping arrlen) (HIConstant 0) dst) = d
   mov (Disp 4, eax) (0x1337babe :: Word32) -- gcinfo
   mov (Disp 8, eax) arrlen -- store length at offset 0
   r2r dst eax
+
 girEmitOO (IRLoad RTNone src dst) = do -- arraylength
   r2r eax src
   mov eax (Disp 8, eax)
   r2r dst eax
-girEmitOO (IRLoad (RTIndex (HIConstant i) typ) (SpillIReg srcd) (SpillIReg dstd)) = do
-  mov eax (srcd, ebp)
-  -- TODO: ptrSize ...
-  mov eax (Disp (fromIntegral . (+0xc) $ i * (typeSize typ)), eax)
-  mov (dstd, ebp) eax
-girEmitOO (IRLoad (RTIndex (HIConstant i) typ) (SpillIReg srcd) (SpillRReg dstd)) = do
-  mov eax (srcd, ebp)
-  -- TODO: ptrSize ...
-  mov eax (Disp (fromIntegral . (+0xc) $ i * (typeSize typ)), eax)
-  mov (dstd, ebp) eax
-girEmitOO (IRLoad (RTIndex (HIConstant i) typ) (SpillIReg srcd) (HIReg dst)) = do
-  mov eax (srcd, ebp)
-  -- TODO: ptrSize ...
-  mov eax (Disp (fromIntegral . (+0xc) $ i * (typeSize typ)), eax)
-  mov dst eax
+
 girEmitOO (IRLoad (RTIndex idx typ) src dst) = do
     freeRegFor ebx dst $ do
       case idx of
-        HIConstant i -> mov eax (((i32Tow32 i) * (typeSize typ)) + 0xc)
+        HIConstant i -> mov eax $ ((i32Tow32 i) * (typeSize typ)) + 0xc
         _ -> do
           case idx of
             HIReg i -> mov eax i
