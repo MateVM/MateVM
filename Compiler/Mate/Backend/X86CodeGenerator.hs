@@ -477,21 +477,10 @@ girEmitOO (IRLoad (RTArray ta objType regmapping arrlen) (HIConstant 0) dst) = d
   mov (Disp 4, eax) (0x1337babe :: Word32) -- gcinfo
   mov (Disp 8, eax) arrlen -- store length at offset 0
   r2r dst eax
-girEmitOO (IRLoad RTNone (HIReg src) (HIReg dst)) = do -- arraylength
-  mov dst (Disp 8, src)
-girEmitOO (IRLoad RTNone (SpillIReg d) (HIReg dst)) = do -- arraylength
-  mov eax (d, ebp)
-  mov dst (Disp 8, eax)
-girEmitOO (IRLoad RTNone (HIReg src) (SpillIReg d)) = do -- arraylength
-  let dst = (d, ebp)
-  mov eax (Disp 8, src)
-  mov dst eax
-girEmitOO (IRLoad RTNone (SpillRReg sd) (SpillIReg dd)) = do -- arraylength
-  let dst = (dd, ebp)
-  let src = (sd, ebp)
-  mov eax src
+girEmitOO (IRLoad RTNone src dst) = do -- arraylength
+  r2r eax src
   mov eax (Disp 8, eax)
-  mov dst eax
+  r2r dst eax
 girEmitOO (IRLoad (RTIndex (HIConstant i) typ) (SpillIReg srcd) (SpillIReg dstd)) = do
   mov eax (srcd, ebp)
   -- TODO: ptrSize ...
