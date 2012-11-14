@@ -81,22 +81,24 @@ modifyState f = do
   setState (f s)
 
 
-compileLinear :: M.Map Int32 H.Label -> [LinearIns HVarX86]
+compileLinear :: M.Map Int32 H.Label -> [LinearIns HVarX86] -> Word32
               -> CodeGen e CompileState ([Instruction], NativeWord, TrapMap)
-compileLinear lbls linsn = do
+compileLinear lbls linsn stackAlloc = do
   -- entry sequence
   push ebp
   patchExPush <- (+1) <$> getCodeOffset
   push (0x13371337 :: Word32) -- (compile-time) patch it later manually
   mov ebp esp
-  let stackalloc = 0x1000 :: Word32 -- TODO
-  sub esp stackalloc
+  sub esp stackAlloc
   bblabels <- forM (M.elems lbls) $ \h -> do
                 l <- newNamedLabel ("Label: " ++ show h)
                 return (h, l)
   let lmap :: M.Map H.Label Label
       lmap = M.fromList bblabels
-  let retseq = do mov esp ebp; pop ebp; pop ebp; ret
+  let retseq = do mov esp ebp
+                  pop ebp {- kill exmap ref on stack -}
+                  pop ebp
+                  ret
   let compileIns (Fst (IRLabel hlabel hmap maybeHandler)) = do
         defineLabel $ lmap M.! hlabel
         reip <- getCurrentOffset

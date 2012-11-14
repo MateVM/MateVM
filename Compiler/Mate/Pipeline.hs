@@ -56,7 +56,7 @@ pipeline cls meth jvminsn = do
     let cgconfig = defaultCodeGenConfig
                   { codeBufferSize = fromIntegral $ (length jvminsn) * 0x40 }
     let stinit = compileStateInit cls (methodName meth)
-    (_, res) <- runCodeGenWithConfig (compileLinear lbls ra) () stinit cgconfig
+    (_, res) <- runCodeGenWithConfig (compileLinear lbls ra stackAlloc) () stinit cgconfig
     (dis, entry, trapmap) <- case res of
             Left err -> error $ "runCodeGen: " ++ show err
             Right (d, e, tm) -> return (d, e, tm)
@@ -127,7 +127,7 @@ pipeline cls meth jvminsn = do
     optgraph = runOpts graph
     lbls = labels transstate
     linear = mkLinear optgraph
-    ra = stupidRegAlloc (preRegs transstate) linear
+    (ra, stackAlloc) = stupidRegAlloc (preRegs transstate) linear
 
 prettyHeader :: String -> IO ()
 prettyHeader str = do

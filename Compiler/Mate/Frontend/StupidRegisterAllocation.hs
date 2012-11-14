@@ -14,6 +14,7 @@ import Data.Word
 
 import Control.Applicative
 import Control.Monad.State
+import Control.Arrow
 
 import Harpy hiding (Label, fst)
 
@@ -54,8 +55,13 @@ preFloatStart = 300000
 preFloats :: [Integer]
 preFloats = [preFloatStart .. (preFloatStart + 5)]
 
+{- the slots before are reservered for spilling registers on
+ - GCPoints, see `saveReg' in codegen -}
+stackOffsetStart :: Word32
+stackOffsetStart = 0xffffffe8
+
 emptyRegs :: MappedRegs
-emptyRegs = MappedRegs preAssignedRegs S.empty (0xffffffe8) -- TODO: stack space...
+emptyRegs = MappedRegs preAssignedRegs S.empty stackOffsetStart
 
 allIntRegs, allFloatRegs :: S.Set HVarX86
 -- register usage:
@@ -67,8 +73,9 @@ allFloatRegs = S.fromList $ map HFReg [xmm0, xmm1, xmm2, xmm3, xmm4, xmm5, xmm6]
 
 stupidRegAlloc :: [(Integer, (HVarX86, VarType))]
                -> [LinearIns Var]
-               -> [LinearIns HVarX86]
-stupidRegAlloc preAssigned linsn = evalState regAlloc' startmapping
+               -> ([LinearIns HVarX86], Word32)
+stupidRegAlloc preAssigned linsn = second ((0-) . stackCnt)
+                                          (runState regAlloc' startmapping)
   where
     startassign = M.union (regMap emptyRegs) (M.fromList preAssigned)
     startmapping = emptyRegs { regMap = startassign
