@@ -344,12 +344,8 @@ girEmitOO (IROp operation dst' src1' src2') =
                          ++ show src2'
     girMul = do
       -- edx is killed by `mul' instruction
-      when isNotEdx $ push edx
-      gm dst' src1' src2'
-      when isNotEdx $ pop edx
-    isNotEdx = case dst' of
-                HIReg dst -> dst /= edx
-                _ -> True
+      freeRegFor edx dst' $ do
+        gm dst' src1' src2'
     gm dst src1 src2
         | hvarIsConst src2 = gm' dst src2 src1
         | otherwise = gm' dst src1 src2
@@ -361,16 +357,13 @@ girEmitOO (IROp operation dst' src1' src2') =
         y -> error $ "emit: gm: src: " ++ show y
       r2r dst eax
 
-    isNotEcx = case dst' of
-                HIReg dst -> dst /= ecx
-                _ -> True
     girShift :: (forall a b. (Shr a b, Sar a b, Sal a b)
                           => a -> b -> CodeGen e s ())
              -> CodeGen e s ()
     girShift shiftop = do
-      when isNotEcx $ push ecx
-      gs shiftop dst' src1' src2'
-      when isNotEcx $ pop ecx
+      freeRegFor ecx dst' $ do
+        gs shiftop dst' src1' src2'
+
     gs :: (forall a b. (Shr a b, Sar a b, Sal a b)
                     => a -> b -> CodeGen e s ())
           -> HVar -> HVar -> HVar -> CodeGen e s ()
@@ -383,33 +376,28 @@ girEmitOO (IROp operation dst' src1' src2') =
         SpillIReg d -> so (d, ebp) cl
         y -> error $ "emit: gs: dst: " ++ show y
 
-    isNotEbx = case dst' of
-                HIReg dst -> dst /= ebx
-                _ -> True
     girDiv resreg = do -- `div' destroys eax and edx
-      when isNotEdx $ push edx
-      when isNotEbx $ push ebx
-      r2r ebx src1'
-      r2r eax src2'
+      freeRegFor edx dst' $ do
+        freeRegFor ebx dst' $ do
+          r2r ebx src1'
+          r2r eax src2'
 
-      -- guard for exception
-      lokay <- newNamedLabel "lokay"
-      cmp ebx (0 :: Word32)
-      jne lokay
-      -- if null, then create exception-object in signal handler
-      trapaddr <- emitSigIllTrap 2
-      let patcher wbr = do
-            emitSigIllTrap 2
-            liftIO $ do
-              ex <- allocAndInitObject "java/lang/ArithmeticException"
-              handleExceptionPatcher (wbr { wbEax = ex })
-      modifyState (\s -> s { traps = M.insert trapaddr (ThrowException patcher) (traps s) })
-      lokay @@ xor edx edx
-      div ebx
-      -- move result (depending on the operation) into destination
-      r2r dst' resreg
-      when isNotEbx $ pop ebx
-      when isNotEdx $ pop edx
+          -- guard for exception
+          lokay <- newNamedLabel "lokay"
+          cmp ebx (0 :: Word32)
+          jne lokay
+          -- if null, then create exception-object in signal handler
+          trapaddr <- emitSigIllTrap 2
+          let patcher wbr = do
+                emitSigIllTrap 2
+                liftIO $ do
+                  ex <- allocAndInitObject "java/lang/ArithmeticException"
+                  handleExceptionPatcher (wbr { wbEax = ex })
+          modifyState (\s -> s { traps = M.insert trapaddr (ThrowException patcher) (traps s) })
+          lokay @@ xor edx edx
+          div ebx
+          -- move result (depending on the operation) into destination
+          r2r dst' resreg
 
 girEmitOO (IRInvoke (RTPoolCall cpidx mapping) haveReturn ct) = do
   let static = girStatic cpidx haveReturn ct mapping
@@ -525,43 +513,35 @@ girEmitOO (IRLoad (RTIndex (HIConstant i) typ) (SpillIReg srcd) (HIReg dst)) = d
   mov eax (Disp (fromIntegral . (+0xc) $ i * (typeSize typ)), eax)
   mov dst eax
 girEmitOO (IRLoad (RTIndex idx typ) src dst) = do
-  let isNotEdx = case dst of
-                  HIReg dst' -> dst' /= edx
-                  _ -> True
-      isNotEbx = case dst of
-                  HIReg dst' -> dst' /= ebx
-                  _ -> True
-  when isNotEdx $ push edx
-  when isNotEbx $ push ebx
-  case idx of
-    HIConstant i -> mov eax (((i32Tow32 i) * (typeSize typ)) + 0xc)
-    HIReg i -> do
-      mov eax i
-      mov ebx (typeSize typ :: Word32)
-      mul ebx
-      add eax (0xc :: Word32)
-    SpillIReg d -> do
-      mov eax (d, ebp)
-      mov ebx (typeSize typ :: Word32)
-      mul ebx
-      add eax (0xc :: Word32)
-    y -> error $ "girEmitOO: irload: rtindex: idx1: " ++ show y
-  case src of
-    HIReg s -> do add eax s
-    SpillIReg d -> do add eax (d, ebp)
-    SpillRReg d -> do add eax (d, ebp)
-    y -> error $ "girEmitOO: irload: rtindex: src: " ++ show y
-  case dst of
-    HIReg d -> do mov d (Disp 0, eax)
-    SpillIReg d -> do
-      mov ebx (Disp 0, eax)
-      mov (d, ebp) ebx
-    SpillRReg d -> do
-      mov ebx (Disp 0, eax)
-      mov (d, ebp) ebx
-    y -> error $ "girEmitOO: irload: rtindex: dst: " ++ show y
-  when isNotEbx $ pop ebx
-  when isNotEdx $ pop edx
+  freeRegFor edx dst $ do
+    freeRegFor ebx dst $ do
+      case idx of
+        HIConstant i -> mov eax (((i32Tow32 i) * (typeSize typ)) + 0xc)
+        HIReg i -> do
+          mov eax i
+          mov ebx (typeSize typ :: Word32)
+          mul ebx
+          add eax (0xc :: Word32)
+        SpillIReg d -> do
+          mov eax (d, ebp)
+          mov ebx (typeSize typ :: Word32)
+          mul ebx
+          add eax (0xc :: Word32)
+        y -> error $ "girEmitOO: irload: rtindex: idx1: " ++ show y
+      case src of
+        HIReg s -> do add eax s
+        SpillIReg d -> do add eax (d, ebp)
+        SpillRReg d -> do add eax (d, ebp)
+        y -> error $ "girEmitOO: irload: rtindex: src: " ++ show y
+      case dst of
+        HIReg d -> do mov d (Disp 0, eax)
+        SpillIReg d -> do
+          mov ebx (Disp 0, eax)
+          mov (d, ebp) ebx
+        SpillRReg d -> do
+          mov ebx (Disp 0, eax)
+          mov (d, ebp) ebx
+        y -> error $ "girEmitOO: irload: rtindex: dst: " ++ show y
 
 girEmitOO (IRStore (RTPool x) obj src) = do
   cls <- classf <$> getState
@@ -591,48 +571,41 @@ girEmitOO (IRStore (RTPool x) obj src) = do
           setState (s { traps = M.insert trapaddr (ObjectField patcher) (traps s)})
     e -> error $ "emit: irstore: missing impl.: " ++ show e
 girEmitOO (IRStore (RTIndex idx typ) dst src) = do
-  let isNotEdx = case dst of
-                  HIReg dst' -> dst' /= edx
-                  _ -> True
-      isNotEbx = case dst of
-                  HIReg dst' -> dst' /= ebx
-                  _ -> True
-  when isNotEdx $ push edx
-  when isNotEbx $ push ebx
-  case idx of
-    HIConstant _ -> mov eax (0 :: Word32)
-    HIReg i -> do
-      when (i == edx || i == ebx) $ error $ "irstore: rtindex: register not avail.1"
-      mov eax i
-      mov ebx (typeSize typ :: Word32)
-      mul ebx
-      add eax (0xc :: Word32)
-    SpillIReg d -> do
-      mov eax (d, ebp)
-      mov ebx (typeSize typ :: Word32)
-      mul ebx
-      add eax (0xc :: Word32)
-    SpillRReg d -> do
-      mov eax (d, ebp)
-      mov ebx (typeSize typ :: Word32)
-      mul ebx
-      add eax (0xc :: Word32)
-    y -> error $ "girEmitOO: irstore: rtindex: idx1: " ++ show y
-  case dst of
-    HIReg d -> add eax d
-    SpillIReg d -> add eax (d, ebp)
-    SpillRReg d -> add eax (d, ebp)
-    y -> error $ "girEmitOO: irstore: rtindex: dst: " ++ show y
-  -- store array elem
-  r2r ebx src
-  case idx of
-    HIConstant i -> mov (Disp ((+0xc) . (*(typeSize typ)) $ i32Tow32 i), eax) ebx
-    HIReg _ -> mov (Disp 0, eax) ebx
-    SpillIReg _ -> mov (Disp 0, eax) ebx
-    SpillRReg _ -> mov (Disp 0, eax) ebx
-    y -> error $ "girEmitOO: irstore: rtindex: idx2: " ++ show y
-  when isNotEbx $ pop ebx
-  when isNotEdx $ pop edx
+  freeRegFor edx dst $ do
+    freeRegFor ebx dst $ do
+      case idx of
+        HIConstant _ -> mov eax (0 :: Word32)
+        HIReg i -> do
+          when (i == edx || i == ebx) $ error $ "irstore: rtindex: register not avail.1"
+          mov eax i
+          mov ebx (typeSize typ :: Word32)
+          mul ebx
+          add eax (0xc :: Word32)
+        SpillIReg d -> do
+          mov eax (d, ebp)
+          mov ebx (typeSize typ :: Word32)
+          mul ebx
+          add eax (0xc :: Word32)
+        SpillRReg d -> do
+          mov eax (d, ebp)
+          mov ebx (typeSize typ :: Word32)
+          mul ebx
+          add eax (0xc :: Word32)
+        y -> error $ "girEmitOO: irstore: rtindex: idx1: " ++ show y
+      case dst of
+        HIReg d -> add eax d
+        SpillIReg d -> add eax (d, ebp)
+        SpillRReg d -> add eax (d, ebp)
+        y -> error $ "girEmitOO: irstore: rtindex: dst: " ++ show y
+      -- store array elem
+      r2r ebx src
+      case idx of
+        HIConstant i -> mov (Disp ((+0xc) . (*(typeSize typ)) $ i32Tow32 i), eax) ebx
+        HIReg _ -> mov (Disp 0, eax) ebx
+        SpillIReg _ -> mov (Disp 0, eax) ebx
+        SpillRReg _ -> mov (Disp 0, eax) ebx
+        y -> error $ "girEmitOO: irstore: rtindex: idx2: " ++ show y
+
 girEmitOO ins@(IRStore _ _ _) = do
   error $ "irstore: emit: " ++ show ins
 girEmitOO (IRPush _ (HIReg x)) = push x
@@ -771,6 +744,16 @@ filterJRefs = mapMaybe frefs
     frefs (HIReg reg32, JRef) = saveReg reg32
     frefs _ = Nothing
 
+freeRegFor :: Reg32 -> HVar -> CodeGen e s r -> CodeGen e s r
+freeRegFor r32 dst body = do
+  let isNotDst =
+        case dst of
+          HIReg dst' -> dst' /= r32
+          _ -> True
+  when isNotDst $ push r32
+  res <- body
+  when isNotDst $ pop r32
+  return res
 
 -- transfer between "HVar" and real maschine registers
 class RegisterToHvar a b where
