@@ -217,7 +217,7 @@ compileLinear lbls linsn = do
     defineLabel l
     emit32 (floatToWord f)
   nop; nop; nop; nop -- just some NOPs to fix up the disasm
-  d <- disassemble
+  d <- if mateDEBUG then disassemble else return []
   tm <- traps <$> getState
   return (d, ep, tm)
 
