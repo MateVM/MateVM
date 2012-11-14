@@ -364,8 +364,8 @@ girEmitOO (IROp operation dst' src1' src2') =
                     => a -> b -> CodeGen e s ())
           -> HVar -> HVar -> HVar -> CodeGen e s ()
     gs so dst src1 src2 = do
-      r2r ecx src1
       r2r eax src2
+      r2r ecx src1
       r2r dst eax
       case dst of
         HIReg r -> so r cl
@@ -375,8 +375,8 @@ girEmitOO (IROp operation dst' src1' src2') =
     girDiv resreg = do -- `div' destroys eax and edx
       freeRegFor edx dst' $ do
         freeRegFor ebx dst' $ do
-          r2r ebx src1'
           r2r eax src2'
+          r2r ebx src1'
 
           -- guard for exception
           lokay <- newNamedLabel "lokay"
@@ -509,7 +509,6 @@ girEmitOO (IRLoad (RTIndex (HIConstant i) typ) (SpillIReg srcd) (HIReg dst)) = d
   mov eax (Disp (fromIntegral . (+0xc) $ i * (typeSize typ)), eax)
   mov dst eax
 girEmitOO (IRLoad (RTIndex idx typ) src dst) = do
-  freeRegFor edx dst $ do
     freeRegFor ebx dst $ do
       case idx of
         HIConstant i -> mov eax (((i32Tow32 i) * (typeSize typ)) + 0xc)
@@ -525,7 +524,10 @@ girEmitOO (IRLoad (RTIndex idx typ) src dst) = do
           add eax (0xc :: Word32)
         y -> error $ "girEmitOO: irload: rtindex: idx1: " ++ show y
       case src of
-        HIReg s -> do add eax s
+        HIReg s -> do
+          if s == ebx
+            then add eax (Disp 0, esp)
+            else add eax s
         SpillIReg d -> do add eax (d, ebp)
         SpillRReg d -> do add eax (d, ebp)
         y -> error $ "girEmitOO: irload: rtindex: src: " ++ show y
@@ -567,12 +569,10 @@ girEmitOO (IRStore (RTPool x) obj src) = do
           setState (s { traps = M.insert trapaddr (ObjectField patcher) (traps s)})
     e -> error $ "emit: irstore: missing impl.: " ++ show e
 girEmitOO (IRStore (RTIndex idx typ) dst src) = do
-  freeRegFor edx dst $ do
     freeRegFor ebx dst $ do
       case idx of
         HIConstant _ -> mov eax (0 :: Word32)
         HIReg i -> do
-          when (i == edx || i == ebx) $ error $ "irstore: rtindex: register not avail.1"
           mov eax i
           mov ebx (typeSize typ :: Word32)
           mul ebx
@@ -589,7 +589,10 @@ girEmitOO (IRStore (RTIndex idx typ) dst src) = do
           add eax (0xc :: Word32)
         y -> error $ "girEmitOO: irstore: rtindex: idx1: " ++ show y
       case dst of
-        HIReg d -> add eax d
+        HIReg d -> do
+          if d == ebx
+            then add eax (Disp 0, esp)
+            else add eax d
         SpillIReg d -> add eax (d, ebp)
         SpillRReg d -> add eax (d, ebp)
         y -> error $ "girEmitOO: irstore: rtindex: dst: " ++ show y
