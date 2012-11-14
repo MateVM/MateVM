@@ -84,14 +84,11 @@ modifyState f = do
 compileLinear :: M.Map Int32 H.Label -> [LinearIns HVar]
               -> CodeGen e CompileState ([Instruction], NativeWord, TrapMap)
 compileLinear lbls linsn = do
-  -- TODO(bernhard): don't jump around in the code... wtf dude!
-  pushExceptionMap <- newNamedLabel "pushExceptionMap"
-  stacksetup <- newNamedLabel "stacksetup"
-  ep <- fromIntegral <$> ptrToIntPtr <$> getEntryPoint
   -- entry sequence
   push ebp
-  jmp pushExceptionMap
-  stacksetup @@ mov ebp esp
+  patchExPush <- (+1) <$> getCodeOffset
+  push (0x13371337 :: Word32) -- (compile-time) patch it later manually
+  mov ebp esp
   let stackalloc = 0x1000 :: Word32 -- TODO
   sub esp stackalloc
   bblabels <- forM (M.elems lbls) $ \h -> do
@@ -209,15 +206,14 @@ compileLinear lbls linsn = do
              }
   sptr_rsi <- liftIO $
     (fromIntegral . ptrToIntPtr . castStablePtrToPtr) <$> newStablePtr rsi
-  defineLabel pushExceptionMap
-  push (sptr_rsi :: Word32)
-  jmp stacksetup
+  emit32At patchExPush sptr_rsi
   floatconstants <- M.toList <$> floatConsts <$> getState
   forM_ floatconstants $ \(l, f) -> do
     defineLabel l
     emit32 (floatToWord f)
   nop; nop; nop; nop -- just some NOPs to fix up the disasm
   d <- if mateDEBUG then disassemble else return []
+  ep <- fromIntegral <$> ptrToIntPtr <$> getEntryPoint
   tm <- traps <$> getState
   return (d, ep, tm)
 
