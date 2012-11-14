@@ -772,22 +772,23 @@ filterJRefs = mapMaybe frefs
     frefs _ = Nothing
 
 
-class R2r a b where
+-- transfer between "HVar" and real maschine registers
+class RegisterToHvar a b where
   r2r :: a -> b -> CodeGen e s ()
 
-instance R2r HVar Word32 where
+instance RegisterToHvar HVar Word32 where
   r2r (HIReg reg) src = mov reg src
   r2r (SpillIReg disp) src = mov (disp, ebp) src
   r2r (SpillRReg disp) src = mov (disp, ebp) src
   r2r i _ = error $ "r2r HVar Word32: " ++ show i
 
-instance R2r HVar Reg32 where
+instance RegisterToHvar HVar Reg32 where
   r2r (HIReg reg) src = mov reg src
   r2r (SpillIReg disp) src = mov (disp, ebp) src
   r2r (SpillRReg disp) src = mov (disp, ebp) src
   r2r i _ = error $ "r2r HVar Reg32: " ++ show i
 
-instance R2r Reg32 HVar where
+instance RegisterToHvar Reg32 HVar where
   r2r dst (HIReg reg) = mov dst reg
   r2r dst (SpillIReg disp) = mov dst (disp, ebp)
   r2r dst (SpillRReg disp) = mov dst (disp, ebp)
