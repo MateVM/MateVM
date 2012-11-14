@@ -266,66 +266,6 @@ girEmitOO (IROp operation dst' src1' src2') =
     ge :: (forall a b. (Sub a b, And a b, Add a b, Or a b, Xor a b)
                        => a -> b -> CodeGen e s ())
           -> HVar -> HVar -> HVar -> CodeGen e s ()
-    ge opx (HIReg dst) (HIReg src1) (HIReg src2) = do
-      mov dst src2; opx dst src1
-    ge opx (HIReg dst) (HIConstant i32) (HIReg src2) = do
-      mov dst src2; opx dst (i32Tow32 i32)
-    ge opx (HIReg dst) (HIReg src1) (HIConstant i32) = do
-      mov dst (i32Tow32 i32)
-      opx dst src1
-    ge opx (SpillIReg d) (HIReg src1) (HIConstant i32) = do
-      let dst = (d, ebp)
-      mov dst (i32Tow32 i32)
-      opx dst src1
-    ge opx (HIReg dst) (HIConstant i32) (SpillIReg s2) = do
-      let src2 = (s2, ebp)
-      mov dst src2; opx dst (i32Tow32 i32)
-    ge opx (HIReg dst) (HIReg src1) (SpillIReg s2) = do
-      let src2 = (s2, ebp)
-      mov dst src2
-      opx dst src1
-    ge opx (HIReg dst) (SpillIReg s1) (SpillIReg s2) = do
-      let src1 = (s1, ebp)
-      let src2 = (s2, ebp)
-      mov dst src2
-      opx dst src1
-    ge opx (HIReg dst) (SpillIReg s1) (HIReg src2) = do
-      let src1 = (s1, ebp)
-      mov dst src2
-      opx dst src1
-    ge opx (SpillIReg d) (HIConstant c) (HIReg src2) = do
-      let dst = (d, ebp)
-      mov dst src2
-      opx dst (i32Tow32 c)
-    ge opx (SpillIReg d) (HIConstant c) (SpillIReg s2) = do
-      let dst = (d, ebp)
-      let src2 = (s2, ebp)
-      mov eax src2
-      opx eax (i32Tow32 c)
-      mov dst eax
-    ge opx (SpillIReg d) (HIReg src1) (HIReg src2) = do
-      let dst = (d, ebp)
-      mov dst src2
-      opx dst src1
-    ge opx (SpillIReg d) (SpillIReg s1) (HIReg src2) = do
-      let dst = (d, ebp)
-      let src1 = (s1, ebp)
-      mov eax src2
-      opx eax src1
-      mov dst eax
-    ge opx (SpillIReg d) (SpillIReg s1) (SpillIReg s2) = do
-      let dst = (d, ebp)
-      let src1 = (s1, ebp)
-      let src2 = (s2, ebp)
-      mov eax src2
-      opx eax src1
-      mov dst eax
-    ge opx (SpillIReg d) (SpillIReg s1) (HIConstant c2) = do
-      let dst = (d, ebp)
-      let src1 = (s1, ebp)
-      mov eax (i32Tow32 c2)
-      opx eax src1
-      mov dst eax
     ge _ (SpillIReg d) (HIConstant c1) (HIConstant c2) = do
       let res = i32Tow32 $ case operation of
                   Add -> c1 + c2
@@ -335,9 +275,15 @@ girEmitOO (IROp operation dst' src1' src2') =
                   Sub -> error "emit: ge: opx: not sure if c1 - c2 or c2 - c1"
                   y -> error $ "emit: ge: opx: constant: " ++ show y
       mov (d, ebp) res
-    ge _ _ _ _ = error $ "opx: not impl.: " ++ show operation ++ ": "
-                         ++ show dst' ++ ", " ++ show src1' ++ ", "
-                         ++ show src2'
+    ge opx dst src1 src2 = do
+      r2r eax src2
+      case src1 of
+        HIConstant c -> opx eax (i32Tow32 c)
+        HIReg r ->      opx eax r
+        SpillIReg d ->  opx eax (d, ebp)
+        y -> error $ "emit: ge: opx: src1: " ++ show y
+      r2r dst eax
+
     girMul = do
       -- edx is killed by `mul' instruction
       freeRegFor edx dst' $ do
