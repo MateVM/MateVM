@@ -35,13 +35,12 @@ type HandlerMap = [(B.ByteString {- exception class -}
                    )]
 type MaybeHandler = Maybe Word32
 
-type VirtualReg = Integer
+type VirtualReg = (Integer, VarType)
 data LiveAnnotation = LiveAnnotation
-  { liveIn  :: S.Set Integer   {- vars that are live on incoming -}
-  , liveOut :: S.Set Integer } {- vars which are live after instruction -}
+  { living  :: S.Set VirtualReg } {- vars which are live after this instruction -}
 
 liveAnnEmpty :: LiveAnnotation
-liveAnnEmpty = LiveAnnotation S.empty S.empty
+liveAnnEmpty = LiveAnnotation S.empty
 
 data MateIR t e x where
   IRLabel :: Label -> HandlerMap -> MaybeHandler -> MateIR t C O
@@ -151,7 +150,7 @@ data VarType = JInt | JFloat | JRef deriving (Show, Eq, Ord)
 data Var
   = JIntValue Int32
   | JFloatValue Float
-  | VReg VarType VirtualReg
+  | VReg VarType Integer -- replace with VirtualReg
   | JRefNull
   deriving (Eq, Ord)
 
@@ -201,8 +200,5 @@ instance Show Var where
   show JRefNull = printf "(null)"
 
 instance Show LiveAnnotation where
-  show (LiveAnnotation lin lout) =
-    if lin == S.empty && lout == S.empty
-      then ""
-      else printf "\n\t\tin:  %s\n\t\tout: %s"
+  show (LiveAnnotation live) = printf "\n\t\tnow living:  %s" (show live)
 {- /show -}
