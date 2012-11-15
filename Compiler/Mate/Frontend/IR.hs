@@ -4,6 +4,8 @@
 {-# LANGUAGE StandaloneDeriving #-}
 module Compiler.Mate.Frontend.IR
  ( MateIR(..)
+ , LiveAnnotation(..)
+ , liveAnnEmpty
  , CallingConv(..)
  , CallType(..)
  , OpType(..)
@@ -31,34 +33,70 @@ type HandlerMap = [(B.ByteString {- exception class -}
                    , Word32 {- handler entry -}
                    )]
 type MaybeHandler = Maybe Word32
+
+type VirtualReg = Integer
+data LiveAnnotation = LiveAnnotation
+  { liveIn  :: S.Set Integer   {- vars that are live on incoming -}
+  , liveOut :: S.Set Integer } {- vars which are live after instruction -}
+
+liveAnnEmpty :: LiveAnnotation
+liveAnnEmpty = LiveAnnotation S.empty S.empty
+
 data MateIR t e x where
   IRLabel :: Label -> HandlerMap -> MaybeHandler -> MateIR t C O
 
-  IROp :: (Show t) => OpType -> t -> t -> t -> MateIR t O O
-  IRStore :: (Show t) => RTPool t
+  IROp :: (Show t) => LiveAnnotation
+                   -> OpType
+                   -> t {- dst -}
+                   -> t {- src1 -}
+                   -> t {- src2 -}
+                   -> MateIR t O O
+  IRStore :: (Show t) => LiveAnnotation
+                      -> RTPool t
                       -> t {- objectref -}
                       -> t {- src -}
                       -> MateIR t O O
-  IRLoad :: (Show t) => RTPool t
+  IRLoad :: (Show t) => LiveAnnotation
+                     -> RTPool t
                      -> t {- objectref -}
                      -> t {- target -}
                      -> MateIR t O O
-  IRMisc1 :: (Show t) => Instruction -> t -> MateIR t O O {- one src -}
-  IRMisc2 :: (Show t) => Instruction -> t -> t -> MateIR t O O {- dst, src -}
+  IRMisc1 :: (Show t) => LiveAnnotation
+                      -> Instruction
+                      -> t {- one src -}
+                      -> MateIR t O O
+  IRMisc2 :: (Show t) => LiveAnnotation
+                      -> Instruction
+                      -> t {- dst -}
+                      -> t {- src -}
+                      -> MateIR t O O
   IRPrep :: (Show t) => CallingConv
                      -> S.Set t {- regs in use -}
                      -> MateIR t O O
-  IRInvoke :: (Show t) => RTPool t
+  IRInvoke :: (Show t) => LiveAnnotation
+                       -> RTPool t
                        -> Maybe t
                        -> CallType
                        -> MateIR t O O
-  IRPush :: (Show t) => Word8 -> t -> MateIR t O O
+  IRPush :: (Show t) => LiveAnnotation
+                     -> Word8
+                     -> t
+                     -> MateIR t O O
 
   IRJump :: Label -> MateIR t O C
-  IRIfElse :: (Show t) => CMP -> t -> t -> Label -> Label -> MateIR t O C
+  IRIfElse :: (Show t) => LiveAnnotation
+                       -> CMP
+                       -> t -> t
+                       -> Label -> Label
+                       -> MateIR t O C
   IRExHandler :: [Label] -> MateIR t O C -- dummy instruction to reference exception handler
-  IRSwitch :: (Show t) => t -> [(Maybe Int32, Label)] -> MateIR t O C
-  IRReturn :: (Show t) => Maybe t -> MateIR t O C
+  IRSwitch :: (Show t) => LiveAnnotation
+                       -> t {- src -}
+                       -> [(Maybe Int32, Label)]
+                       -> MateIR t O C
+  IRReturn :: (Show t) => LiveAnnotation
+                       -> Maybe t
+                       -> MateIR t O C
 
 data CallingConv = SaveRegs | RestoreRegs deriving (Show, Eq)
 data CallType = CallStatic | CallSpecial | CallVirtual | CallInterface deriving (Show, Eq)
@@ -112,7 +150,7 @@ data VarType = JInt | JFloat | JRef deriving (Show, Eq, Ord)
 data Var
   = JIntValue Int32
   | JFloatValue Float
-  | VReg VarType Integer
+  | VReg VarType VirtualReg
   | JRefNull
   deriving (Eq, Ord)
 
@@ -125,26 +163,26 @@ varType JRefNull = JRef
 instance NonLocal (MateIR Var) where
   entryLabel (IRLabel l _ _) = l
   successors (IRJump l) = [l]
-  successors (IRIfElse _ _ _ l1 l2) = [l1, l2]
+  successors (IRIfElse _ _ _ _ l1 l2) = [l1, l2]
   successors (IRExHandler t) = t
-  successors (IRSwitch _ t) = map snd t
-  successors (IRReturn _) = []
+  successors (IRSwitch _ _ t) = map snd t
+  successors (IRReturn _ _) = []
 
 {- show -}
 instance Show (MateIR t e x) where
   show (IRLabel l hmap handlerstart) = printf "label: %s:\n\texceptions: %s\n\thandlerstart? %s\n" (show l) (show hmap) (show handlerstart)
-  show (IROp op vr v1 v2) = printf "\t%s %s,  %s, %s" (show op) (show vr) (show v1) (show v2)
-  show (IRLoad rt obj dst) = printf "\t%s(%s) -> %s" (show obj) (show rt) (show dst)
-  show (IRStore rt obj src) = printf "\t%s(%s) <- %s" (show obj) (show rt) (show src)
-  show (IRInvoke x r typ) = printf "\tinvoke %s %s [%s]" (show x) (show r) (show typ)
-  show (IRPush argnr x) = printf "\tpush(%d) %s" argnr (show x)
+  show (IROp la op vr v1 v2) = printf "\t%s %s,  %s, %s%s" (show op) (show vr) (show v1) (show v2) (show la)
+  show (IRLoad la rt obj dst) = printf "\t%s(%s) -> %s%s" (show obj) (show rt) (show dst) (show la)
+  show (IRStore la rt obj src) = printf "\t%s(%s) <- %s%s" (show obj) (show rt) (show src) (show la)
+  show (IRInvoke la x r typ) = printf "\tinvoke %s %s [%s]%s" (show x) (show r) (show typ) (show la)
+  show (IRPush la argnr x) = printf "\tpush(%d) %s%s" argnr (show x) (show la)
   show (IRJump l) = printf "\tjump %s" (show l)
-  show (IRIfElse jcmp v1 v2 l1 l2) = printf "\tif (%s `%s` %s) then %s else %s" (show v1) (show jcmp) (show v2) (show l1) (show l2)
+  show (IRIfElse la jcmp v1 v2 l1 l2) = printf "\tif (%s `%s` %s) then %s else %s%s" (show v1) (show jcmp) (show v2) (show l1) (show l2) (show la)
   show (IRExHandler t) = printf "\texhandler: %s" (show t)
-  show (IRSwitch reg t) = printf "\tswitch(%s) -> %s" (show reg) (show t)
-  show (IRReturn b) = printf "\treturn (%s)" (show b)
-  show (IRMisc1 jins x) = printf "\tmisc1: \"%s\": %s" (show jins) (show x)
-  show (IRMisc2 jins x y) = printf "\tmisc2: \"%s\": %s %s " (show jins) (show x) (show y)
+  show (IRSwitch la reg t) = printf "\tswitch(%s) -> %s%s" (show reg) (show t) (show la)
+  show (IRReturn la b) = printf "\treturn (%s)%s" (show b) (show la)
+  show (IRMisc1 la jins x) = printf "\tmisc1: \"%s\": %s%s" (show jins) (show x) (show la)
+  show (IRMisc2 la jins x y) = printf "\tmisc2: \"%s\": %s %s%s" (show jins) (show x) (show y) (show la)
   show (IRPrep typ regs) = printf "\tcall preps (%s): %s" (show typ) (show regs)
 
 instance Show HVarX86 where
@@ -160,4 +198,10 @@ instance Show Var where
   show (JIntValue n) = printf "0x%08x" n
   show (JFloatValue n) = printf "%2.2ff" n
   show JRefNull = printf "(null)"
+
+instance Show LiveAnnotation where
+  show (LiveAnnotation lin lout) =
+    if lin == S.empty && lout == S.empty
+      then ""
+      else printf "\n\t\tin:  %s\n\t\tout: %s"
 {- /show -}

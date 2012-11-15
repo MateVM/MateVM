@@ -107,55 +107,55 @@ stupidRegAlloc preAssigned linsn = second ((0-) . stackCnt)
       Fst x -> case x of
         IRLabel x' y z -> return $ Fst $ IRLabel x' y z
       Mid ins -> case ins of
-        IROp op dst src1 src2 -> do
+        IROp la op dst src1 src2 -> do
           dstnew <- doAssign dst
           src1new <- doAssign src1
           src2new <- doAssign src2
-          return $ Mid $ IROp op dstnew src1new src2new
-        IRStore rt obj src -> do
+          return $ Mid $ IROp la op dstnew src1new src2new
+        IRStore la rt obj src -> do
           objnew <- doAssign obj
           srcnew <- doAssign src
           nrt <- rtRepack rt
-          return $ Mid $ IRStore nrt objnew srcnew
-        IRLoad rt obj dst -> do
+          return $ Mid $ IRStore la nrt objnew srcnew
+        IRLoad la rt obj dst -> do
           objnew <- doAssign obj
           dstnew <- doAssign dst
           nrt <- rtRepack rt
-          return $ Mid $ IRLoad nrt objnew dstnew
-        IRMisc1 jins src -> do
+          return $ Mid $ IRLoad la nrt objnew dstnew
+        IRMisc1 la jins src -> do
           srcnew <- doAssign src
-          return $ Mid $ IRMisc1 jins srcnew
-        IRMisc2 jins dst src -> do
+          return $ Mid $ IRMisc1 la jins srcnew
+        IRMisc2 la jins dst src -> do
           dstnew <- doAssign dst
           srcnew <- doAssign src
-          return $ Mid $ IRMisc2 jins dstnew srcnew
+          return $ Mid $ IRMisc2 la jins dstnew srcnew
         IRPrep typ _ -> do
           ru <- S.delete (HIReg eax) <$> regsInUse JInt -- TODO: float. TODO: eax
           return $ Mid $ IRPrep typ ru
-        IRPush nr src -> do
+        IRPush la nr src -> do
           srcnew <- doAssign src
-          return $ Mid $ IRPush nr srcnew
-        IRInvoke rt (Just r) ct -> do
+          return $ Mid $ IRPush la nr srcnew
+        IRInvoke la rt (Just r) ct -> do
           rnew <- Just <$> doAssign r
           nrt <- rtRepack rt
-          return $ Mid $ IRInvoke nrt rnew ct
-        IRInvoke rt Nothing ct -> do
+          return $ Mid $ IRInvoke la nrt rnew ct
+        IRInvoke la rt Nothing ct -> do
           nrt <- rtRepack rt
-          return $ Mid $ IRInvoke nrt Nothing ct
+          return $ Mid $ IRInvoke la nrt Nothing ct
       Lst ins -> case ins of
         IRJump l -> return $ Lst $ IRJump l
-        IRIfElse jcmp cmp1 cmp2 l1 l2 -> do
+        IRIfElse la jcmp cmp1 cmp2 l1 l2 -> do
           cmp1new <- doAssign cmp1
           cmp2new <- doAssign cmp2
-          return $ Lst $ IRIfElse jcmp cmp1new cmp2new l1 l2
+          return $ Lst $ IRIfElse la jcmp cmp1new cmp2new l1 l2
         IRExHandler t -> return $ Lst $ IRExHandler t
-        IRSwitch reg t -> do
+        IRSwitch la reg t -> do
           regnew <- doAssign reg
-          return $ Lst $ IRSwitch regnew t
-        IRReturn (Just b) -> do
+          return $ Lst $ IRSwitch la regnew t
+        IRReturn la (Just b) -> do
           bnew <- Just <$> doAssign b
-          return $ Lst $ IRReturn bnew
-        IRReturn Nothing -> return $ Lst $ IRReturn Nothing
+          return $ Lst $ IRReturn la bnew
+        IRReturn la Nothing -> return $ Lst $ IRReturn la Nothing
 
     regsonly :: HVarX86 -> Bool
     regsonly (HIReg _) = True

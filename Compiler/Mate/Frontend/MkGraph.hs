@@ -163,7 +163,7 @@ mkBlock = do
     Just ts -> forM ts $ \x -> do
                  nv <- newvar $ varType x
                  apush nv
-                 return $ IROp Add nv x (nul (varType x))
+                 return $ irop Add nv x (nul (varType x))
   (ms', l') <- toMid
   return $ mkFirst f' <*> mkMiddles (fixup ++ ms') <*> mkLast l'
 
@@ -213,16 +213,16 @@ toMid = do
       let ifstuff jcmp rel op1 op2 = do
             truejmp <- addLabel (pc + w16Toi32 rel)
             falsejmp <- addLabel (pc + insnLength ins)
-            return $ ([], IRIfElse jcmp op1 op2 truejmp falsejmp)
+            return $ ([], irifelse jcmp op1 op2 truejmp falsejmp)
       let switchins def switch' = do
             y <- apop
             switch <- forM switch' $ \(v, o) -> do
               offset <- addLabel $ pc + fromIntegral o
               return (Just (w32Toi32 v), offset)
             defcase <- addLabel $ pc + fromIntegral def
-            return $ ([], IRSwitch y $ switch ++ [(Nothing, defcase)])
+            return $ ([], irswitch y $ switch ++ [(Nothing, defcase)])
       (ret1, ret2) <- case ins of
-        RETURN -> return $ ([], IRReturn Nothing)
+        RETURN -> return $ ([], irreturn Nothing)
         ARETURN -> returnSomething JRef
         IRETURN -> returnSomething JInt
         LRETURN -> error "toLast: LReturn"
@@ -260,7 +260,7 @@ toMid = do
         returnSomething t = do
           r <- apop
           unless (varType r == t) $ error "toLast return: type mismatch"
-          return $ ([], IRReturn $ Just r)
+          return $ ([], irreturn $ Just r)
 
 handleBlockEnd :: ParseState [MateIR Var O O]
 handleBlockEnd = do
@@ -278,7 +278,7 @@ handleBlockEnd = do
                       Just x' -> x'
                       Nothing -> []
           modify (\s -> s { blockInterfaces = M.insert t (vreg:be') (blockInterfaces s)})
-        return (IROp Add vreg x (nul (varType x)))
+        return (irop Add vreg x (nul (varType x)))
     else return []
 
 insnLength :: Integral a => J.Instruction -> a
@@ -370,7 +370,7 @@ tir (IINC x con) = do
   nv <- newvar JInt
   apush nv
   storeinsn <- tirStore x JInt
-  return $ [IROp Add nv y (JIntValue (w8Toi32 con))] ++ storeinsn
+  return $ [irop Add nv y (JIntValue (w8Toi32 con))] ++ storeinsn
 tir (ALOAD_ x) = tir (ALOAD (imm2num x))
 tir (ALOAD x) = tirLoad x JRef
 tir (FLOAD_ x) = tir (FLOAD (imm2num x))
@@ -387,22 +387,22 @@ tir (PUTFIELD x) = do
   unless (JRef == varType obj) $ error "putfield: type mismatch"
   cls <- classf <$> get
   unless (fieldType cls x == varType src) $ error "putfield: type mismatch2"
-  return [IRStore (RTPool x) obj src]
+  return [irstore (RTPool x) obj src]
 tir (GETFIELD x) = do
   obj <- apop
   unless (JRef == varType obj) $ error "getfield: type mismatch"
   cls <- classf <$> get
   nv <- newvar (fieldType cls x)
   apush nv
-  return [IRLoad (RTPool x) obj nv]
+  return [irload (RTPool x) obj nv]
 tir (GETSTATIC x) = do
   cls <- classf <$> get
   nv <- newvar (fieldType cls x)
   apush nv
-  return [IRLoad (RTPool x) JRefNull nv]
+  return [irload (RTPool x) JRefNull nv]
 tir (PUTSTATIC x) = do
   y <- apop
-  return [IRStore (RTPool x) JRefNull y]
+  return [irstore (RTPool x) JRefNull y]
 tir (LDC1 x) = tir (LDC2 (fromIntegral x))
 tir (LDC2 x) = do
   cls <- classf <$> get
@@ -412,11 +412,11 @@ tir (LDC2 x) = do
             e -> error $ "tir: LDCI... missing impl.: " ++ show e
   nv <- newvar valuetype
   apush nv
-  return [IRLoad (RTPool x) JRefNull nv]
+  return [irload (RTPool x) JRefNull nv]
 tir (NEW x) = do
   nv <- newvar JRef
   apush nv
-  return [IRLoad (RTPoolCall x []) JRefNull nv]
+  return [irload (RTPoolCall x []) JRefNull nv]
 tir (ANEWARRAY _) = tirArray ReferenceType 10 -- for int. TODO?
 tir (NEWARRAY w8) = tirArray PrimitiveType w8
 tir ARRAYLENGTH = do
@@ -424,7 +424,7 @@ tir ARRAYLENGTH = do
   when (varType array /= JRef) $ error "tir: arraylength: type mismatch"
   nv <- newvar JInt
   apush nv
-  return [IRLoad RTNone array nv]
+  return [irload RTNone array nv]
 tir AALOAD = tirArrayLoad JRef Nothing
 tir IALOAD = tirArrayLoad JInt Nothing
 tir CALOAD = tirArrayLoad JInt (Just 0xff)
@@ -436,7 +436,7 @@ tir DUP = do
   apush x
   nv <- newvar (varType x)
   apush nv
-  return [IROp Add nv x (JIntValue 0)]
+  return [irop Add nv x (JIntValue 0)]
 tir DUP_X2 = do
   -- WARNING: different behaviour for LONG & DOUBLE!!
   -- see, category 2 computational type (§2.11.1).
@@ -444,7 +444,7 @@ tir DUP_X2 = do
   nv <- newvar (varType v1)
   apush nv
   apush v3; apush v2; apush v1
-  return [IROp Add nv v1 (JIntValue 0)]
+  return [irop Add nv v1 (JIntValue 0)]
 tir POP = do apop; return []
 tir IADD = tirOpInt Add JInt
 tir ISUB = tirOpInt Sub JInt
@@ -463,7 +463,7 @@ tir I2C = do
   when (varType x /= JInt) $ error "tir: i2c: type mismatch"
   nv <- newvar JInt
   apush nv
-  return [IROp And nv x (JIntValue 0xff)]
+  return [irop And nv x (JIntValue 0xff)]
 tir (INVOKESTATIC ident) = tirInvoke CallStatic ident
 tir (INVOKESPECIAL ident) = tirInvoke CallSpecial ident
 tir (INVOKEVIRTUAL ident) = tirInvoke CallVirtual ident
@@ -471,15 +471,15 @@ tir (INVOKEINTERFACE ident _) = tirInvoke CallInterface ident
 tir i@(CHECKCAST _) = do
   y <- apop
   apush y
-  return [IRMisc1 i y]
+  return [irmisc1 i y]
 tir i@(INSTANCEOF _) = do
   y <- apop
   nv <- newvar JInt
   apush nv
-  return [IRMisc2 i nv y]
+  return [irmisc2 i nv y]
 tir i@ATHROW = do
   y <- apop
-  return [IRMisc1 i y]
+  return [irmisc1 i y]
 tir x = error $ "tir: " ++ show x
 
 tirArray :: MateObjType -> Word8 -> ParseState [MateIR Var O O]
@@ -490,7 +490,7 @@ tirArray objtype w8 = do
               x -> error $ "tir: anewarray: len is not constant: " ++ show x
   nv <- newvar JRef
   apush nv
-  return [IRLoad (RTArray w8 objtype [] len') JRefNull nv]
+  return [irload (RTArray w8 objtype [] len') JRefNull nv]
 
 tirArrayLoad :: VarType -> Maybe Int32 {- Mask -} -> ParseState [MateIR Var O O]
 tirArrayLoad t mask = do
@@ -505,9 +505,9 @@ tirArrayLoad t mask = do
       _ <- apop
       nv' <- newvar JInt
       apush nv'
-      return [ IRLoad (RTIndex idx t) array nv
-             , IROp And nv' nv (JIntValue m)]
-    _ -> return [IRLoad (RTIndex idx t) array nv]
+      return [ irload (RTIndex idx t) array nv
+             , irop And nv' nv (JIntValue m)]
+    _ -> return [irload (RTIndex idx t) array nv]
 
 tirArrayStore :: VarType -> Maybe Int32 {- Mask -} -> ParseState [MateIR Var O O]
 tirArrayStore t mask = do
@@ -523,9 +523,9 @@ tirArrayStore t mask = do
   case mask of
     Just m -> do
       nv <- newvar JInt
-      return [ IROp And nv value (JIntValue m)
-             , IRStore (RTIndex idx t) array nv ]
-    _ -> return [IRStore (RTIndex idx t) array value]
+      return [ irop And nv value (JIntValue m)
+             , irstore (RTIndex idx t) array nv ]
+    _ -> return [irstore (RTIndex idx t) array value]
 
 tirInvoke :: CallType -> Word16 -> ParseState [MateIR Var O O]
 tirInvoke ct ident = do
@@ -536,15 +536,15 @@ tirInvoke ct ident = do
     y <- apop
     unless (x == varType y) $ error "invoke: type mismatch"
     case x of
-      JInt -> return $ IRPush nr y
-      JRef -> return $ IRPush nr y
+      JInt -> return $ irpush nr y
+      JRef -> return $ irpush nr y
       JFloat -> do
         let nr8 = fromIntegral nr
         let nri = fromIntegral nr
         let assign = preFloats !! nri
         modify (\s -> s { preRegs = (assign, (HFReg $ XMMReg nr8, JFloat))
                                     : (preRegs s) })
-        return $ IROp Add (VReg x assign) y (JFloatValue 0) -- mov
+        return $ irop Add (VReg x assign) y (JFloatValue 0) -- mov
   (targetreg, maybemov) <- case mret of
     Just x -> do
       let prereg = case x of
@@ -555,10 +555,10 @@ tirInvoke ct ident = do
       movtarget <- newvar x
       tracePipe (printf "return: %s@%s\n" (show prereg) (show x)) $
         apush movtarget
-      return (Just nv, Just $ IROp Add movtarget nv (JIntValue 0))
+      return (Just nv, Just $ irop Add movtarget nv (JIntValue 0))
     Nothing -> return (Nothing, Nothing)
   let r = (IRPrep SaveRegs S.empty): pushes ++
-          [IRInvoke (RTPoolCall ident []) targetreg ct, IRPrep RestoreRegs S.empty]
+          [irinvoke (RTPoolCall ident []) targetreg ct, IRPrep RestoreRegs S.empty]
   case maybemov of
     Nothing -> return r
     Just m -> return $ r ++ [m]
@@ -611,7 +611,7 @@ tirLoad x t = do
   vreg <- apop
   nv <- newvar t
   apush nv
-  return [IROp Add nv vreg (nul t)]
+  return [irop Add nv vreg (nul t)]
 
 
 tirStore :: Word8 -> VarType -> ParseState[MateIR Var O O]
@@ -619,14 +619,14 @@ tirStore w8 t = do
   x <- apop
   unless (t == varType x) $ error "tirStore: type mismatch"
   vreg <- maybeArgument w8 t
-  return [IROp Add vreg x (nul t)]
+  return [irop Add vreg x (nul t)]
 
 tirOpInt :: OpType -> VarType -> ParseState [MateIR Var O O]
 tirOpInt op t = do
   x <- apop; y <- apop
   nv <- newvar t; apush nv
   unless (t == varType x && t == varType y) $ error "tirOpInt: type mismatch"
-  return [IROp op nv x y]
+  return [irop op nv x y]
 
 newvar :: VarType -> ParseState Var
 newvar t = do
@@ -647,3 +647,14 @@ apop = do
   (s:ss) <- stack <$> get
   modify (\m -> m { stack = ss })
   return s
+
+irop = IROp liveAnnEmpty
+irload = IRLoad liveAnnEmpty
+irstore = IRStore liveAnnEmpty
+irinvoke = IRInvoke liveAnnEmpty
+irpush = IRPush liveAnnEmpty
+irifelse = (IRIfElse liveAnnEmpty)
+irswitch = IRSwitch liveAnnEmpty
+irreturn = IRReturn liveAnnEmpty
+irmisc1 = IRMisc1 liveAnnEmpty
+irmisc2 = IRMisc2 liveAnnEmpty
