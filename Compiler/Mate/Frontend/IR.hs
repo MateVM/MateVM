@@ -4,6 +4,7 @@
 {-# LANGUAGE StandaloneDeriving #-}
 module Compiler.Mate.Frontend.IR
  ( MateIR(..)
+ , VirtualReg
  , LiveAnnotation(..)
  , liveAnnEmpty
  , CallingConv(..)

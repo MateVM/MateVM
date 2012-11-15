@@ -16,13 +16,14 @@ import qualified JVM.Assembler as J
 import JVM.ClassFile
 import JVM.Converter
 
-import Compiler.Hoopl hiding (Label)
+import Compiler.Hoopl
 
 import Control.Monad.State
 import Control.Arrow
 
 import Text.Printf
 import Compiler.Mate.Frontend
+import Compiler.Mate.Frontend.LivenessPass
 import Compiler.Mate.Types
 import Compiler.Mate.Utilities
 
@@ -106,10 +107,13 @@ fakeline cls meth jvminsn = do
       resetPC jvminsn
       gs <- mkBlocks
       mkMethod $ L.foldl' (|*><*|) emptyClosedGraph gs
-    runFM :: SimpleUniqueMonad a -> a
-    runFM = runSimpleUniqueMonad -- . runWithFuel infiniteFuel
+    runFM :: SimpleFuelMonad a -> a
+    runFM = runSimpleUniqueMonad . runWithFuel infiniteFuel
     runOpts g = runFM $ do
-      -- let nothingc = NothingC :: MaybeC O H.Label
+      let nothingc = NothingC :: MaybeC O Label
+      (g', _, _) <- analyzeAndRewriteBwd
+                       livenessPass nothingc g noFacts
+      return g'
       -- (_, f, _) <- analyzeAndRewriteBwd
       --                oneUseDefPass nothingc g noFacts
       -- (gm', _, _) <- analyzeAndRewriteBwd
@@ -117,7 +121,6 @@ fakeline cls meth jvminsn = do
       --                              , bp_rewrite = oudKill }
       --                 nothingc g f
       -- tracePipe (printf "facts: %s\n" (show f)) $ return gm'
-      return g
     optgraph = runOpts graph
     lbls = labels transstate
     linear = mkLinear optgraph
