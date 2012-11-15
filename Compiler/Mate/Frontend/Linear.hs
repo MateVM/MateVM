@@ -35,4 +35,6 @@ mkLinear = concatMap lineariseBlock . postorder_dfs
         entry_ins = case entry of JustC n -> [Fst n]; NothingC -> []
         tail_ins :: [LinearIns Var]
         tail_ins = case tailb of JustC n -> [Lst n]; NothingC -> []
+
+
 {- /linear -}

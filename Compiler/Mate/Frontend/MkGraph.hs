@@ -154,7 +154,7 @@ mkBlock = do
   let extable = map (\(x,y) -> (x, fromIntegral y))
                 $ concatMap snd
                 $ handlermap `IM.containing` pc
-  let f' = IRLabel l extable handlerStart
+  let f' = irlabel l extable handlerStart
   -- fixup block boundaries
   be <- -- trace (printf "pc: %d\nhstart: %s\nextable: %s\n" pc (show handlerStart) (show extable)) $
         (M.lookup l) <$> blockInterfaces <$> get
@@ -648,6 +648,7 @@ apop = do
   modify (\m -> m { stack = ss })
   return s
 
+irlabel = IRLabel liveAnnEmpty
 irop = IROp liveAnnEmpty
 irload = IRLoad liveAnnEmpty
 irstore = IRStore liveAnnEmpty

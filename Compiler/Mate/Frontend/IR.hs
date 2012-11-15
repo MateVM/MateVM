@@ -43,7 +43,10 @@ liveAnnEmpty :: LiveAnnotation
 liveAnnEmpty = LiveAnnotation S.empty
 
 data MateIR t e x where
-  IRLabel :: Label -> HandlerMap -> MaybeHandler -> MateIR t C O
+  IRLabel :: LiveAnnotation
+          -> Label
+          -> HandlerMap -> MaybeHandler
+          -> MateIR t C O
 
   IROp :: (Show t) => LiveAnnotation
                    -> OpType
@@ -161,7 +164,7 @@ varType (VReg t _) = t
 varType JRefNull = JRef
 
 instance NonLocal (MateIR Var) where
-  entryLabel (IRLabel l _ _) = l
+  entryLabel (IRLabel _ l _ _) = l
   successors (IRJump l) = [l]
   successors (IRIfElse _ _ _ _ l1 l2) = [l1, l2]
   successors (IRExHandler t) = t
@@ -170,7 +173,7 @@ instance NonLocal (MateIR Var) where
 
 {- show -}
 instance Show (MateIR t e x) where
-  show (IRLabel l hmap handlerstart) = printf "label: %s:\n\texceptions: %s\n\thandlerstart? %s\n" (show l) (show hmap) (show handlerstart)
+  show (IRLabel la l hmap handlerstart) = printf "label: %s:\n\texceptions: %s\n\thandlerstart? %s%s" (show l) (show hmap) (show handlerstart) (show la)
   show (IROp la op vr v1 v2) = printf "\t%s %s,  %s, %s%s" (show op) (show vr) (show v1) (show v2) (show la)
   show (IRLoad la rt obj dst) = printf "\t%s(%s) -> %s%s" (show obj) (show rt) (show dst) (show la)
   show (IRStore la rt obj src) = printf "\t%s(%s) <- %s%s" (show obj) (show rt) (show src) (show la)

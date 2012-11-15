@@ -6,6 +6,7 @@ module Compiler.Mate.Frontend.LivenessPass
   ) where
 
 import qualified Data.Set as S
+import Data.Maybe
 
 -- import Text.Printf
 
@@ -35,26 +36,63 @@ livenessTransfer :: BwdTransfer (MateIR Var) LiveSet
 livenessTransfer = mkBTransfer live
   where
     live :: (MateIR Var) e x -> Fact x LiveSet -> LiveSet
-    live (IRLabel _ _ _) f = f
+    live (IRLabel _ _ _ _) f = f
     live (IROp _ _ dst src1 src2) f = removeVar dst $ addVar src1 $ addVar src2 f
-    -- TODO: rtstuff
-    live (IRStore _ _ dst src) f = removeVar dst $ addVar src f
-    live (IRLoad _ _ dst src) f = removeVar dst $ addVar src f
-    live (IRReturn _ (Just t)) f = addVar t $ fact_bot livenessLattice
-    live (IRReturn _ _) f = fact_bot livenessLattice
+    live (IRReturn _ (Just t)) f = addVar t bot
+    live (IRReturn _ _) f = bot
+    live _ _ = error "hoopl: livetransfer: not impl. yet"
+    {- todo
+    live (IRStore _ rt dst src) f = rtVar rt $ removeVar dst $ addVar src f
+    live (IRLoad  _ rt dst src) f = rtVar rt $ removeVar dst $ addVar src f
+    live (IRMisc1 _ _ src) f = addVar src f
+    live (IRMisc2 _ _ dst src) f = removeVar dst $ addVar src f
+    live (IRPrep _ _) f = f
+    -}
+
+    rtVar :: RTPool Var -> LiveSet -> LiveSet
+    rtVar (RTIndex v _) f = addVar v f
+    rtVar _ f = f
+
+    bot :: LiveSet
+    bot = fact_bot livenessLattice
+    factLabel :: FactBase LiveSet -> Label -> LiveSet
+    factLabel f l = fromMaybe bot $ lookupFact l f
 
     addVar :: Var -> LiveSet -> LiveSet
     addVar (VReg typ nr) f = S.insert (nr, typ) f
     addVar _ f = f
-
     removeVar :: Var -> LiveSet -> LiveSet
     removeVar (VReg typ nr) f = S.delete (nr, typ) f
     removeVar _ f = f
+
 
 livenessAnnotate :: forall m . FuelMonad m => BwdRewrite m (MateIR Var) LiveSet
 livenessAnnotate = mkBRewrite annotate
   where
     annotate :: (MateIR Var) e x -> Fact x LiveSet -> m (Maybe (Graph (MateIR Var) e x))
-    annotate (IROp _ opt dst src1 src2) f = return $ Just $ mkMiddle
-      (IROp (LiveAnnotation f) opt dst src1 src2)
+    annotate (IRLabel _ l hm mh) f = retCO (IRLabel (la f) l hm mh)
+    annotate (IROp _ opt dst src1 src2) f = retOO (IROp (la f) opt dst src1 src2)
+    annotate (IRReturn _ ret) _ = retOC (IRReturn (la bot) ret)
     annotate _ _ = return Nothing
+
+    retCO :: forall m. FuelMonad m
+          => (MateIR Var) C O
+          -> m (Maybe (Graph (MateIR Var) C O))
+    retCO = return . Just . mkFirst
+
+    retOO :: forall m. FuelMonad m
+          => (MateIR Var) O O
+          -> m (Maybe (Graph (MateIR Var) O O))
+    retOO = return . Just . mkMiddle
+
+    retOC :: forall m. FuelMonad m
+          => (MateIR Var) O C
+          -> m (Maybe (Graph (MateIR Var) O C))
+    retOC = return . Just . mkLast
+
+    la = LiveAnnotation
+
+    bot :: LiveSet
+    bot = fact_bot livenessLattice
+    factLabel :: FactBase LiveSet -> Label -> LiveSet
+    factLabel f l = fromMaybe bot $ lookupFact l f

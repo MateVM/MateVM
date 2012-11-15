@@ -105,7 +105,7 @@ stupidRegAlloc preAssigned linsn = second ((0-) . stackCnt)
     assignReg :: LinearIns Var -> State MappedRegs (LinearIns HVarX86)
     assignReg lv = case lv of
       Fst x -> case x of
-        IRLabel x' y z -> return $ Fst $ IRLabel x' y z
+        IRLabel la x' y z -> return $ Fst $ IRLabel la x' y z
       Mid ins -> case ins of
         IROp la op dst src1 src2 -> do
           dstnew <- doAssign dst
