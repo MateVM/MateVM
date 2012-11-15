@@ -35,7 +35,7 @@ type HandlerMap = [(B.ByteString {- exception class -}
                    )]
 type MaybeHandler = Maybe Word32
 
-type VirtualReg = (Integer, VarType)
+type VirtualReg = Integer
 data LiveAnnotation = LiveAnnotation
   { living  :: S.Set VirtualReg } {- vars which are live after this instruction -}
 
@@ -153,7 +153,7 @@ data VarType = JInt | JFloat | JRef deriving (Show, Eq, Ord)
 data Var
   = JIntValue Int32
   | JFloatValue Float
-  | VReg VarType Integer -- replace with VirtualReg
+  | VReg VarType Integer
   | JRefNull
   deriving (Eq, Ord)
 
@@ -203,5 +203,5 @@ instance Show Var where
   show JRefNull = printf "(null)"
 
 instance Show LiveAnnotation where
-  show (LiveAnnotation live) = printf "\n\t\tnow living:  %s" (show live)
+  show (LiveAnnotation live) = printf "\n\t\tnow living:  %s" (show $ S.toList live)
 {- /show -}

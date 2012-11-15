@@ -59,10 +59,10 @@ livenessTransfer = mkBTransfer live
     factLabel f l = fromMaybe bot $ lookupFact l f
 
     addVar :: Var -> LiveSet -> LiveSet
-    addVar (VReg typ nr) f = S.insert (nr, typ) f
+    addVar (VReg _ nr) f = S.insert nr f
     addVar _ f = f
     removeVar :: Var -> LiveSet -> LiveSet
-    removeVar (VReg typ nr) f = S.delete (nr, typ) f
+    removeVar (VReg _ nr) f = S.delete nr f
     removeVar _ f = f
 
 
