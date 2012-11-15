@@ -1,10 +1,19 @@
 (h) newcodegen
-	-> make all testcases working again (exception and switch will be more work I guess)
-	-> interface with updated GC (object layout, ...)
-	-> soooo much cleanup
-	-> proper register allocator
-	-> some hoopl passes
+	-> interface with updated GC (object layout, arrays, ...)
+
+(h) lsra
+	-> liveness?
+		o annotate each instruction with current liveness infos in a hoopl pass
+		o calculate intervalls at linearising graph?
+
+(h) hoopl
+	-> some simple passes
+		o kill vregs?
+		o lazy code motion?
+			-> how useful? because jvm spec requires precise exceptions
+		o dead code elim?
 	-> simple inlining of static methods
+		o should be possible to build in?
 
 (m) floating point
 	-> infrastructure is there
