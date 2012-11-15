@@ -55,8 +55,11 @@ fakeline cls meth jvminsn = do
     printf "%s\n" (showGraph show optgraph)
     -- prettyHeader "Flatten Graph"
     -- printf "%s\n" (show linear)
-    prettyHeader "Register Allocation"
-    printf "%s\n" (show ra)
+    prettyHeader "Live Ranges"
+    printf "%s\n" (show (zip [(0 :: Int)..] linear))
+    printLiveRanges liveranges
+    -- prettyHeader "Register Allocation"
+    -- printf "%s\n" (show ra)
     return ()
   where
     mname = methodName meth
@@ -124,6 +127,7 @@ fakeline cls meth jvminsn = do
     optgraph = runOpts graph
     lbls = labels transstate
     linear = mkLinear optgraph
+    liveranges = computeLiveRanges linear
     (ra, stackAlloc) = stupidRegAlloc (preRegs transstate) linear
 
 prettyHeader :: String -> IO ()

@@ -3,15 +3,20 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module Compiler.Mate.Frontend.LivenessPass
   ( livenessPass
+  , computeLiveRanges
+  , printLiveRanges
   ) where
 
 import qualified Data.Set as S
+import qualified Data.Map as M
 import Data.Maybe
 
--- import Text.Printf
+import Control.Applicative hiding ((<*>))
+import Control.Monad.State
+import Text.Printf
 
 import Compiler.Hoopl
-import Compiler.Mate.Frontend.IR
+import Compiler.Mate.Frontend
 
 livenessPass :: BwdPass SimpleFuelMonad (MateIR Var) LiveSet
 livenessPass = BwdPass
@@ -38,8 +43,8 @@ livenessTransfer = mkBTransfer live
     live :: (MateIR Var) e x -> Fact x LiveSet -> LiveSet
     live (IRLabel _ _ _ _) f = f
     live (IROp _ _ dst src1 src2) f = removeVar dst $ addVar src1 $ addVar src2 f
-    live (IRReturn _ (Just t)) f = addVar t bot
-    live (IRReturn _ _) f = bot
+    live (IRReturn _ (Just t)) _ = addVar t bot
+    live (IRReturn _ _) _ = bot
     live _ _ = error "hoopl: livetransfer: not impl. yet"
     {- todo
     live (IRStore _ rt dst src) f = rtVar rt $ removeVar dst $ addVar src f
@@ -70,29 +75,114 @@ livenessAnnotate :: forall m . FuelMonad m => BwdRewrite m (MateIR Var) LiveSet
 livenessAnnotate = mkBRewrite annotate
   where
     annotate :: (MateIR Var) e x -> Fact x LiveSet -> m (Maybe (Graph (MateIR Var) e x))
-    annotate (IRLabel _ l hm mh) f = retCO (IRLabel (la f) l hm mh)
-    annotate (IROp _ opt dst src1 src2) f = retOO (IROp (la f) opt dst src1 src2)
-    annotate (IRReturn _ ret) _ = retOC (IRReturn (la bot) ret)
+    annotate (IRLabel _ l hm mh) f = retCO (IRLabel f l hm mh)
+    annotate (IROp _ opt dst src1 src2) f = retOO (IROp f opt dst src1 src2)
+    annotate (IRReturn _ ret) _ = retOC (IRReturn bot ret)
     annotate _ _ = return Nothing
 
-    retCO :: forall m. FuelMonad m
+    retCO :: forall m1. FuelMonad m1
           => (MateIR Var) C O
-          -> m (Maybe (Graph (MateIR Var) C O))
+          -> m1 (Maybe (Graph (MateIR Var) C O))
     retCO = return . Just . mkFirst
 
-    retOO :: forall m. FuelMonad m
+    retOO :: forall m1. FuelMonad m1
           => (MateIR Var) O O
-          -> m (Maybe (Graph (MateIR Var) O O))
+          -> m1 (Maybe (Graph (MateIR Var) O O))
     retOO = return . Just . mkMiddle
 
-    retOC :: forall m. FuelMonad m
+    retOC :: forall m1. FuelMonad m1
           => (MateIR Var) O C
-          -> m (Maybe (Graph (MateIR Var) O C))
+          -> m1 (Maybe (Graph (MateIR Var) O C))
     retOC = return . Just . mkLast
-
-    la = LiveAnnotation
 
     bot :: LiveSet
     bot = fact_bot livenessLattice
     factLabel :: FactBase LiveSet -> Label -> LiveSet
     factLabel f l = fromMaybe bot $ lookupFact l f
+
+-- live ranges
+-- TODO: limitation: one reg can just have one live range
+type PC = Int
+type LiveStart = M.Map VirtualReg PC
+type LiveEnd = LiveStart
+type LiveRanges = M.Map VirtualReg (PC, PC)
+
+data LiveStateData = LiveStateData
+  { active :: LiveSet
+  , linstructions :: [LinearIns Var]
+  , lstarts :: LiveStart
+  , lends :: LiveEnd
+  , pcCnt :: Int
+  }
+
+type LiveState a = State LiveStateData a
+
+computeLiveRanges :: [LinearIns Var] -> LiveRanges
+computeLiveRanges insn =
+    foldr (\k -> M.insert k (ls M.! k, le M.! k)) M.empty keys
+  where
+    endstate = snd $ runState step initstate
+    ls = lstarts endstate
+    le = lends endstate
+    keys = M.keys $ lstarts endstate
+    initstate = LiveStateData
+                  { active = S.empty
+                  , linstructions = insn
+                  , lstarts = M.empty
+                  , lends = M.empty
+                  , pcCnt = 0
+                  }
+
+step :: LiveState ()
+step = do
+  insn <- linstructions <$> get
+  if null insn
+    then return () -- done here
+    else do
+      pc <- pcCnt <$> get
+      let (ins:insns) = insn
+
+      la <- extractLiveAnnotation ins
+      lsmap <- lstarts <$> get
+      lemap <- lends <$> get
+      cur <- active <$> get
+      let newguys = la `S.difference` cur
+      let deadguys = cur `S.difference` la
+
+      modify (\s -> s { linstructions = insns
+                      , active = la
+                      , lstarts = S.fold (\k -> M.insert k pc) lsmap newguys
+                      , lends   = S.fold (\k -> M.insert k pc) lemap deadguys
+                      })
+      incPC
+      step
+
+extractLiveAnnotation :: LinearIns Var -> LiveState LiveAnnotation
+extractLiveAnnotation ins =
+  case ins of
+    Fst i -> case i of
+      IRLabel la _ _ _  -> return la
+    Mid i -> case i of
+      IROp la _ _ _ _   -> return la
+      IRStore la _ _ _  -> return la
+      IRLoad la _ _ _   -> return la
+      IRMisc1 la _ _    -> return la
+      IRMisc2 la _ _ _  -> return la
+      IRPrep _ _        -> active <$> get
+      IRInvoke la _ _ _ -> return la
+      IRPush la _ _     -> return la
+    Lst i -> case i of
+      IRJump _              -> active <$> get
+      IRIfElse la _ _ _ _ _ -> return la
+      IRExHandler _         -> active <$> get
+      IRSwitch la _ _       -> return la
+      IRReturn la _         -> return la
+
+incPC :: LiveState ()
+incPC = modify (\s -> s { pcCnt = 1 + (pcCnt s) })
+
+printLiveRanges :: LiveRanges -> IO ()
+printLiveRanges lr = do
+  forM_ (M.keys lr) $ \x -> do
+    let (f, t) = lr M.! x
+    printf "%6d: from %04d -> %04d active\n" x f t

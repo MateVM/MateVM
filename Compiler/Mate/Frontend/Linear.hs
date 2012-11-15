@@ -38,6 +38,3 @@ mkLinear = concatMap lineariseBlock . postorder_dfs
 
 
 {- /linear -}
-
-
--- computeLiveRanges
