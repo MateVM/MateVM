@@ -88,9 +88,9 @@ data MateIR t e x where
                       -> t {- dst -}
                       -> t {- src -}
                       -> MateIR t O O
-  IRPrep :: (Show t) => CallingConv
-                     -> S.Set t {- regs in use -}
-                     -> MateIR t O O
+  IRPrep :: CallingConv
+         -> [(HVarX86, VarType)]
+         -> MateIR t O O
   IRInvoke :: (Show t) => LiveAnnotation
                        -> RTPool t
                        -> Maybe t

@@ -32,7 +32,8 @@ import Compiler.Mate.Frontend.Linear
 import Compiler.Mate.Frontend.LivenessPass
 
 data MappedRegs = MappedRegs
-  { regMap :: RegMapping }
+  { regMap :: RegMapping
+  , pcCounter :: Int }
 
 ptrSize :: Num a => a
 ptrSize = 4
@@ -66,7 +67,7 @@ stackOffsetStart :: Word32
 stackOffsetStart = 0xffffffe8
 
 emptyRegs :: MappedRegs
-emptyRegs = MappedRegs preAssignedRegs
+emptyRegs = MappedRegs preAssignedRegs 0
 
 allIntRegs, allFloatRegs :: S.Set HVarX86
 -- register usage:
@@ -76,24 +77,35 @@ allIntRegs, allFloatRegs :: S.Set HVarX86
 allIntRegs = S.fromList $ map HIReg [ecx, edx, esi, edi]
 allFloatRegs = S.fromList $ map HFReg [xmm0, xmm1, xmm2, xmm3, xmm4, xmm5, xmm6]
 
-stupidRegAlloc :: RegMapping -> [LinearIns Var] -> [LinearIns HVarX86]
-stupidRegAlloc preAssigned linsn = fst $ runState regAlloc' startmapping
+stupidRegAlloc :: RegMapping -> PCActiveMap -> [LinearIns Var] -> [LinearIns HVarX86]
+stupidRegAlloc preAssigned pcactive linsn = fst $ runState regAlloc' startmapping
   where
     startassign = M.union (regMap emptyRegs) preAssigned
     startmapping = emptyRegs { regMap = startassign }
-    regAlloc' = mapM assignReg linsn
+    regAlloc' = forM linsn $ \x -> do
+                    r <- assignReg x
+                    pcInc
+                    return r
+
+    pcInc :: State MappedRegs ()
+    pcInc = modify (\s -> s { pcCounter = 1 + (pcCounter s)})
+
+    pointMapping :: State MappedRegs [(HVarX86, VarType)]
+    pointMapping = do
+      pc <- pcCounter <$> get
+      rm <- regMap <$> get
+      let vregs = pcactive M.! pc
+      return [ (rm M.! vreg, vrTyp vreg) | vreg <- vregs ]
 
     rtRepack :: RTPool Var -> State MappedRegs (RTPool HVarX86)
     rtRepack (RTPool w16) = return $ RTPool w16
     rtRepack (RTPoolCall w16 []) = do
-      -- mapping <- M.elems <$> regMap <$> get
-      let mapping = [] -- TODO ...
+      mapping <- pointMapping
       return $ RTPoolCall w16 mapping
     rtRepack (RTPoolCall _ x) = do
       error $ "regalloc: rtpoolcall: mapping should be empty: " ++ show x
     rtRepack (RTArray w8 obj [] w32) = do
-      -- mapping <- M.elems <$> regMap <$> get
-      let mapping = [] -- TODO ...
+      mapping <- pointMapping
       return $ RTArray w8 obj mapping w32
     rtRepack (RTArray _ _ x _) = do
       error $ "regalloc: rtArray: mapping should be empty: " ++ show x
@@ -130,7 +142,7 @@ stupidRegAlloc preAssigned linsn = fst $ runState regAlloc' startmapping
           srcnew <- doAssign src
           return $ Mid $ IRMisc2 la jins dstnew srcnew
         IRPrep typ _ -> do
-          let ru = allIntRegs -- TODO
+          ru <- pointMapping
           return $ Mid $ IRPrep typ ru
         IRPush la nr src -> do
           srcnew <- doAssign src
@@ -182,14 +194,16 @@ data LsraStateData = LsraStateData
   , freeRegs :: [HVarX86]
   , stackDisp :: Word32
   , activeRegs :: [VirtualReg]
+  , pc2active :: PCActiveMap
   }
+type PCActiveMap = M.Map Int [VirtualReg]
 type LsraState a = State LsraStateData a
 
 lsraMapping :: RegMapping
             -> LiveRanges
-            -> (RegMapping, Word32)
+            -> (RegMapping, Word32, PCActiveMap)
 lsraMapping precolored (LiveRanges lstarts lends) =
-    (regmapping mapping, 0 - stackDisp mapping)
+    (regmapping mapping, 0 - stackDisp mapping, pc2active mapping)
   where
     lastPC = S.findMax $ M.keysSet lstarts
     mapping = execState (lsra) (
@@ -197,6 +211,7 @@ lsraMapping precolored (LiveRanges lstarts lends) =
                             , regmapping = preAssignedRegs `M.union` precolored
                             , freeRegs = S.toList allIntRegs
                             , stackDisp = stackOffsetStart
+                            , pc2active = M.empty
                             , activeRegs = [] })
     incPC :: LsraState ()
     incPC = modify (\s -> s { pcCnt = 1 + (pcCnt s) })
@@ -222,6 +237,8 @@ lsraMapping precolored (LiveRanges lstarts lends) =
                                     , activeRegs = vreg : (activeRegs s)
                                     , regmapping = M.insert vreg hreg (regmapping s)
                                     })
+        active <- activeRegs <$> get
+        modify (\s -> s { pc2active = M.insert pc active (pc2active s) })
         incPC
         lsra
     freeGuys :: Int -> LsraState ()
@@ -266,7 +283,9 @@ noLiveRangeCollision (LiveRanges lstarts lends) rmapping =
       || y2 < x1)
 
 prop_noCollision :: LiveRanges -> Bool
-prop_noCollision lr = noLiveRangeCollision lr (fst $ lsraMapping M.empty lr)
+prop_noCollision lr = noLiveRangeCollision lr res
+  where
+    (res, _, _) = lsraMapping M.empty lr
 
 testLSRA :: IO ()
 testLSRA = do
