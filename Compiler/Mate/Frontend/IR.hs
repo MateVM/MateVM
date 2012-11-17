@@ -4,7 +4,8 @@
 {-# LANGUAGE StandaloneDeriving #-}
 module Compiler.Mate.Frontend.IR
  ( MateIR(..)
- , VirtualReg
+ , VirtualReg(..)
+ , RegMapping
  , HandlerMap
  , MaybeHandler
  , LiveAnnotation
@@ -22,6 +23,7 @@ module Compiler.Mate.Frontend.IR
 
 import qualified Data.ByteString.Lazy as B
 import qualified Data.Set as S
+import qualified Data.Map as M
 import Data.Word
 import Data.Int
 import Text.Printf
@@ -37,7 +39,19 @@ type HandlerMap = [(B.ByteString {- exception class -}
                    )]
 type MaybeHandler = Maybe Word32
 
-type VirtualReg = Integer
+data VirtualReg = VR
+  { vrNr :: Integer
+  , vrTyp :: VarType
+  } deriving Show
+
+instance Eq VirtualReg where
+  (VR x _) == (VR y _) = x == y
+
+instance Ord VirtualReg where
+  compare (VR x _) (VR y _) = x `compare` y
+
+type RegMapping = M.Map VirtualReg HVarX86
+
 type LiveAnnotation = S.Set VirtualReg {- vars which are live after this instruction -}
 
 liveAnnEmpty :: LiveAnnotation
@@ -154,14 +168,14 @@ data VarType = JInt | JFloat | JRef deriving (Show, Eq, Ord)
 data Var
   = JIntValue Int32
   | JFloatValue Float
-  | VReg VarType Integer
+  | VReg VirtualReg
   | JRefNull
   deriving (Eq, Ord)
 
 varType :: Var -> VarType
 varType (JIntValue _) = JInt
 varType (JFloatValue _) = JFloat
-varType (VReg t _) = t
+varType (VReg (VR _ t)) = t
 varType JRefNull = JRef
 
 instance NonLocal (MateIR Var) where
@@ -198,7 +212,7 @@ instance Show HVarX86 where
   show (SpillFReg (Disp d)) = printf "0x%02x(ebp[f])" d
 
 instance Show Var where
-  show (VReg t n) = printf "%s(%02d)" (show t) n
+  show (VReg (VR n t)) = printf "%s(%02d)" (show t) n
   show (JIntValue n) = printf "0x%08x" n
   show (JFloatValue n) = printf "%2.2ff" n
   show JRefNull = printf "(null)"

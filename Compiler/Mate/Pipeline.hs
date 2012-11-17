@@ -106,7 +106,7 @@ pipeline cls meth jvminsn = do
                             , regcnt = 50000
                             , classf = cls
                             , method = meth
-                            , preRegs = []
+                            , preRegs = M.empty
 
                             , instructions = jvminsn
                             , exceptionMap = exmap
@@ -137,7 +137,7 @@ pipeline cls meth jvminsn = do
     lbls = labels transstate
     linear = mkLinear optgraph
     liveranges = computeLiveRanges linear
-    preColored = M.fromList $ preRegs transstate
+    preColored = preRegs transstate
     (lsramap, stackAlloc) = lsraMapping preColored liveranges
     ra = stupidRegAlloc lsramap linear
 

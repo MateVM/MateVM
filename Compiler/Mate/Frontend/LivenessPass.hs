@@ -73,10 +73,10 @@ livenessTransfer = mkBTransfer live
     factLabel f l = fromMaybe bot $ lookupFact l f
 
     addVar :: Var -> LiveSet -> LiveSet
-    addVar (VReg _ nr) f = S.insert nr f
+    addVar (VReg v) f = S.insert v f
     addVar _ f = f
     removeVar :: Var -> LiveSet -> LiveSet
-    removeVar (VReg _ nr) f = S.delete nr f
+    removeVar (VReg v) f = S.delete v f
     removeVar _ f = f
 
 
@@ -85,7 +85,7 @@ livenessAnnotate = mkBRewrite annotate
   where
     annotate :: (MateIR Var) e x -> Fact x LiveSet -> m (Maybe (Graph (MateIR Var) e x))
     annotate (IRLabel _ l hm mh) f = retCO (IRLabel f l hm mh)
-    annotate (IROp _ opt dvreg@(VReg _ dst) src1 src2) f
+    annotate (IROp _ opt dvreg@(VReg dst) src1 src2) f
       | not (dst `S.member` f) = return $ Just emptyGraph
       | otherwise = retOO (IROp f opt dvreg src1 src2)
     annotate (IRStore _ rt dst src) f = retOO (IRStore f rt dst src)
@@ -209,4 +209,4 @@ instance Show LiveRanges where
     (flip concatMap) (M.keys ls) $ \frompc ->
         (flip concatMap) (ls M.! frompc) $ \var ->
           let topc = le M.! var in
-          printf "%6d: from %04d -> %04d active\n" var frompc topc
+          printf "%12s: from %04d -> %04d active\n" (show var) frompc topc

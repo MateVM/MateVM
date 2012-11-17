@@ -52,7 +52,7 @@ data ParseState' = ParseState'
   , regcnt :: Integer {- counter for virtual registers -}
   , classf :: Class Direct {- reference to class of processed method -}
   , method :: Method Direct {- reference to processed method -}
-  , preRegs :: [(Integer, (HVarX86, VarType))]
+  , preRegs :: RegMapping
 
   , instructions :: [J.Instruction] {- instructions to process -}
   , exceptionMap :: ExceptionMap Int32 {- map of try-blocks, with references to handler -}
@@ -149,7 +149,7 @@ mkBlock = do
   isExceptionHandler <- S.member pc <$> handlerStarts <$> get
   handlerStart <- if isExceptionHandler
     then do
-      apush (VReg JRef preeax)
+      apush (VReg (VR preeax JRef))
       return $ Just $ fromIntegral pc
     else return Nothing
   let extable = map (\(x,y) -> (x, fromIntegral y))
@@ -271,7 +271,7 @@ handleBlockEnd = do
     then do
       forM [500000 .. (500000 + len - 1)] $ \r -> do
         x <- apop
-        let vreg = VReg (varType x) r
+        let vreg = VReg (VR r (varType x))
         targets <- nextTargets <$> get
         forM targets $ \t -> do
           be <- M.lookup t <$> blockInterfaces <$> get
@@ -543,16 +543,18 @@ tirInvoke ct ident = do
         let nr8 = fromIntegral nr
         let nri = fromIntegral nr
         let assign = preFloats !! nri
-        modify (\s -> s { preRegs = (assign, (HFReg $ XMMReg nr8, JFloat))
-                                    : (preRegs s) })
-        return $ irop Add (VReg x assign) y (JFloatValue 0) -- mov
+        modify (\s -> s { preRegs = M.insert
+                                    (VR assign JFloat)
+                                    (HFReg $ XMMReg nr8)
+                                    (preRegs s) })
+        return $ irop Add (VReg (VR assign x)) y (JFloatValue 0) -- mov
   (targetreg, maybemov) <- case mret of
     Just x -> do
       let prereg = case x of
                       JInt -> preeax
                       JFloat -> prexmm7
                       JRef -> preeax
-      let nv = VReg x prereg
+      let nv = VReg (VR prereg x)
       movtarget <- newvar x
       tracePipe (printf "return: %s@%s\n" (show prereg) (show x)) $
         apush movtarget
@@ -569,18 +571,16 @@ maybeArgument x t = do
   meth <- method <$> get
   let genVReg :: (Disp -> HVarX86) -> Integer
               -> Word8 -> VarType
-              -> (Integer, (HVarX86, VarType))
+              -> (VirtualReg, HVarX86)
       genVReg constructor a w8 t' =
-        (a,
-           (constructor . Disp . (+0xc) . fromIntegral $ (ptrSize * w8)
-           , t')
-        )
+        (VR a t'
+        ,constructor . Disp . (+0xc) . fromIntegral $ (ptrSize * w8))
   if x < methodArgs meth
     then do
-      (tup', assign') <- case t of
+      ((tup'k, tup'v), assign') <- case t of
        JFloat -> do
          let assign = preFloats !! (fromIntegral x)
-         let tup = (assign, (HFReg . XMMReg . fromIntegral $ x, JFloat))
+         let tup = (VR assign JFloat, HFReg . XMMReg . fromIntegral $ x)
          return (tup, assign)
        _ -> do
          let assign = preArgs !! (fromIntegral x)
@@ -590,9 +590,9 @@ maybeArgument x t = do
                   JFloat -> error "can't happen"
          let tup = genVReg constr assign x JInt
          return (tup, assign)
-      modify (\s -> s { preRegs = tup' : (preRegs s) })
-      return $ VReg t assign'
-    else return $ VReg t (fromIntegral x)
+      modify (\s -> s { preRegs = M.insert tup'k tup'v (preRegs s) })
+      return $ VReg (VR assign' t)
+    else return $ VReg (VR (fromIntegral x) t)
 
 
 tirLoad' :: Word8 -> VarType -> ParseState ()
@@ -633,7 +633,7 @@ newvar :: VarType -> ParseState Var
 newvar t = do
   sims <- get
   put $ sims { regcnt = regcnt sims + 1 }
-  return $ VReg t $ regcnt sims
+  return $ VReg (VR (regcnt sims) t)
 
 apush :: Var -> ParseState ()
 apush x = do

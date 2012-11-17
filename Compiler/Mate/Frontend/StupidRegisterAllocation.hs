@@ -20,7 +20,6 @@ import Data.Maybe
 
 import Control.Applicative
 import Control.Monad.State
-import Control.Arrow
 
 import Test.QuickCheck hiding (labels)
 
@@ -49,8 +48,8 @@ preArgs = [preArgsStart .. (preArgsStart + preArgsLength - 1)]
 
 preAssignedRegs :: RegMapping
 preAssignedRegs = M.fromList $
-                  [ (preeax,  (HIReg eax, JInt))
-                  , (prexmm7, (HFReg xmm7, JFloat))
+                  [ ((VR preeax JInt),  HIReg eax)
+                  , ((VR prexmm7 JRef), HFReg xmm7)
                   ]
 
 -- calling convention for floats is different: arguments are passed via xmm
@@ -87,12 +86,14 @@ stupidRegAlloc preAssigned linsn = fst $ runState regAlloc' startmapping
     rtRepack :: RTPool Var -> State MappedRegs (RTPool HVarX86)
     rtRepack (RTPool w16) = return $ RTPool w16
     rtRepack (RTPoolCall w16 []) = do
-      mapping <- M.elems <$> regMap <$> get
+      -- mapping <- M.elems <$> regMap <$> get
+      let mapping = [] -- TODO ...
       return $ RTPoolCall w16 mapping
     rtRepack (RTPoolCall _ x) = do
       error $ "regalloc: rtpoolcall: mapping should be empty: " ++ show x
     rtRepack (RTArray w8 obj [] w32) = do
-      mapping <- M.elems <$> regMap <$> get
+      -- mapping <- M.elems <$> regMap <$> get
+      let mapping = [] -- TODO ...
       return $ RTArray w8 obj mapping w32
     rtRepack (RTArray _ _ x _) = do
       error $ "regalloc: rtArray: mapping should be empty: " ++ show x
@@ -167,16 +168,14 @@ stupidRegAlloc preAssigned linsn = fst $ runState regAlloc' startmapping
         else error $ "regalloc: doAssign: no reg mapping?! " ++ show vr
       where
         hasAssign :: Var -> State MappedRegs Bool
-        hasAssign (VReg _ vreg) = M.member vreg <$> regMap <$> get
+        hasAssign (VReg vreg) = M.member vreg <$> regMap <$> get
         hasAssign x = error $ "hasAssign: " ++ show x
 
         getAssign :: Var -> State MappedRegs HVarX86
-        getAssign (VReg _ vreg) = fst <$> (M.! vreg) <$> regMap <$> get
+        getAssign (VReg vreg) = (M.! vreg) <$> regMap <$> get
         getAssign x = error $ "getAssign: " ++ show x
 
 -- lsra
-type RegMapping = M.Map VirtualReg (HVarX86, VarType)
-
 data LsraStateData = LsraStateData
   { pcCnt :: Int
   , regmapping :: RegMapping
@@ -221,7 +220,7 @@ lsraMapping precolored (LiveRanges lstarts lends) =
                     let hreg = head fr
                     modify (\s -> s { freeRegs = tail fr
                                     , activeRegs = vreg : (activeRegs s)
-                                    , regmapping = M.insert vreg (hreg, JInt) (regmapping s)
+                                    , regmapping = M.insert vreg hreg (regmapping s)
                                     })
         incPC
         lsra
@@ -231,7 +230,7 @@ lsraMapping precolored (LiveRanges lstarts lends) =
       forM_ active $ \vreg -> do
         -- TODO: test if `<=' works too
         when ((lends M.! vreg) < pc) $ do
-          hreg <- fst <$> (M.! vreg) <$> regmapping <$> get
+          hreg <- (M.! vreg) <$> regmapping <$> get
           modify (\s -> s { activeRegs = L.delete vreg (activeRegs s)
                           , freeRegs = hreg:(freeRegs s) })
     spillGuy :: VirtualReg -> LsraState()
@@ -239,7 +238,7 @@ lsraMapping precolored (LiveRanges lstarts lends) =
       sc <- stackDisp <$> get
       let spill = SpillIReg (Disp sc)
       modify (\s -> s { stackDisp = stackDisp s - 4
-                      , regmapping = M.insert vreg (spill, JInt) (regmapping s)
+                      , regmapping = M.insert vreg spill (regmapping s)
                       })
 
 
@@ -279,8 +278,11 @@ testLSRA = do
 instance Arbitrary LiveRanges where
   arbitrary = do
     pcEnd <- choose (10, 100) :: Gen Int
-    vRegs <- choose (10, 50) :: Gen VirtualReg
-    intervals <- forM [0 .. vRegs] $ \vreg -> do
+    vRegs' <- choose (10, 50) :: Gen Integer
+    vRegs <- forM [0 .. vRegs'] $ \vreg -> do
+      typ <- elements [JRef, JInt]
+      return (VR vreg typ)
+    intervals <- forM vRegs $ \vreg -> do
       istart <- choose (0, pcEnd - 1) :: Gen Int
       iend <- choose (istart + 1, pcEnd) :: Gen Int
       return (vreg, (istart, iend))
@@ -296,4 +298,4 @@ instance Arbitrary LiveRanges where
 printMapping :: RegMapping -> String
 printMapping m = do
   (flip concatMap) (M.keys m) $ \x ->
-    printf "vreg %6d  -> %10s\n" x (show $ m M.! x)
+    printf "vreg %12s  -> %10s\n" (show x) (show $ m M.! x)
