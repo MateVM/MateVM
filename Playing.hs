@@ -65,7 +65,7 @@ fakeline cls meth jvminsn = do
     -- printf "%s\n" (show linear)
     prettyHeader "Live Ranges"
     printf "%s\n" (show (zip [(0 :: Int)..] linear))
-    printLiveRanges liveranges
+    printf "%s\n" (show liveranges)
     prettyHeader "LSRA Result"
     printMapping lsramap
     printf "no collisions? %s\n" (show $ noLiveRangeCollision liveranges lsramap)
@@ -240,13 +240,25 @@ prop_noCollision lr = noLiveRangeCollision lr (lsraMapping M.empty lr)
 testLSRA :: IO ()
 testLSRA = do
   putStrLn "quickcheck lsra..."
-  sam <- sample' (arbitrary :: Gen LiveRanges)
-  printLiveRanges $ head sam
-  -- quickCheck prop_noCollision
+  -- sam <- sample' (arbitrary :: Gen LiveRanges)
+  -- printLiveRanges $ head sam
+  quickCheck prop_noCollision
 
 instance Arbitrary LiveRanges where
   arbitrary = do
-    return $ LiveRanges M.empty M.empty
+    pcEnd <- choose (10, 100) :: Gen Int
+    vRegs <- choose (10, 50) :: Gen VirtualReg
+    intervals <- forM [0 .. vRegs] $ \vreg -> do
+      istart <- choose (0, pcEnd - 1) :: Gen Int
+      iend <- choose (istart + 1, pcEnd) :: Gen Int
+      return (vreg, (istart, iend))
+    return $ LiveRanges
+              (foldr (\(vreg, (is, ie)) m ->
+                              case M.lookup is m of
+                                Nothing -> M.insert is [vreg] m
+                                Just l -> M.insert is (vreg:l) m
+                     ) M.empty intervals)
+              (foldr (\(vreg, (is, ie)) -> M.insert vreg ie) M.empty intervals)
 
 
 printMapping :: RegMapping -> IO ()

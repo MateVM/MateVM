@@ -4,7 +4,6 @@
 module Compiler.Mate.Frontend.LivenessPass
   ( livenessPass
   , computeLiveRanges
-  , printLiveRanges
   , LiveRanges(..)
   ) where
 
@@ -203,9 +202,9 @@ extractLiveAnnotation ins =
 incPC :: LiveState ()
 incPC = modify (\s -> s { pcCnt = 1 + (pcCnt s) })
 
-printLiveRanges :: LiveRanges -> IO ()
-printLiveRanges (LiveRanges ls le) = do
-  forM_ (M.keys ls) $ \frompc -> do
-      forM_ (ls M.! frompc) $ \var -> do
-        let topc = le M.! var
-        printf "%6d: from %04d -> %04d active\n" var frompc topc
+instance Show LiveRanges where
+  show (LiveRanges ls le) = do
+    (flip concatMap) (M.keys ls) $ \frompc ->
+        (flip concatMap) (ls M.! frompc) $ \var ->
+          let topc = le M.! var in
+          printf "%6d: from %04d -> %04d active\n" var frompc topc
