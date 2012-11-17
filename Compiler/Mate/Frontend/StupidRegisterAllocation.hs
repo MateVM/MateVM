@@ -81,8 +81,7 @@ allFloatRegs = S.fromList $ map HFReg [xmm0, xmm1, xmm2, xmm3, xmm4, xmm5, xmm6]
 stupidRegAlloc :: RegMapping
                -> [LinearIns Var]
                -> ([LinearIns HVarX86], Word32)
-stupidRegAlloc preAssigned linsn = second ((0-) . stackCnt)
-                                          (runState regAlloc' startmapping)
+stupidRegAlloc preAssigned linsn = (fst $ runState regAlloc' startmapping, 0 - 0xfffffce8)
   where
     startassign = M.union (regMap emptyRegs) preAssigned
     startmapping = emptyRegs { regMap = startassign }
@@ -133,7 +132,7 @@ stupidRegAlloc preAssigned linsn = second ((0-) . stackCnt)
           srcnew <- doAssign src
           return $ Mid $ IRMisc2 la jins dstnew srcnew
         IRPrep typ _ -> do
-          let ru = S.empty -- TODO
+          let ru = allIntRegs -- TODO
           return $ Mid $ IRPrep typ ru
         IRPush la nr src -> do
           srcnew <- doAssign src
@@ -197,7 +196,7 @@ lsraMapping precolored (LiveRanges lstarts lends) = regmapping mapping
   where
     lastPC = S.findMax $ M.keysSet lstarts
     mapping = execState (lsra) (LsraStateData { pcCnt = 0
-                                              , regmapping = precolored
+                                              , regmapping = preAssignedRegs `M.union` precolored
                                               , freeRegs = S.toList allIntRegs
                                               , stackDisp = stackOffsetStart
                                               , activeRegs = []
