@@ -33,8 +33,7 @@ import Compiler.Mate.Frontend.Linear
 import Compiler.Mate.Frontend.LivenessPass
 
 data MappedRegs = MappedRegs
-  { regMap :: RegMapping
-  , stackCnt :: Word32 }
+  { regMap :: RegMapping }
 
 ptrSize :: Num a => a
 ptrSize = 4
@@ -68,7 +67,7 @@ stackOffsetStart :: Word32
 stackOffsetStart = 0xffffffe8
 
 emptyRegs :: MappedRegs
-emptyRegs = MappedRegs preAssignedRegs stackOffsetStart
+emptyRegs = MappedRegs preAssignedRegs
 
 allIntRegs, allFloatRegs :: S.Set HVarX86
 -- register usage:
