@@ -6,22 +6,29 @@ module Compiler.Mate.Frontend.StupidRegisterAllocation
   , preArgs
   , stupidRegAlloc
   , ptrSize -- TODO...
-  , allIntRegs
-  , stackOffsetStart
+  , lsraMapping
+  , noLiveRangeCollision
   ) where
 
+import qualified Data.List as L
 import qualified Data.Set as S
 import qualified Data.Map as M
 import Data.Word
+import Data.Maybe
 
 import Control.Applicative
 import Control.Monad.State
 import Control.Arrow
 
-import Harpy hiding (Label, fst)
+import Test.QuickCheck hiding (labels)
+
+import Text.Printf
+
+import Harpy hiding (Label, fst, not, and)
 
 import Compiler.Mate.Frontend.IR
 import Compiler.Mate.Frontend.Linear
+import Compiler.Mate.Frontend.LivenessPass
 
 type RegisterMap = M.Map Integer (HVarX86, VarType)
 
@@ -73,13 +80,13 @@ allIntRegs, allFloatRegs :: S.Set HVarX86
 allIntRegs = S.fromList $ map HIReg [ecx, edx, ebx, esi, edi]
 allFloatRegs = S.fromList $ map HFReg [xmm0, xmm1, xmm2, xmm3, xmm4, xmm5, xmm6]
 
-stupidRegAlloc :: [(Integer, (HVarX86, VarType))]
+stupidRegAlloc :: RegMapping
                -> [LinearIns Var]
                -> ([LinearIns HVarX86], Word32)
 stupidRegAlloc preAssigned linsn = second ((0-) . stackCnt)
                                           (runState regAlloc' startmapping)
   where
-    startassign = M.union (regMap emptyRegs) (M.fromList preAssigned)
+    startassign = M.union (regMap emptyRegs) preAssigned
     startmapping = emptyRegs { regMap = startassign
                              , regsUsed = S.filter regsonly
                                         $ S.map fst
@@ -228,4 +235,127 @@ stupidRegAlloc preAssigned linsn = second ((0-) . stackCnt)
                   JRef -> allIntRegs
                   JFloat -> allFloatRegs
           return (allregs S.\\ inuse)
+
+-- lsra
+type RegMapping = M.Map VirtualReg (HVarX86, VarType)
+
+data LsraStateData = LsraStateData
+  { pcCnt :: Int
+  , regmapping :: RegMapping
+  , freeRegs :: [HVarX86]
+  , stackDisp :: Word32
+  , activeRegs :: [VirtualReg]
+  }
+type LsraState a = State LsraStateData a
+
+lsraMapping :: RegMapping
+            -> LiveRanges
+            -> RegMapping
+lsraMapping precolored (LiveRanges lstarts lends) = regmapping mapping
+  where
+    lastPC = S.findMax $ M.keysSet lstarts
+    mapping = execState (lsra) (LsraStateData { pcCnt = 0
+                                              , regmapping = precolored
+                                              , freeRegs = S.toList allIntRegs
+                                              , stackDisp = stackOffsetStart
+                                              , activeRegs = []
+                                              })
+    incPC :: LsraState ()
+    incPC = modify (\s -> s { pcCnt = 1 + (pcCnt s) })
+    lsra = do
+      pc <- pcCnt <$> get
+      -- when (trace (printf "pc: %d" pc) (pc <= lastPC)) $ do
+      when (pc <= lastPC) $ do
+        case pc `M.lookup` lstarts of
+          Nothing -> return ()
+          Just new -> do
+            fr' <- freeRegs <$> get
+            -- trace (printf "new: %s\nfree: %s" (show new) (show fr')) $
+            freeGuys pc
+            forM_ new $ \vreg -> do
+              hasMapping <- M.member vreg <$> regmapping <$> get -- maybe pre assigned
+              when (not hasMapping) $ do
+                fr <- freeRegs <$> get
+                if null fr
+                  then spillGuy vreg
+                  else do
+                    let hreg = head fr
+                    modify (\s -> s { freeRegs = tail fr
+                                    , activeRegs = vreg : (activeRegs s)
+                                    , regmapping = M.insert vreg (hreg, JInt) (regmapping s)
+                                    })
+        incPC
+        lsra
+    freeGuys :: Int -> LsraState ()
+    freeGuys pc = do
+      active <- activeRegs <$> get
+      forM_ active $ \vreg -> do
+        -- TODO: test if `<=' works too
+        when ((lends M.! vreg) < pc) $ do
+          hreg <- fst <$> (M.! vreg) <$> regmapping <$> get
+          modify (\s -> s { activeRegs = L.delete vreg (activeRegs s)
+                          , freeRegs = hreg:(freeRegs s) })
+    spillGuy :: VirtualReg -> LsraState()
+    spillGuy vreg = do
+      sc <- stackDisp <$> get
+      let spill = SpillIReg (Disp sc)
+      modify (\s -> s { stackDisp = stackDisp s - 4
+                      , regmapping = M.insert vreg (spill, JInt) (regmapping s)
+                      })
+
+
+noLiveRangeCollision:: LiveRanges -> RegMapping -> Bool
+noLiveRangeCollision (LiveRanges lstarts lends) rmapping =
+    and [ and
+            [ noCollision intk (intervalOfVreg j)
+            | j <- (sameHReg k) ]
+        | k <- vregs , let intk = intervalOfVreg k ]
+  where
+    vregs = M.keys rmapping
+    sameHReg :: VirtualReg -> [VirtualReg]
+    sameHReg vreg = L.delete vreg $ M.keys $ M.filter (== hreg) rmapping
+      where
+        hreg = rmapping M.! vreg
+    intervalOfVreg :: VirtualReg -> (Int, Int)
+    intervalOfVreg vreg = (start, end)
+      where
+        start = fst $ fromJust $ L.find (L.elem vreg . snd) $ M.toList lstarts
+        end = lends M.! vreg
+    noCollision :: (Int, Int) -> (Int, Int) -> Bool
+    noCollision (x1, x2) (y1, y2) =
+      x2 > x1 && y2 > y1 &&
+      (  x2 < y1
+      || y2 < x1)
+
+prop_noCollision :: LiveRanges -> Bool
+prop_noCollision lr = noLiveRangeCollision lr (lsraMapping M.empty lr)
+
+testLSRA :: IO ()
+testLSRA = do
+  putStrLn "quickcheck lsra..."
+  -- sam <- sample' (arbitrary :: Gen LiveRanges)
+  -- printLiveRanges $ head sam
+  quickCheck prop_noCollision
+
+instance Arbitrary LiveRanges where
+  arbitrary = do
+    pcEnd <- choose (10, 100) :: Gen Int
+    vRegs <- choose (10, 50) :: Gen VirtualReg
+    intervals <- forM [0 .. vRegs] $ \vreg -> do
+      istart <- choose (0, pcEnd - 1) :: Gen Int
+      iend <- choose (istart + 1, pcEnd) :: Gen Int
+      return (vreg, (istart, iend))
+    return $ LiveRanges
+              (foldr (\(vreg, (is, ie)) m ->
+                              case M.lookup is m of
+                                Nothing -> M.insert is [vreg] m
+                                Just l -> M.insert is (vreg:l) m
+                     ) M.empty intervals)
+              (foldr (\(vreg, (is, ie)) -> M.insert vreg ie) M.empty intervals)
+
+
+printMapping :: RegMapping -> IO ()
+printMapping m = do
+  forM_ (M.keys m) $ \x -> do
+    printf "vreg %6d  -> %10s\n" x (show $ m M.! x)
 {- /regalloc -}

@@ -11,7 +11,7 @@ import qualified Data.ByteString.Lazy as B
 import Data.Maybe
 import Data.Int
 
-import Harpy
+import Harpy hiding (Label)
 import Harpy.X86Disassembler
 
 import JVM.Assembler hiding (Instruction)
@@ -19,7 +19,7 @@ import qualified JVM.Assembler as J
 import JVM.ClassFile
 import JVM.Converter
 
-import Compiler.Hoopl hiding (Label)
+import Compiler.Hoopl
 
 import Control.Monad.State
 import Control.Applicative hiding ((<*>))
@@ -51,6 +51,7 @@ pipeline cls meth jvminsn = do
     -- printfPipe $ printf "%s\n" (show linear)
     prettyHeader "Register Allocation"
     printfPipe $ printf "%s\n" (show ra)
+    unless (noLiveRangeCollision liveranges lsramap) $ error "live range collision!"
     prettyHeader "Code Generation"
 
     let cgconfig = defaultCodeGenConfig
@@ -112,9 +113,13 @@ pipeline cls meth jvminsn = do
       resetPC jvminsn
       gs <- mkBlocks
       mkMethod $ L.foldl' (|*><*|) emptyClosedGraph gs
-    runFM :: SimpleUniqueMonad a -> a
-    runFM = runSimpleUniqueMonad -- . runWithFuel infiniteFuel
+    runFM :: SimpleFuelMonad a -> a
+    runFM = runSimpleUniqueMonad . runWithFuel infiniteFuel
     runOpts g = runFM $ do
+      let nothingc = NothingC :: MaybeC O Label
+      (g', _, _) <- analyzeAndRewriteBwd
+                       livenessPass nothingc g noFacts
+      return g'
       -- let nothingc = NothingC :: MaybeC O H.Label
       -- (_, f, _) <- analyzeAndRewriteBwd
       --                oneUseDefPass nothingc g noFacts
@@ -123,11 +128,13 @@ pipeline cls meth jvminsn = do
       --                              , bp_rewrite = oudKill }
       --                 nothingc g f
       -- tracePipe (printf "facts: %s\n" (show f)) $ return gm'
-      return g
     optgraph = runOpts graph
     lbls = labels transstate
     linear = mkLinear optgraph
-    (ra, stackAlloc) = stupidRegAlloc (preRegs transstate) linear
+    liveranges = computeLiveRanges linear
+    preColored = M.fromList $ preRegs transstate
+    lsramap = lsraMapping preColored liveranges
+    (ra, stackAlloc) = stupidRegAlloc lsramap linear
 
 prettyHeader :: String -> IO ()
 prettyHeader str = do

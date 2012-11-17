@@ -16,7 +16,8 @@ import Control.Monad.State
 import Text.Printf
 
 import Compiler.Hoopl
-import Compiler.Mate.Frontend
+import Compiler.Mate.Frontend.IR
+import Compiler.Mate.Frontend.Linear
 
 livenessPass :: BwdPass SimpleFuelMonad (MateIR Var) LiveSet
 livenessPass = BwdPass
@@ -47,8 +48,8 @@ livenessTransfer = mkBTransfer live
     live (IRStore _ rt dst src) f = rtVar rt $ addVar dst $ addVar src f
     live (IRLoad  _ rt dst src) f = rtVar rt $ addVar dst $ removeVar src f
     live (IRPush _ _ src) f = addVar src f
-    live (IRInvoke _ _ (Just retreg) ct) f = addVar retreg f
-    live (IRInvoke _ _ Nothing ct) f = f
+    live (IRInvoke _ _ (Just retreg) _) f = addVar retreg f
+    live (IRInvoke _ _ Nothing _) f = f
 
     live (IRReturn _ (Just t)) _ = addVar t bot
     live (IRReturn _ _) _ = bot
@@ -145,7 +146,6 @@ computeLiveRanges insn = LiveRanges ls le
     endstate = snd $ runState step initstate
     ls = lstarts endstate
     le = lends endstate
-    keys = M.keys $ lstarts endstate
     initstate = LiveStateData
                   { active = S.empty
                   , linstructions = insn
