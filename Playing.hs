@@ -10,14 +10,18 @@ import qualified Data.Set as S
 import qualified Data.ByteString.Lazy as B
 import Data.Maybe
 import Data.Int
+import Data.Word
 
 import JVM.Assembler hiding (Instruction)
 import qualified JVM.Assembler as J
 import JVM.ClassFile
 import JVM.Converter
 
+import Harpy hiding (Label, fst, not)
+
 import Compiler.Hoopl
 
+import Control.Applicative
 import Control.Monad.State
 import Control.Arrow
 
@@ -26,6 +30,8 @@ import Compiler.Mate.Frontend
 import Compiler.Mate.Frontend.LivenessPass
 import Compiler.Mate.Types
 import Compiler.Mate.Utilities
+
+import Debug.Trace
 
 
 main :: IO ()
@@ -60,8 +66,8 @@ fakeline cls meth jvminsn = do
     printLiveRanges liveranges
     prettyHeader "LSRA Result"
     printMapping lsramap
-    -- prettyHeader "Register Allocation"
-    -- printf "%s\n" (show ra)
+    prettyHeader "Register Allocation"
+    printf "%s\n" (show ra)
     return ()
   where
     mname = methodName meth
@@ -131,15 +137,75 @@ fakeline cls meth jvminsn = do
     linear = mkLinear optgraph
     liveranges = computeLiveRanges linear
     lsramap = lsraMapping (M.fromList $ preRegs transstate) liveranges
-    (ra, stackAlloc) = stupidRegAlloc (preRegs transstate) linear
+    (ra, stackAlloc) = stupidRegAlloc (M.toList lsramap) linear
 
 -- lsra
 type RegMapping = M.Map VirtualReg (HVarX86, VarType)
 
+data LsraStateData = LsraStateData
+  { pcCnt :: Int
+  , regmapping :: RegMapping
+  , freeRegs :: [HVarX86]
+  , stackCnt :: Word32
+  , activeRegs :: [VirtualReg]
+  }
+type LsraState a = State LsraStateData a
+
 lsraMapping :: RegMapping
             -> LiveRanges
             -> RegMapping
-lsraMapping precolored liveranges = precolored
+lsraMapping precolored (lstarts, lends) = regmapping mapping
+  where
+    lastPC = S.findMax $ M.keysSet lstarts
+    mapping = execState (lsra) (LsraStateData { pcCnt = 0
+                                              , regmapping = precolored
+                                              , freeRegs = S.toList allIntRegs
+                                              , stackCnt = stackOffsetStart
+                                              , activeRegs = []
+                                              })
+    incPC :: LsraState ()
+    incPC = modify (\s -> s { pcCnt = 1 + (pcCnt s) })
+    lsra = do
+      pc <- pcCnt <$> get
+      -- when (trace (printf "pc: %d" pc) (pc <= lastPC)) $ do
+      when (pc <= lastPC) $ do
+        case pc `M.lookup` lstarts of
+          Nothing -> return ()
+          Just new -> do
+            fr' <- freeRegs <$> get
+            -- trace (printf "new: %s\nfree: %s" (show new) (show fr')) $
+            freeGuys pc
+            forM_ new $ \vreg -> do
+              hasMapping <- M.member vreg <$> regmapping <$> get -- maybe pre assigned
+              when (not hasMapping) $ do
+                fr <- freeRegs <$> get
+                if null fr
+                  then spillGuy vreg
+                  else do
+                    let hreg = head fr
+                    modify (\s -> s { freeRegs = tail fr
+                                    , activeRegs = vreg : (activeRegs s)
+                                    , regmapping = M.insert vreg (hreg, JInt) (regmapping s)
+                                    })
+        incPC
+        lsra
+    freeGuys :: Int -> LsraState ()
+    freeGuys pc = do
+      active <- activeRegs <$> get
+      forM_ active $ \vreg -> do
+        -- TODO: test if `<=' works too
+        when ((lends M.! vreg) < pc) $ do
+          hreg <- fst <$> (M.! vreg) <$> regmapping <$> get
+          modify (\s -> s { activeRegs = L.delete vreg (activeRegs s)
+                          , freeRegs = hreg:(freeRegs s) })
+    spillGuy :: VirtualReg -> LsraState()
+    spillGuy vreg = do
+      sc <- stackCnt <$> get
+      let spill = SpillIReg (Disp sc)
+      modify (\s -> s { stackCnt = stackCnt s - 4
+                      , regmapping = M.insert vreg (spill, JInt) (regmapping s)
+                      })
+
 
 printMapping :: RegMapping -> IO ()
 printMapping m = do

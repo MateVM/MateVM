@@ -1,11 +1,12 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-module Compiler.Mate.Frontend.LivenessPass where
-  -- ( livenessPass
-  -- , computeLiveRanges
-  -- , printLiveRanges
-  -- ) where
+module Compiler.Mate.Frontend.LivenessPass
+  ( livenessPass
+  , computeLiveRanges
+  , printLiveRanges
+  , LiveRanges
+  ) where
 
 import qualified Data.Set as S
 import qualified Data.Map as M
@@ -45,7 +46,10 @@ livenessTransfer = mkBTransfer live
     live (IROp _ _ dst src1 src2) f = removeVar dst $ addVar src1 $ addVar src2 f
     live (IRReturn _ (Just t)) _ = addVar t bot
     live (IRReturn _ _) _ = bot
-    live _ _ = error "hoopl: livetransfer: not impl. yet"
+    live (IRIfElse _ _ src1 src2 lt lf) f = addVar src1 $ addVar src2 $
+                                            (factLabel f lt `S.union` factLabel f lf)
+    live (IRJump lab) f = factLabel f lab
+    live y _ = error $ "hoopl: livetransfer: not impl. yet: " ++ show y
     {- todo
     live (IRStore _ rt dst src) f = rtVar rt $ removeVar dst $ addVar src f
     live (IRLoad  _ rt dst src) f = rtVar rt $ removeVar dst $ addVar src f
@@ -78,7 +82,11 @@ livenessAnnotate = mkBRewrite annotate
     annotate (IRLabel _ l hm mh) f = retCO (IRLabel f l hm mh)
     annotate (IROp _ opt dst src1 src2) f = retOO (IROp f opt dst src1 src2)
     annotate (IRReturn _ ret) _ = retOC (IRReturn bot ret)
-    annotate _ _ = return Nothing
+    annotate (IRJump _) _ = return Nothing
+    annotate (IRExHandler _) _ = return Nothing
+    annotate (IRIfElse _ jcmp src1 src2 l1 l2) f =
+      retOC $ IRIfElse (factLabel f l1 `S.union` factLabel f l2) jcmp src1 src2 l1 l2
+    annotate y _ = error $ "livenessAnnotate: not impl. yet: " ++ show y
 
     retCO :: forall m1. FuelMonad m1
           => (MateIR Var) C O

@@ -6,6 +6,8 @@ module Compiler.Mate.Frontend.StupidRegisterAllocation
   , preArgs
   , stupidRegAlloc
   , ptrSize -- TODO...
+  , allIntRegs
+  , stackOffsetStart
   ) where
 
 import qualified Data.Set as S
