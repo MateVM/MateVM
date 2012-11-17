@@ -123,6 +123,9 @@ compileLinear lbls linsn stackAlloc = do
                 cmp s2 s1
               (SpillIReg d1, HIReg s2) -> do
                 cmp s2 (d1, ebp)
+              (HIReg s1, SpillIReg d2) -> do
+                mov eax (d2, ebp)
+                cmp eax s1
               (SpillIReg d1, SpillIReg d2) -> do
                 mov eax (d2, ebp)
                 cmp eax (d1, ebp)
