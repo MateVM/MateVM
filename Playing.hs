@@ -17,7 +17,7 @@ import qualified JVM.Assembler as J
 import JVM.ClassFile
 import JVM.Converter
 
-import Harpy hiding (Label, fst, not)
+import Harpy hiding (Label, fst, not, and)
 
 import Compiler.Hoopl
 
@@ -66,8 +66,9 @@ fakeline cls meth jvminsn = do
     printLiveRanges liveranges
     prettyHeader "LSRA Result"
     printMapping lsramap
-    prettyHeader "Register Allocation"
-    printf "%s\n" (show ra)
+    printf "no collisions? %s\n" (show $ noLiveRangeCollision liveranges lsramap)
+    -- prettyHeader "Register Allocation"
+    -- printf "%s\n" (show ra)
     return ()
   where
     mname = methodName meth
@@ -136,7 +137,8 @@ fakeline cls meth jvminsn = do
     lbls = labels transstate
     linear = mkLinear optgraph
     liveranges = computeLiveRanges linear
-    lsramap = lsraMapping (M.fromList $ preRegs transstate) liveranges
+    preColored = M.fromList $ preRegs transstate
+    lsramap = lsraMapping preColored liveranges
     (ra, stackAlloc) = stupidRegAlloc (M.toList lsramap) linear
 
 -- lsra
@@ -205,6 +207,30 @@ lsraMapping precolored (lstarts, lends) = regmapping mapping
       modify (\s -> s { stackCnt = stackCnt s - 4
                       , regmapping = M.insert vreg (spill, JInt) (regmapping s)
                       })
+
+
+noLiveRangeCollision:: LiveRanges -> RegMapping -> Bool
+noLiveRangeCollision (lstarts, lends) rmapping =
+    and [ and
+            [ noCollision intk (intervalOfVreg j)
+            | j <- (sameHReg k) ]
+        | k <- vregs , let intk = intervalOfVreg k ]
+  where
+    vregs = M.keys rmapping
+    sameHReg :: VirtualReg -> [VirtualReg]
+    sameHReg vreg = L.delete vreg $ M.keys $ M.filter (== hreg) rmapping
+      where
+        hreg = rmapping M.! vreg
+    intervalOfVreg :: VirtualReg -> (Int, Int)
+    intervalOfVreg vreg = (start, end)
+      where
+        start = fst $ fromJust $ L.find (L.elem vreg . snd) $ M.toList lstarts
+        end = lends M.! vreg
+    noCollision :: (Int, Int) -> (Int, Int) -> Bool
+    noCollision (x1, x2) (y1, y2) =
+      x2 > x1 && y2 > y1 &&
+      (  x2 < y1
+      || y2 < x1)
 
 
 printMapping :: RegMapping -> IO ()
