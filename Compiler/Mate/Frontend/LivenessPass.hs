@@ -1,11 +1,11 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-module Compiler.Mate.Frontend.LivenessPass
-  ( livenessPass
-  , computeLiveRanges
-  , printLiveRanges
-  ) where
+module Compiler.Mate.Frontend.LivenessPass where
+  -- ( livenessPass
+  -- , computeLiveRanges
+  -- , printLiveRanges
+  -- ) where
 
 import qualified Data.Set as S
 import qualified Data.Map as M
@@ -103,9 +103,9 @@ livenessAnnotate = mkBRewrite annotate
 -- live ranges
 -- TODO: limitation: one reg can just have one live range
 type PC = Int
-type LiveStart = M.Map VirtualReg PC
-type LiveEnd = LiveStart
-type LiveRanges = M.Map VirtualReg (PC, PC)
+type LiveStart = M.Map PC [VirtualReg]
+type LiveEnd = M.Map VirtualReg PC
+type LiveRanges = (LiveStart, LiveEnd)
 
 data LiveStateData = LiveStateData
   { active :: LiveSet
@@ -115,11 +115,14 @@ data LiveStateData = LiveStateData
   , pcCnt :: Int
   }
 
+-- what we probably really need for LSRA:
+-- (1) LiveStart = M.Map PC [VirtualReg]
+-- (2) LiveEnd   = M.Map VirtualReg PC
+
 type LiveState a = State LiveStateData a
 
-computeLiveRanges :: [LinearIns Var] -> LiveRanges
-computeLiveRanges insn =
-    foldr (\k -> M.insert k (ls M.! k, le M.! k)) M.empty keys
+computeLiveRanges :: [LinearIns Var] -> (LiveStart, LiveEnd)
+computeLiveRanges insn = (ls, le)
   where
     endstate = snd $ runState step initstate
     ls = lstarts endstate
@@ -136,26 +139,26 @@ computeLiveRanges insn =
 step :: LiveState ()
 step = do
   insn <- linstructions <$> get
-  if null insn
-    then return () -- done here
-    else do
-      pc <- pcCnt <$> get
-      let (ins:insns) = insn
+  when (not $ null insn) $ do
+    pc <- pcCnt <$> get
+    let (ins:insns) = insn
 
-      la <- extractLiveAnnotation ins
-      lsmap <- lstarts <$> get
-      lemap <- lends <$> get
-      cur <- active <$> get
-      let newguys = la `S.difference` cur
-      let deadguys = cur `S.difference` la
+    la <- extractLiveAnnotation ins
+    lsmap <- lstarts <$> get
+    lemap <- lends <$> get
+    cur <- active <$> get
+    let newguys = S.toList $ la `S.difference` cur
+    let deadguys = cur `S.difference` la
 
-      modify (\s -> s { linstructions = insns
-                      , active = la
-                      , lstarts = S.fold (\k -> M.insert k pc) lsmap newguys
-                      , lends   = S.fold (\k -> M.insert k pc) lemap deadguys
-                      })
-      incPC
-      step
+    let alt Nothing = Just newguys
+        alt (Just old) = Just $ newguys ++ old
+    modify (\s -> s { linstructions = insns
+                    , active = la
+                    , lstarts = M.alter alt pc lsmap
+                    , lends   = S.fold (\k -> M.insert k pc) lemap deadguys
+                    })
+    incPC
+    step
 
 extractLiveAnnotation :: LinearIns Var -> LiveState LiveAnnotation
 extractLiveAnnotation ins =
@@ -182,7 +185,8 @@ incPC :: LiveState ()
 incPC = modify (\s -> s { pcCnt = 1 + (pcCnt s) })
 
 printLiveRanges :: LiveRanges -> IO ()
-printLiveRanges lr = do
-  forM_ (M.keys lr) $ \x -> do
-    let (f, t) = lr M.! x
-    printf "%6d: from %04d -> %04d active\n" x f t
+printLiveRanges (ls, le) = do
+  forM_ (M.keys ls) $ \frompc -> do
+      forM_ (ls M.! frompc) $ \var -> do
+        let topc = le M.! var
+        printf "%6d: from %04d -> %04d active\n" var frompc topc

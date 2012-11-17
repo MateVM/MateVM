@@ -58,6 +58,8 @@ fakeline cls meth jvminsn = do
     prettyHeader "Live Ranges"
     printf "%s\n" (show (zip [(0 :: Int)..] linear))
     printLiveRanges liveranges
+    prettyHeader "LSRA Result"
+    printMapping lsramap
     -- prettyHeader "Register Allocation"
     -- printf "%s\n" (show ra)
     return ()
@@ -128,7 +130,21 @@ fakeline cls meth jvminsn = do
     lbls = labels transstate
     linear = mkLinear optgraph
     liveranges = computeLiveRanges linear
+    lsramap = lsraMapping (M.fromList $ preRegs transstate) liveranges
     (ra, stackAlloc) = stupidRegAlloc (preRegs transstate) linear
+
+-- lsra
+type RegMapping = M.Map VirtualReg (HVarX86, VarType)
+
+lsraMapping :: RegMapping
+            -> LiveRanges
+            -> RegMapping
+lsraMapping precolored liveranges = precolored
+
+printMapping :: RegMapping -> IO ()
+printMapping m = do
+  forM_ (M.keys m) $ \x -> do
+    printf "vreg %6d  -> %10s\n" x (show $ m M.! x)
 
 prettyHeader :: String -> IO ()
 prettyHeader str = do
