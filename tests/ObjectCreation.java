@@ -21,7 +21,7 @@ public class ObjectCreation {
 	public void objcOnly() {
 		ObjectCreation.checkMe += 0x3;
 	}
-	
+
 	public void executeMe() {
 		ObjectCreation.checkMe = 0xdead;
 	}

@@ -382,18 +382,17 @@ girEmitOO (IRLoad _ (RTPool x) src dst) = do
   cls <- classf <$> getState
   case constsPool cls M.! x of
     (CField rc fnt) -> do -- getfield
-      push ebx
-      r2r eax src
-      trapaddr <- emitSigIllTrap 7
-      let patcher wbr = do
-            offset <- liftIO $ fromIntegral <$> getFieldOffset rc (ntName fnt)
-            mov ebx (Disp offset, eax)
-            return wbr
-      r2r dst ebx
-      pop ebx
-      let ofp = ObjectField patcher
-      s <- getState
-      setState (s { traps = M.insert trapaddr ofp (traps s) })
+      freeRegFor ebx dst $ do
+        r2r eax src
+        trapaddr <- emitSigIllTrap 7
+        let patcher wbr = do
+              offset <- liftIO $ fromIntegral <$> getFieldOffset rc (ntName fnt)
+              mov ebx (Disp offset, eax)
+              return wbr
+        r2r dst ebx
+        let ofp = ObjectField patcher
+        s <- getState
+        setState (s { traps = M.insert trapaddr ofp (traps s) })
     y -> error $ "emit: irload: missing impl.: getfield or something: " ++ show y
 
 girEmitOO (IRLoad _ (RTArray ta objType regmapping arrlen) (HIConstant 0) dst) = do
