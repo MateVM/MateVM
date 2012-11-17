@@ -49,6 +49,11 @@ pipeline cls meth jvminsn = do
     printfPipe $ printf "%s\n" (showGraph show optgraph)
     -- prettyHeader "Flatten Graph"
     -- printfPipe $ printf "%s\n" (show linear)
+    prettyHeader "Live Ranges"
+    printfPipe $ printf "%s\n" (show (zip [(0 :: Int)..] linear))
+    printfPipe $ printf "%s\n" (show liveranges)
+    prettyHeader "LSRA Result"
+    printfPipe $ printMapping lsramap
     prettyHeader "Register Allocation"
     printfPipe $ printf "%s\n" (show ra)
     unless (noLiveRangeCollision liveranges lsramap) $ error "live range collision!"

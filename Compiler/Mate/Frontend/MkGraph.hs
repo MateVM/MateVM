@@ -1,3 +1,4 @@
+{-# LANGUAGE RankNTypes #-}
 {- make Hoopl graph from J.Instruction.
    this includes:
      * type analysis of stack values
@@ -647,6 +648,19 @@ apop = do
   (s:ss) <- stack <$> get
   modify (\m -> m { stack = ss })
   return s
+
+
+irlabel :: Label -> HandlerMap -> MaybeHandler -> MateIR Var C O
+irop :: OpType -> Var -> Var -> Var -> MateIR Var O O
+irload :: RTPool Var -> Var -> Var -> MateIR Var O O
+irstore :: RTPool Var -> Var -> Var -> MateIR Var O O
+irinvoke :: RTPool Var -> Maybe Var -> CallType -> MateIR Var O O
+irpush :: Word8 -> Var -> MateIR Var O O
+irifelse :: CMP -> Var -> Var -> Label -> Label -> MateIR Var O C
+irswitch :: Var -> [(Maybe Int32, Label)] -> MateIR Var O C
+irreturn :: Maybe Var -> MateIR Var O C
+irmisc1 :: J.Instruction -> Var -> MateIR Var O O
+irmisc2 :: J.Instruction -> Var -> Var -> MateIR Var O O
 
 irlabel = IRLabel liveAnnEmpty
 irop = IROp liveAnnEmpty

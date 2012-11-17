@@ -5,6 +5,8 @@
 module Compiler.Mate.Frontend.IR
  ( MateIR(..)
  , VirtualReg
+ , HandlerMap
+ , MaybeHandler
  , LiveAnnotation
  , liveAnnEmpty
  , CallingConv(..)

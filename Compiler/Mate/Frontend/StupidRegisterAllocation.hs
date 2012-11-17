@@ -8,6 +8,8 @@ module Compiler.Mate.Frontend.StupidRegisterAllocation
   , ptrSize -- TODO...
   , lsraMapping
   , noLiveRangeCollision
+  , testLSRA
+  , printMapping
   ) where
 
 import qualified Data.List as L
@@ -30,7 +32,6 @@ import Compiler.Mate.Frontend.IR
 import Compiler.Mate.Frontend.Linear
 import Compiler.Mate.Frontend.LivenessPass
 
-{- regalloc PoC -}
 data MappedRegs = MappedRegs
   { regMap :: RegMapping
   , stackCnt :: Word32 }
@@ -159,11 +160,6 @@ stupidRegAlloc preAssigned linsn = second ((0-) . stackCnt)
           return $ Lst $ IRReturn la bnew
         IRReturn la Nothing -> return $ Lst $ IRReturn la Nothing
 
-    regsonly :: HVarX86 -> Bool
-    regsonly (HIReg _) = True
-    regsonly (HFReg _) = True
-    regsonly _ = False
-
     doAssign :: Var -> State MappedRegs HVarX86
     doAssign (JIntValue x) = return $ HIConstant x
     doAssign JRefNull = return $ HIConstant 0
@@ -215,7 +211,7 @@ lsraMapping precolored (LiveRanges lstarts lends) = regmapping mapping
         case pc `M.lookup` lstarts of
           Nothing -> return ()
           Just new -> do
-            fr' <- freeRegs <$> get
+            -- fr' <- freeRegs <$> get
             -- trace (printf "new: %s\nfree: %s" (show new) (show fr')) $
             freeGuys pc
             forM_ new $ \vreg -> do
@@ -292,16 +288,15 @@ instance Arbitrary LiveRanges where
       iend <- choose (istart + 1, pcEnd) :: Gen Int
       return (vreg, (istart, iend))
     return $ LiveRanges
-              (foldr (\(vreg, (is, ie)) m ->
+              (foldr (\(vreg, (is, _)) m ->
                               case M.lookup is m of
                                 Nothing -> M.insert is [vreg] m
                                 Just l -> M.insert is (vreg:l) m
                      ) M.empty intervals)
-              (foldr (\(vreg, (is, ie)) -> M.insert vreg ie) M.empty intervals)
+              (foldr (\(vreg, (_, ie)) -> M.insert vreg ie) M.empty intervals)
 
 
-printMapping :: RegMapping -> IO ()
+printMapping :: RegMapping -> String
 printMapping m = do
-  forM_ (M.keys m) $ \x -> do
+  (flip concatMap) (M.keys m) $ \x ->
     printf "vreg %6d  -> %10s\n" x (show $ m M.! x)
-{- /regalloc -}
