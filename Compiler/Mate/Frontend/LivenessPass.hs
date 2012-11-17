@@ -44,15 +44,20 @@ livenessTransfer = mkBTransfer live
     live :: (MateIR Var) e x -> Fact x LiveSet -> LiveSet
     live (IRLabel _ _ _ _) f = f
     live (IROp _ _ dst src1 src2) f = removeVar dst $ addVar src1 $ addVar src2 f
+    live (IRPrep _ _) f = f
+    live (IRStore _ rt dst src) f = rtVar rt $ addVar dst $ addVar src f
+    live (IRLoad  _ rt dst src) f = rtVar rt $ addVar dst $ removeVar src f
+    live (IRPush _ _ src) f = addVar src f
+    live (IRInvoke _ _ (Just retreg) ct) f = addVar retreg f
+    live (IRInvoke _ _ Nothing ct) f = f
+
     live (IRReturn _ (Just t)) _ = addVar t bot
     live (IRReturn _ _) _ = bot
-    live (IRIfElse _ _ src1 src2 lt lf) f = addVar src1 $ addVar src2 $
-                                            (factLabel f lt `S.union` factLabel f lf)
+    live (IRIfElse _ _ src1 src2 lt lf) f =
+      addVar src1 $ addVar src2 $ factLabel f lt `S.union` factLabel f lf
     live (IRJump lab) f = factLabel f lab
     live y _ = error $ "hoopl: livetransfer: not impl. yet: " ++ show y
     {- todo
-    live (IRStore _ rt dst src) f = rtVar rt $ removeVar dst $ addVar src f
-    live (IRLoad  _ rt dst src) f = rtVar rt $ removeVar dst $ addVar src f
     live (IRMisc1 _ _ src) f = addVar src f
     live (IRMisc2 _ _ dst src) f = removeVar dst $ addVar src f
     live (IRPrep _ _) f = f
@@ -81,6 +86,12 @@ livenessAnnotate = mkBRewrite annotate
     annotate :: (MateIR Var) e x -> Fact x LiveSet -> m (Maybe (Graph (MateIR Var) e x))
     annotate (IRLabel _ l hm mh) f = retCO (IRLabel f l hm mh)
     annotate (IROp _ opt dst src1 src2) f = retOO (IROp f opt dst src1 src2)
+    annotate (IRStore _ rt dst src) f = retOO (IRStore f rt dst src)
+    annotate (IRLoad _ rt src dst) f = retOO (IRLoad f rt src dst)
+    annotate (IRPrep _ _) _ = return Nothing
+    annotate (IRInvoke _ rt mret ct) f = retOO (IRInvoke f rt mret ct)
+    annotate (IRPush _ w8 src) f = retOO (IRPush f w8 src)
+
     annotate (IRReturn _ ret) _ = retOC (IRReturn bot ret)
     annotate (IRJump _) _ = return Nothing
     annotate (IRExHandler _) _ = return Nothing

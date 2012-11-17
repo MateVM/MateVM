@@ -172,7 +172,7 @@ instance NonLocal (MateIR Var) where
 
 {- show -}
 instance Show (MateIR t e x) where
-  show (IRLabel la l hmap handlerstart) = printf "label: %s:\n\texceptions: %s\n\thandlerstart? %s%s" (show l) (show hmap) (show handlerstart) (show la)
+  show (IRLabel la l hmap handlerstart) = printf "label: %s:\n\texceptions: %s\n\thandlerstart? %s%s" (show l) (show hmap) (show handlerstart) (showAnno la)
   show (IROp la op vr v1 v2) = printf "\t%s %s,  %s, %s%s" (show op) (show vr) (show v1) (show v2) (showAnno la)
   show (IRLoad la rt obj dst) = printf "\t%s(%s) -> %s%s" (show obj) (show rt) (show dst) (showAnno la)
   show (IRStore la rt obj src) = printf "\t%s(%s) <- %s%s" (show obj) (show rt) (show src) (showAnno la)
