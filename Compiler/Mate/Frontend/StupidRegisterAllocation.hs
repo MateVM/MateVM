@@ -78,10 +78,8 @@ allIntRegs, allFloatRegs :: S.Set HVarX86
 allIntRegs = S.fromList $ map HIReg [ecx, edx, esi, edi]
 allFloatRegs = S.fromList $ map HFReg [xmm0, xmm1, xmm2, xmm3, xmm4, xmm5, xmm6]
 
-stupidRegAlloc :: RegMapping
-               -> [LinearIns Var]
-               -> ([LinearIns HVarX86], Word32)
-stupidRegAlloc preAssigned linsn = (fst $ runState regAlloc' startmapping, 0 - 0xfffffce8)
+stupidRegAlloc :: RegMapping -> [LinearIns Var] -> [LinearIns HVarX86]
+stupidRegAlloc preAssigned linsn = fst $ runState regAlloc' startmapping
   where
     startassign = M.union (regMap emptyRegs) preAssigned
     startmapping = emptyRegs { regMap = startassign }
@@ -191,16 +189,17 @@ type LsraState a = State LsraStateData a
 
 lsraMapping :: RegMapping
             -> LiveRanges
-            -> RegMapping
-lsraMapping precolored (LiveRanges lstarts lends) = regmapping mapping
+            -> (RegMapping, Word32)
+lsraMapping precolored (LiveRanges lstarts lends) =
+    (regmapping mapping, 0 - stackDisp mapping)
   where
     lastPC = S.findMax $ M.keysSet lstarts
-    mapping = execState (lsra) (LsraStateData { pcCnt = 0
-                                              , regmapping = preAssignedRegs `M.union` precolored
-                                              , freeRegs = S.toList allIntRegs
-                                              , stackDisp = stackOffsetStart
-                                              , activeRegs = []
-                                              })
+    mapping = execState (lsra) (
+              LsraStateData { pcCnt = 0
+                            , regmapping = preAssignedRegs `M.union` precolored
+                            , freeRegs = S.toList allIntRegs
+                            , stackDisp = stackOffsetStart
+                            , activeRegs = [] })
     incPC :: LsraState ()
     incPC = modify (\s -> s { pcCnt = 1 + (pcCnt s) })
     lsra = do
@@ -269,7 +268,7 @@ noLiveRangeCollision (LiveRanges lstarts lends) rmapping =
       || y2 < x1)
 
 prop_noCollision :: LiveRanges -> Bool
-prop_noCollision lr = noLiveRangeCollision lr (lsraMapping M.empty lr)
+prop_noCollision lr = noLiveRangeCollision lr (fst $ lsraMapping M.empty lr)
 
 testLSRA :: IO ()
 testLSRA = do

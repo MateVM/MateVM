@@ -138,8 +138,8 @@ pipeline cls meth jvminsn = do
     linear = mkLinear optgraph
     liveranges = computeLiveRanges linear
     preColored = M.fromList $ preRegs transstate
-    lsramap = lsraMapping preColored liveranges
-    (ra, stackAlloc) = stupidRegAlloc lsramap linear
+    (lsramap, stackAlloc) = lsraMapping preColored liveranges
+    ra = stupidRegAlloc lsramap linear
 
 prettyHeader :: String -> IO ()
 prettyHeader str = do
