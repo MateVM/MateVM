@@ -5,7 +5,7 @@ module Compiler.Mate.Frontend.LivenessPass
   ( livenessPass
   , computeLiveRanges
   , printLiveRanges
-  , LiveRanges
+  , LiveRanges(..)
   ) where
 
 import qualified Data.Set as S
@@ -124,7 +124,7 @@ livenessAnnotate = mkBRewrite annotate
 type PC = Int
 type LiveStart = M.Map PC [VirtualReg]
 type LiveEnd = M.Map VirtualReg PC
-type LiveRanges = (LiveStart, LiveEnd)
+data LiveRanges = LiveRanges LiveStart LiveEnd
 
 data LiveStateData = LiveStateData
   { active :: LiveSet
@@ -140,8 +140,8 @@ data LiveStateData = LiveStateData
 
 type LiveState a = State LiveStateData a
 
-computeLiveRanges :: [LinearIns Var] -> (LiveStart, LiveEnd)
-computeLiveRanges insn = (ls, le)
+computeLiveRanges :: [LinearIns Var] -> LiveRanges
+computeLiveRanges insn = LiveRanges ls le
   where
     endstate = snd $ runState step initstate
     ls = lstarts endstate
@@ -204,7 +204,7 @@ incPC :: LiveState ()
 incPC = modify (\s -> s { pcCnt = 1 + (pcCnt s) })
 
 printLiveRanges :: LiveRanges -> IO ()
-printLiveRanges (ls, le) = do
+printLiveRanges (LiveRanges ls le) = do
   forM_ (M.keys ls) $ \frompc -> do
       forM_ (ls M.! frompc) $ \var -> do
         let topc = le M.! var

@@ -25,6 +25,8 @@ import Control.Applicative
 import Control.Monad.State
 import Control.Arrow
 
+import Test.QuickCheck hiding (labels)
+
 import Text.Printf
 import Compiler.Mate.Frontend
 import Compiler.Mate.Frontend.LivenessPass
@@ -156,7 +158,7 @@ type LsraState a = State LsraStateData a
 lsraMapping :: RegMapping
             -> LiveRanges
             -> RegMapping
-lsraMapping precolored (lstarts, lends) = regmapping mapping
+lsraMapping precolored (LiveRanges lstarts lends) = regmapping mapping
   where
     lastPC = S.findMax $ M.keysSet lstarts
     mapping = execState (lsra) (LsraStateData { pcCnt = 0
@@ -210,7 +212,7 @@ lsraMapping precolored (lstarts, lends) = regmapping mapping
 
 
 noLiveRangeCollision:: LiveRanges -> RegMapping -> Bool
-noLiveRangeCollision (lstarts, lends) rmapping =
+noLiveRangeCollision (LiveRanges lstarts lends) rmapping =
     and [ and
             [ noCollision intk (intervalOfVreg j)
             | j <- (sameHReg k) ]
@@ -231,6 +233,20 @@ noLiveRangeCollision (lstarts, lends) rmapping =
       x2 > x1 && y2 > y1 &&
       (  x2 < y1
       || y2 < x1)
+
+prop_noCollision :: LiveRanges -> Bool
+prop_noCollision lr = noLiveRangeCollision lr (lsraMapping M.empty lr)
+
+testLSRA :: IO ()
+testLSRA = do
+  putStrLn "quickcheck lsra..."
+  sam <- sample' (arbitrary :: Gen LiveRanges)
+  printLiveRanges $ head sam
+  -- quickCheck prop_noCollision
+
+instance Arbitrary LiveRanges where
+  arbitrary = do
+    return $ LiveRanges M.empty M.empty
 
 
 printMapping :: RegMapping -> IO ()
