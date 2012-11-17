@@ -30,12 +30,9 @@ import Compiler.Mate.Frontend.IR
 import Compiler.Mate.Frontend.Linear
 import Compiler.Mate.Frontend.LivenessPass
 
-type RegisterMap = M.Map Integer (HVarX86, VarType)
-
 {- regalloc PoC -}
 data MappedRegs = MappedRegs
-  { regMap :: RegisterMap
-  , regsUsed :: S.Set HVarX86 -- for fast access
+  { regMap :: RegMapping
   , stackCnt :: Word32 }
 
 ptrSize :: Num a => a
@@ -50,7 +47,7 @@ preArgsStart = 200000
 preArgs :: [Integer]
 preArgs = [preArgsStart .. (preArgsStart + preArgsLength - 1)]
 
-preAssignedRegs :: RegisterMap
+preAssignedRegs :: RegMapping
 preAssignedRegs = M.fromList $
                   [ (preeax,  (HIReg eax, JInt))
                   , (prexmm7, (HFReg xmm7, JFloat))
@@ -70,7 +67,7 @@ stackOffsetStart :: Word32
 stackOffsetStart = 0xffffffe8
 
 emptyRegs :: MappedRegs
-emptyRegs = MappedRegs preAssignedRegs S.empty stackOffsetStart
+emptyRegs = MappedRegs preAssignedRegs stackOffsetStart
 
 allIntRegs, allFloatRegs :: S.Set HVarX86
 -- register usage:
@@ -87,11 +84,7 @@ stupidRegAlloc preAssigned linsn = second ((0-) . stackCnt)
                                           (runState regAlloc' startmapping)
   where
     startassign = M.union (regMap emptyRegs) preAssigned
-    startmapping = emptyRegs { regMap = startassign
-                             , regsUsed = S.filter regsonly
-                                        $ S.map fst
-                                        $ S.fromList
-                                        $ M.elems startassign }
+    startmapping = emptyRegs { regMap = startassign }
     regAlloc' = mapM assignReg linsn
 
     rtRepack :: RTPool Var -> State MappedRegs (RTPool HVarX86)
@@ -139,7 +132,7 @@ stupidRegAlloc preAssigned linsn = second ((0-) . stackCnt)
           srcnew <- doAssign src
           return $ Mid $ IRMisc2 la jins dstnew srcnew
         IRPrep typ _ -> do
-          ru <- S.delete (HIReg eax) <$> regsInUse JInt -- TODO: float. TODO: eax
+          let ru = S.empty -- TODO
           return $ Mid $ IRPrep typ ru
         IRPush la nr src -> do
           srcnew <- doAssign src
@@ -171,21 +164,6 @@ stupidRegAlloc preAssigned linsn = second ((0-) . stackCnt)
     regsonly (HFReg _) = True
     regsonly _ = False
 
-    regsInUse :: VarType -> State MappedRegs (S.Set HVarX86)
-    regsInUse t = do
-      mr <- regsUsed <$> get
-      let unpackIntReg :: HVarX86 -> Bool
-          unpackIntReg (HIReg _) = True
-          unpackIntReg _ = False
-      let unpackFloatReg :: HVarX86 -> Bool
-          unpackFloatReg (HFReg _) = True
-          unpackFloatReg _ = False
-      let unpacker = case t of
-                       JInt -> unpackIntReg
-                       JRef -> unpackIntReg
-                       JFloat -> unpackFloatReg
-      return . S.filter unpacker $ mr
-
     doAssign :: Var -> State MappedRegs HVarX86
     doAssign (JIntValue x) = return $ HIConstant x
     doAssign JRefNull = return $ HIConstant 0
@@ -194,7 +172,7 @@ stupidRegAlloc preAssigned linsn = second ((0-) . stackCnt)
       isAssignVr <- hasAssign vr
       if isAssignVr
         then getAssign vr
-        else nextAvailReg vr
+        else error $ "regalloc: doAssign: no reg mapping?! " ++ show vr
       where
         hasAssign :: Var -> State MappedRegs Bool
         hasAssign (VReg _ vreg) = M.member vreg <$> regMap <$> get
@@ -203,38 +181,6 @@ stupidRegAlloc preAssigned linsn = second ((0-) . stackCnt)
         getAssign :: Var -> State MappedRegs HVarX86
         getAssign (VReg _ vreg) = fst <$> (M.! vreg) <$> regMap <$> get
         getAssign x = error $ "getAssign: " ++ show x
-
-        nextAvailReg:: Var -> State MappedRegs HVarX86
-        nextAvailReg (VReg t vreg) = do
-          availregs <- availRegs t
-          mr <- get
-          if S.null availregs
-            then do
-              let disp = stackCnt mr
-              let spill = case t of
-                            JInt -> SpillIReg (Disp disp)
-                            JRef -> SpillIReg (Disp disp)
-                            JFloat -> SpillFReg (Disp disp)
-              let imap = M.insert vreg (spill, t) $ regMap mr
-              put (mr { stackCnt = disp - 4
-                      , regMap = imap} )
-              return spill
-            else do
-              let x = S.findMin availregs
-              let imap = M.insert vreg (x, t) $ regMap mr
-              put (mr { regMap = imap
-                      , regsUsed = S.insert x availregs })
-              return x
-        nextAvailReg _ = error "intNextReg: dafuq"
-
-        availRegs :: VarType -> State MappedRegs (S.Set HVarX86)
-        availRegs t = do
-          inuse <- regsInUse t
-          let allregs = case t of
-                  JInt -> allIntRegs
-                  JRef -> allIntRegs
-                  JFloat -> allFloatRegs
-          return (allregs S.\\ inuse)
 
 -- lsra
 type RegMapping = M.Map VirtualReg (HVarX86, VarType)

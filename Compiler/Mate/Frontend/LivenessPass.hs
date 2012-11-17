@@ -48,7 +48,7 @@ livenessTransfer = mkBTransfer live
     live (IRStore _ rt dst src) f = rtVar rt $ addVar dst $ addVar src f
     live (IRLoad  _ rt dst src) f = rtVar rt $ addVar dst $ removeVar src f
     live (IRPush _ _ src) f = addVar src f
-    live (IRInvoke _ _ (Just retreg) _) f = addVar retreg f
+    live (IRInvoke _ _ (Just retreg) _) f = removeVar retreg f
     live (IRInvoke _ _ Nothing _) f = f
 
     live (IRReturn _ (Just t)) _ = addVar t bot
@@ -85,7 +85,9 @@ livenessAnnotate = mkBRewrite annotate
   where
     annotate :: (MateIR Var) e x -> Fact x LiveSet -> m (Maybe (Graph (MateIR Var) e x))
     annotate (IRLabel _ l hm mh) f = retCO (IRLabel f l hm mh)
-    annotate (IROp _ opt dst src1 src2) f = retOO (IROp f opt dst src1 src2)
+    annotate (IROp _ opt dvreg@(VReg _ dst) src1 src2) f
+      | not (dst `S.member` f) = return $ Just emptyGraph
+      | otherwise = retOO (IROp f opt dvreg src1 src2)
     annotate (IRStore _ rt dst src) f = retOO (IRStore f rt dst src)
     annotate (IRLoad _ rt src dst) f = retOO (IRLoad f rt src dst)
     annotate (IRPrep _ _) _ = return Nothing

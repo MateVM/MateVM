@@ -45,8 +45,8 @@ pipeline cls meth jvminsn = do
     printfPipe $ printf "%s\n" (showGraph show graph)
     -- prettyHeader "Label Map"
     -- printfPipe $ printf "%s\n" (show lbls)
-    -- prettyHeader "Hoopl Opt-Graph"
-    -- printfPipe $ printf "%s\n" (showGraph show optgraph)
+    prettyHeader "Hoopl Opt-Graph"
+    printfPipe $ printf "%s\n" (showGraph show optgraph)
     -- prettyHeader "Flatten Graph"
     -- printfPipe $ printf "%s\n" (show linear)
     prettyHeader "Register Allocation"

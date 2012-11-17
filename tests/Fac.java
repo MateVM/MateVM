@@ -7,7 +7,7 @@ public class Fac {
 			sum += fac(i);
 		}
 		System.out.printf("result: 0x%08x\n", sum);
-		// System.out.printf("result: 0x%08x\n", facFor(0x10));
+		System.out.printf("result: 0x%08x\n", facFor(0x10));
 	}
 
 	public static int fac(int a) {
