@@ -418,7 +418,7 @@ girEmitOO (IRLoad _ RTNone src dst) = do -- arraylength
   r2r dst eax
 
 girEmitOO (IRLoad _ (RTIndex idx typ) src dst) = do
-    freeRegFor ebx dst $ do
+    freeRegFor edx dst $ do
       case idx of
         HIConstant i -> mov eax $ ((i32Tow32 i) * (typeSize typ)) + 0xc
         _ -> do
@@ -426,18 +426,18 @@ girEmitOO (IRLoad _ (RTIndex idx typ) src dst) = do
             HIReg i -> mov eax i
             SpillIReg d -> mov eax (d, ebp)
             y -> error $ "girEmitOO: irload: rtindex: idx: " ++ show y
-          mov ebx (typeSize typ :: Word32)
-          mul ebx
+          mov edx (typeSize typ :: Word32)
+          mul edx
           add eax (0xc :: Word32)
       case src of
-        HIReg s -> if s == ebx then add eax (Disp 0, esp) else add eax s
+        HIReg s -> if s == edx then add eax (Disp 0, esp) else add eax s
         SpillIReg d -> do add eax (d, ebp)
         y -> error $ "girEmitOO: irload: rtindex: src: " ++ show y
       case dst of
         HIReg d -> do mov d (Disp 0, eax)
         SpillIReg d -> do
-          mov ebx (Disp 0, eax)
-          mov (d, ebp) ebx
+          mov edx (Disp 0, eax)
+          mov (d, ebp) edx
         y -> error $ "girEmitOO: irload: rtindex: dst: " ++ show y
 
 girEmitOO (IRStore _ (RTPool x) obj src) = do
@@ -468,7 +468,7 @@ girEmitOO (IRStore _ (RTPool x) obj src) = do
           setState (s { traps = M.insert trapaddr (ObjectField patcher) (traps s)})
     e -> error $ "emit: irstore: missing impl.: " ++ show e
 girEmitOO (IRStore _ (RTIndex idx typ) dst src) = do
-    freeRegFor ebx dst $ do
+    freeRegFor edx dst $ do
       case idx of
         HIConstant _ -> mov eax (0 :: Word32)
         _ -> do
@@ -476,18 +476,18 @@ girEmitOO (IRStore _ (RTIndex idx typ) dst src) = do
             HIReg i -> mov eax i
             SpillIReg d -> mov eax (d, ebp)
             y -> error $ "emit: irstore: rtindex: idx: " ++ show y
-          mov ebx (typeSize typ :: Word32)
-          mul ebx
+          mov edx (typeSize typ :: Word32)
+          mul edx
           add eax (0xc :: Word32)
       case dst of
-        HIReg d -> if d == ebx then add eax (Disp 0, esp) else add eax d
+        HIReg d -> if d == edx then add eax (Disp 0, esp) else add eax d
         SpillIReg d -> add eax (d, ebp)
         y -> error $ "girEmitOO: irstore: rtindex: dst: " ++ show y
       -- store array elem
-      r2r ebx src
+      r2r edx src
       case idx of
-        HIConstant i -> mov (Disp ((+0xc) . (*(typeSize typ)) $ i32Tow32 i), eax) ebx
-        _ -> mov (Disp 0, eax) ebx
+        HIConstant i -> mov (Disp ((+0xc) . (*(typeSize typ)) $ i32Tow32 i), eax) edx
+        _ -> mov (Disp 0, eax) edx
 
 girEmitOO ins@(IRStore _ _ _ _) = do
   error $ "irstore: emit: " ++ show ins

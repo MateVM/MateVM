@@ -3,7 +3,7 @@ package tests;
 public class For1 {
 	public static int for1(int x) {
 		for (int i = 0; i < x; i++) {
-			return 0x666;
+			return 0x666 * (i + 1);
 		}
 		return 0x1337;
 	}

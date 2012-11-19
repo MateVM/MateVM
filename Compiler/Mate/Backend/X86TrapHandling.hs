@@ -23,7 +23,7 @@ import Compiler.Mate.Runtime.ClassPool
 import Compiler.Mate.Backend.X86CodeGenerator
 
 import Compiler.Mate.Debug
--- import Numeric
+import Numeric
 
 import Harpy.X86Disassembler
 
@@ -35,7 +35,7 @@ type MateHandlerType = CPtrdiff -> CPtrdiff -> CPtrdiff ->
                        CUIntPtr -> IO ()
 foreign export ccall mateHandler :: MateHandlerType
 mateHandler :: MateHandlerType
-mateHandler reip reax rebx _ {- resi -} rebp resp retarr = do
+mateHandler reip reax rebx resi rebp resp retarr = do
   tmap <- getTrapMap
   printfTrap "----------------------\nenter matehandler\n"
   let reipw32 = fromIntegral reip
@@ -60,16 +60,17 @@ mateHandler reip reax rebx _ {- resi -} rebp resp retarr = do
     Nothing -> do
       -- TODO(bernhard) check if it was segfault
       ex <- allocAndInitObject "java/lang/NullPointerException"
+      printfTrap $ "getTrapType: abort :-( eip: "
+           ++ showHex (fromIntegral reip :: Word32) ".   "
+           ++ concatMap (`showHex` ", ") (M.keys tmap)
+           ++ printf "\neax: 0x%08x" (fromIntegral reax :: Word32)
+           ++ printf "\nebx: 0x%08x" (fromIntegral rebx :: Word32)
+           ++ printf "\nesi: 0x%08x" (fromIntegral resi :: Word32)
+           ++ printf "\nebp: 0x%08x" (fromIntegral rebp :: Word32)
       -- push exception ref on the stack
       let lesp = wbEsp wbr - 4
       poke (intPtrToPtr . fromIntegral $ lesp) ex
       handleExceptionPatcher (wbr { wbEax = ex, wbEsp = lesp}) >>= delFalse
-      {-
-      error $ "getTrapType: abort :-( eip: "
-           ++ showHex (fromIntegral reip :: Word32) ".   "
-           ++ concatMap (`showHex` ", ") (M.keys tmap)
-           ++ "\nebx: " ++ showHex (fromIntegral rebx :: Word32) "."
-      -}
   when deleteMe $ setTrapMap $ M.delete reipw32 tmap
   pokeReg 0x0 wbEip ret_wbr
   pokeReg 0x4 wbEbp ret_wbr

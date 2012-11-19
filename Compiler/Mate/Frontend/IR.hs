@@ -218,5 +218,6 @@ instance Show Var where
   show JRefNull = printf "(null)"
 
 showAnno :: LiveAnnotation -> String
-showAnno live = printf "\n\t\tnow living:  %s" (show $ S.toList live)
+showAnno _ = ""
+-- showAnno live = printf "\n\t\tnow living:  %s" (show $ S.toList live)
 {- /show -}
