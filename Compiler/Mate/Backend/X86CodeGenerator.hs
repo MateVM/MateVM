@@ -301,11 +301,8 @@ girEmitOO (IROp _ operation dst' src1' src2') =
     gs so dst src1 src2 = do
       r2r eax src2
       r2r ecx src1
+      so eax cl
       r2r dst eax
-      case dst of
-        HIReg r -> so r cl
-        SpillIReg d -> so (d, ebp) cl
-        y -> error $ "emit: gs: dst: " ++ show y
 
     girDiv resreg = do -- `div' destroys eax and edx
       freeRegFor edx dst' $ do
