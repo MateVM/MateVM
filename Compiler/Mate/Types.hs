@@ -42,6 +42,7 @@ import Foreign.C.Types
 
 import JVM.ClassFile
 
+import Compiler.Mate.Debug
 import Compiler.Mate.Backend.NativeSizes
 
 -- type helper
@@ -93,6 +94,11 @@ data WriteBackRegs = WriteBackRegs
   , wbEbp :: CPtrdiff
   , wbEsp :: CPtrdiff
   , wbEax :: CPtrdiff }
+instance Show WriteBackRegs where
+  show wbregs = printf
+    "reg dump:\n\teip: 0x%08x\tebp: 0x%08x\n\tesp: 0x%08x\teax: 0x%08x\n"
+    (fromIntegral (wbEip wbregs) :: Word32) (fromIntegral (wbEbp wbregs) :: Word32)
+    (fromIntegral (wbEsp wbregs) :: Word32) (fromIntegral (wbEax wbregs) :: Word32)
 type TrapPatcher = WriteBackRegs -> CodeGen () () WriteBackRegs
 type TrapPatcherEax = TrapPatcher
 type ExceptionHandler = WriteBackRegs -> IO WriteBackRegs

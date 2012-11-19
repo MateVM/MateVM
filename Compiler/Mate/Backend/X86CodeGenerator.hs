@@ -631,9 +631,11 @@ freeRegFor r32 dst body = do
         case dst of
           HIReg dst' -> dst' /= r32
           _ -> True
-  when isNotDst $ push r32
+  push r32
   res <- body
-  when isNotDst $ pop r32
+  if isNotDst
+    then pop r32
+    else add esp (4 :: Word32)
   return res
 
 -- transfer between "HVar" and real maschine registers
@@ -747,6 +749,7 @@ handleExceptionPatcher wbr = do
         nebp <- peek (intPtrToPtr . fromIntegral $ (nesp - 4))
         printfEx $ printf "nebp: 0x%08x\n" (fromIntegral nebp :: Word32)
         printfEx $ printf "nesp: 0x%08x\n" (fromIntegral nesp :: Word32)
+        printfEx (show wbr)
         -- get return addr
         neip <- peek . intPtrToPtr . fromIntegral $ nesp
         printfEx $ printf "neip: 0x%08x\n" (neip :: Word32)
