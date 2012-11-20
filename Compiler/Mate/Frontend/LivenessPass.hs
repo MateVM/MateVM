@@ -48,6 +48,7 @@ livenessTransfer = mkBTransfer live
     live (IRStore _ rt dst src) f = rtVar rt $ addVar dst $ addVar src f
     live (IRLoad  _ rt dst src) f = rtVar rt $ addVar dst $ removeVar src f
     live (IRPush _ _ src) f = addVar src f
+    live (IRMisc1 _ _ src) f = addVar src f
     live (IRInvoke _ _ (Just retreg) _) f = removeVar retreg f
     live (IRInvoke _ _ Nothing _) f = f
 
@@ -93,6 +94,7 @@ livenessAnnotate = mkBRewrite annotate
     annotate (IRPrep _ _) _ = return Nothing
     annotate (IRInvoke _ rt mret ct) f = retOO (IRInvoke f rt mret ct)
     annotate (IRPush _ w8 src) f = retOO (IRPush f w8 src)
+    annotate (IRMisc1 _ ins src) f = retOO (IRMisc1 f ins src)
 
     annotate (IRReturn _ ret) _ = retOC (IRReturn bot ret)
     annotate (IRJump _) _ = return Nothing
