@@ -57,6 +57,8 @@ livenessTransfer = mkBTransfer live
     live (IRReturn _ _) _ = bot
     live (IRIfElse _ _ src1 src2 lt lf) f =
       addVar src1 $ addVar src2 $ factLabel f lt `S.union` factLabel f lf
+    live (IRSwitch _ src lbls) f =
+      addVar src $ foldl S.union S.empty (map (factLabel f . snd) lbls)
     live (IRJump lab) f = factLabel f lab
     live y _ = error $ "hoopl: livetransfer: not impl. yet: " ++ show y
     {- todo
@@ -101,6 +103,8 @@ livenessAnnotate = mkBRewrite annotate
     annotate (IRExHandler _) _ = return Nothing
     annotate (IRIfElse _ jcmp src1 src2 l1 l2) f =
       retOC $ IRIfElse (factLabel f l1 `S.union` factLabel f l2) jcmp src1 src2 l1 l2
+    annotate (IRSwitch _ src lbls) f =
+      retOC $ IRSwitch (foldl S.union S.empty (map (factLabel f . snd) lbls)) src lbls
     annotate y _ = error $ "livenessAnnotate: not impl. yet: " ++ show y
 
     retCO :: forall m1. FuelMonad m1
