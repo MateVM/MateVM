@@ -61,9 +61,6 @@ livenessTransfer = mkBTransfer live
       addVar src $ foldl S.union S.empty (map (factLabel f . snd) lbls)
     live (IRJump lab) f = factLabel f lab
     live y _ = error $ "hoopl: livetransfer: not impl. yet: " ++ show y
-    {- todo
-    live (IRPrep _ _) f = f
-    -}
 
     rtVar :: RTPool Var -> LiveSet -> LiveSet
     rtVar (RTIndex v _) f = addVar v f
@@ -87,8 +84,9 @@ livenessAnnotate = mkBRewrite annotate
   where
     annotate :: (MateIR Var) e x -> Fact x LiveSet -> m (Maybe (Graph (MateIR Var) e x))
     annotate (IRLabel _ l hm mh) f = retCO (IRLabel f l hm mh)
-    annotate (IROp _ opt dvreg@(VReg dst) src1 src2) f
-      | not (dst `S.member` f) = return $ Just emptyGraph
+    annotate (IROp _ opt dvreg{-@(VReg dst)-} src1 src2) f
+      -- fu @ java. see ./tests/Exception13
+      -- | not (dst `S.member` f) = return $ Just emptyGraph
       | otherwise = retOO (IROp f opt dvreg src1 src2)
     annotate (IRStore _ rt dst src) f = retOO (IRStore f rt dst src)
     annotate (IRLoad _ rt src dst) f = retOO (IRLoad f rt src dst)
@@ -141,10 +139,6 @@ data LiveStateData = LiveStateData
   , lends :: LiveEnd
   , pcCnt :: Int
   }
-
--- what we probably really need for LSRA:
--- (1) LiveStart = M.Map PC [VirtualReg]
--- (2) LiveEnd   = M.Map VirtualReg PC
 
 type LiveState a = State LiveStateData a
 

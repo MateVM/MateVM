@@ -22,7 +22,6 @@ import JVM.Converter
 import Compiler.Hoopl
 
 import Control.Monad.State
-import Control.Applicative hiding ((<*>))
 import Control.Arrow
 
 import Text.Printf
@@ -138,8 +137,8 @@ pipeline cls meth jvminsn = do
     linear = mkLinear optgraph
     liveranges = computeLiveRanges linear
     preColored = preRegs transstate
-    (lsramap, stackAlloc, pcactive) = lsraMapping preColored liveranges
-    ra = stupidRegAlloc lsramap pcactive linear
+    (lsramap, stackAlloc', pcactive) = lsraMapping preColored liveranges
+    (ra, stackAlloc) = stupidRegAlloc lsramap pcactive linear stackAlloc'
 
 prettyHeader :: String -> IO ()
 prettyHeader str = do

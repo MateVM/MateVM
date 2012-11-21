@@ -33,7 +33,8 @@ import Compiler.Mate.Frontend.LivenessPass
 
 data MappedRegs = MappedRegs
   { regMap :: RegMapping
-  , pcCounter :: Int }
+  , pcCounter :: Int
+  , spillOffset :: Word32 }
 
 ptrSize :: Num a => a
 ptrSize = 4
@@ -67,7 +68,7 @@ stackOffsetStart :: Word32
 stackOffsetStart = 0xffffffe8
 
 emptyRegs :: MappedRegs
-emptyRegs = MappedRegs preAssignedRegs 0
+emptyRegs = MappedRegs preAssignedRegs 0 0
 
 allIntRegs, allFloatRegs :: S.Set HVarX86
 -- register usage:
@@ -77,11 +78,14 @@ allIntRegs, allFloatRegs :: S.Set HVarX86
 allIntRegs = S.fromList $ map HIReg [ecx, edx, ebx, esi, edi]
 allFloatRegs = S.fromList $ map HFReg [xmm0, xmm1, xmm2, xmm3, xmm4, xmm5, xmm6]
 
-stupidRegAlloc :: RegMapping -> PCActiveMap -> [LinearIns Var] -> [LinearIns HVarX86]
-stupidRegAlloc preAssigned pcactive linsn = fst $ runState regAlloc' startmapping
+stupidRegAlloc :: RegMapping -> PCActiveMap -> [LinearIns Var] -> Word32
+               -> ([LinearIns HVarX86], Word32)
+stupidRegAlloc preAssigned pcactive linsn stackcnt =
+    (reslin, 0 - spillOffset stateres)
   where
+    (reslin, stateres) = runState regAlloc' startmapping
     startassign = M.union (regMap emptyRegs) preAssigned
-    startmapping = emptyRegs { regMap = startassign }
+    startmapping = emptyRegs { regMap = startassign, spillOffset = stackcnt }
     regAlloc' = forM linsn $ \x -> do
                     r <- assignReg x
                     pcInc
@@ -177,7 +181,7 @@ stupidRegAlloc preAssigned pcactive linsn = fst $ runState regAlloc' startmappin
       isAssignVr <- hasAssign vr
       if isAssignVr
         then getAssign vr
-        else error $ "regalloc: doAssign: no reg mapping?! " ++ show vr
+        else insertAssign vr
       where
         hasAssign :: Var -> State MappedRegs Bool
         hasAssign (VReg vreg) = M.member vreg <$> regMap <$> get
@@ -186,6 +190,15 @@ stupidRegAlloc preAssigned pcactive linsn = fst $ runState regAlloc' startmappin
         getAssign :: Var -> State MappedRegs HVarX86
         getAssign (VReg vreg) = (M.! vreg) <$> regMap <$> get
         getAssign x = error $ "getAssign: " ++ show x
+
+        insertAssign :: Var -> State MappedRegs HVarX86
+        insertAssign (VReg vreg) = do
+          disp <- (+(-4)) <$> spillOffset <$> get
+          let hreg = SpillIReg (Disp disp)
+          modify (\s -> s { spillOffset = disp
+                          , regMap = M.insert vreg hreg (regMap s)})
+          return hreg
+        insertAssign x = error $ "insertAssign: " ++ show x
 
 -- lsra
 data LsraStateData = LsraStateData
@@ -203,7 +216,7 @@ lsraMapping :: RegMapping
             -> LiveRanges
             -> (RegMapping, Word32, PCActiveMap)
 lsraMapping precolored (LiveRanges lstarts lends) =
-    (regmapping mapping, 0 - stackDisp mapping, pc2active mapping)
+    (regmapping mapping, stackDisp mapping, pc2active mapping)
   where
     lastPC = S.findMax $ M.keysSet lstarts
     mapping = execState (lsra) (
