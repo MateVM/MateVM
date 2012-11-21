@@ -55,7 +55,8 @@ pipeline cls meth jvminsn = do
     printfPipe $ printMapping lsramap
     prettyHeader "Register Allocation"
     printfPipe $ printf "%s\n" (show ra)
-    unless (noLiveRangeCollision liveranges lsramap) $ error "live range collision!"
+    when mateDEBUG $ do
+      unless (noLiveRangeCollision liveranges lsramap) $ error "live range collision!"
     prettyHeader "Code Generation"
 
     let cgconfig = defaultCodeGenConfig
