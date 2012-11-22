@@ -315,8 +315,8 @@ testLSRA = do
 
 instance Arbitrary LiveRanges where
   arbitrary = do
-    pcEnd <- choose (10, 100) :: Gen Int
-    vRegs' <- choose (10, 50) :: Gen Integer
+    pcEnd <- choose (10, 700) :: Gen Int
+    vRegs' <- choose (10, 1500) :: Gen Integer
     vRegs <- forM [0 .. vRegs'] $ \vreg -> do
       typ <- elements [JRef, JInt]
       return (VR vreg typ)

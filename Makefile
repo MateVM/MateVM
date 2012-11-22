@@ -12,6 +12,7 @@ B_RELEASE := $(BUILD)/release
 B_STATIC := $(BUILD)/static
 B_COVERAGE := $(BUILD)/coverage
 B_DEBUG := $(BUILD)/debug
+B_QUICKCHECK := $(BUILD)/B_QUICKCHECK
 PACKAGES_ := bytestring harpy hs-java plugins hoopl
 PACKAGES := $(addprefix -package ,$(PACKAGES_))
 
@@ -28,7 +29,7 @@ GHC_OPT += $(GHC_CPP)
 GHC_LD := -optl-Xlinker -optl-x
 
 
-.PHONY: all tests clean ghci hlint
+.PHONY: all tests clean ghci hlint quickcheck
 
 all: mate
 
@@ -74,6 +75,13 @@ mate.hpc: Mate.hs ffi/trap.c $(HS_FILES) $(HS_BOOT) ffi/native.o $(CLASS_FILES)
 	@mkdir -p $(B_COVERAGE)/tix/tests
 	$(GHCCALL) $(B_COVERAGE) -static -fhpc
 
+quickcheck: mate.quickcheck
+	@./$<
+
+mate.quickcheck: Compiler/Mate/QuickCheck.hs ffi/trap.c $(HS_FILES) $(HS_BOOT) ffi/native.o $(CLASS_FILES)
+	@mkdir -p $(B_QUICKCHECK)
+	ghc --make -O2 Compiler/Mate/QuickCheck.hs -o $@ -outputdir $(B_QUICKCHECK)
+
 
 # see http://www.haskell.org/ghc/docs/7.0.4/html/users_guide/hpc.html
 TIX_FILES := $(addprefix $(B_COVERAGE)/tix/,$(TEST_JAVA_FILES:.java=.tix))
@@ -103,7 +111,8 @@ clean:
 		tests/*.class Mate/*_stub.* \
 		$(CLASS_FILES) \
 		scratch/*.class \
-		.hpc all.tix
+		.hpc all.tix \
+		mate.quickcheck
 
 ghci: mate.static
 	ghci -I. -fobject-code $(PACKAGES) -outputdir $(B_STATIC) Mate.hs $(GHC_CPP)

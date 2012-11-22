@@ -5,6 +5,7 @@ mate
 mate.static
 mate.dbg
 mate.prof
+mate.quickcheck
 mate.hpc
 mate.log
 tags
