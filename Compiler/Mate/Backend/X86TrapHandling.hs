@@ -99,7 +99,9 @@ patchWithHarpy patcher wbr = do
 withDisasm :: CodeGen e s WriteBackRegs -> CodeGen e s (WriteBackRegs, [Instruction])
 withDisasm patcher = do
   rval <- patcher
-  d <- disassemble
+  d <- if mateDEBUG
+    then disassemble
+    else return []
   return (rval, d)
 
 staticFieldHandler :: WriteBackRegs -> IO WriteBackRegs
