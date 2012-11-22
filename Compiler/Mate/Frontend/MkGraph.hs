@@ -36,7 +36,7 @@ import Harpy hiding (Label, fst)
 import Compiler.Mate.Debug
 import Compiler.Mate.Types
 import Compiler.Mate.Frontend.IR
-import Compiler.Mate.Frontend.StupidRegisterAllocation
+import Compiler.Mate.Frontend.RegisterAllocation
 
 -- import Debug.Trace
 

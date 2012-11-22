@@ -1,5 +1,5 @@
 {-# LANGUAGE GADTs #-}
-module Compiler.Mate.Frontend.StupidRegisterAllocation
+module Compiler.Mate.Frontend.RegisterAllocation
   ( preeax
   , prexmm7
   , preFloats
