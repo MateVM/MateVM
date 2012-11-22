@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE GADTs #-}
 module Compiler.Mate.Frontend.RegisterAllocation
   ( preeax
@@ -98,8 +99,7 @@ stupidRegAlloc preAssigned pcactive linsn stackcnt =
     pointMapping = do
       pc <- pcCounter <$> get
       rm <- regMap <$> get
-      let vregs = pcactive M.! pc
-      return [ (rm M.! vreg, vrTyp vreg) | vreg <- vregs ]
+      return [ (rm M.! vreg, vrTyp vreg) | vreg <- (pcactive M.! pc) ]
 
     rtRepack :: RTPool Var -> State MappedRegs (RTPool HVarX86)
     rtRepack (RTPool w16) = return $ RTPool w16
@@ -191,6 +191,8 @@ stupidRegAlloc preAssigned pcactive linsn stackcnt =
         getAssign (VReg vreg) = (M.! vreg) <$> regMap <$> get
         getAssign x = error $ "getAssign: " ++ show x
 
+        -- if there's no assignment, fall back to stupid allocation again (and
+        -- only use spill slots)
         insertAssign :: Var -> State MappedRegs HVarX86
         insertAssign (VReg vreg) = do
           disp <- (+(-4)) <$> spillOffset <$> get
@@ -203,10 +205,16 @@ stupidRegAlloc preAssigned pcactive linsn stackcnt =
 -- lsra
 data LsraStateData = LsraStateData
   { pcCnt :: Int
+  -- mapping of virtual to hardware register (or spills)
   , regmapping :: RegMapping
+  -- set of non-used hardware registers
   , freeRegs :: [HVarX86]
+  -- current offset on stack (for simplicity, don't reuse spill slots)
   , stackDisp :: Word32
+  -- set of active virtual registers
   , activeRegs :: [VirtualReg]
+  -- on every program counter, we store the current active map, in order to have
+  -- information on GC operations or method invocation
   , pc2active :: PCActiveMap
   }
 type PCActiveMap = M.Map Int [VirtualReg]
@@ -219,15 +227,15 @@ lsraMapping precolored (LiveRanges lstarts lends) =
     (regmapping mapping, stackDisp mapping, pc2active mapping)
   where
     lastPC = S.findMax $ M.keysSet lstarts
-    mapping = execState (lsra) (
+    mapping = execState lsra $
               LsraStateData { pcCnt = 0
                             , regmapping = preAssignedRegs `M.union` precolored
                             , freeRegs = S.toList allIntRegs
                             , stackDisp = stackOffsetStart
                             , pc2active = M.empty
-                            , activeRegs = [] })
+                            , activeRegs = [] }
     incPC :: LsraState ()
-    incPC = modify (\s -> s { pcCnt = 1 + (pcCnt s) })
+    incPC = modify (\s -> s { pcCnt = 1 + pcCnt s })
     lsra = do
       pc <- pcCnt <$> get
       -- when (trace (printf "pc: %d" pc) (pc <= lastPC)) $ do
@@ -272,7 +280,7 @@ lsraMapping precolored (LiveRanges lstarts lends) =
                       })
 
 
-noLiveRangeCollision:: LiveRanges -> RegMapping -> Bool
+noLiveRangeCollision :: LiveRanges -> RegMapping -> Bool
 noLiveRangeCollision (LiveRanges lstarts lends) rmapping =
     and [ and
             [ noCollision intk (intervalOfVreg j)
@@ -303,8 +311,6 @@ prop_noCollision lr = noLiveRangeCollision lr res
 testLSRA :: IO ()
 testLSRA = do
   putStrLn "quickcheck lsra..."
-  -- sam <- sample' (arbitrary :: Gen LiveRanges)
-  -- printLiveRanges $ head sam
   quickCheck prop_noCollision
 
 instance Arbitrary LiveRanges where
