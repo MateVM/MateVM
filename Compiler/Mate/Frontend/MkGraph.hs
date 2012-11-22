@@ -294,7 +294,37 @@ insnLength x = case x of
                  + (fromIntegral padding)
                  + (2 * 4) {- def, n -}
                  + 8 * length xs {- pairs -}
-  _ -> len
+  -- TODO: better idea anyone?
+  AALOAD -> 1
+  AASTORE -> 1
+  ALOAD_ _ -> 1
+  ANEWARRAY _ -> 3
+  ARETURN -> 1
+  ARRAYLENGTH -> 1
+  DUP -> 1
+  GOTO _ -> 3
+  ICONST_0 -> 1
+  ICONST_1 -> 1
+  ICONST_2 -> 1
+  ICONST_3 -> 1
+  ICONST_4 -> 1
+  ICONST_5 -> 1
+  IF_ICMP _ _ -> 3
+  IF _ _ -> 3
+  ILOAD_ _ -> 1
+  INVOKESTATIC _ -> 3
+  INVOKESPECIAL _ -> 3
+  INVOKEVIRTUAL _ -> 3
+  ISTORE_ _ -> 1
+  NEW _ -> 3
+  LDC1 _ -> 2
+  LDC2 _ -> 3
+  POP -> 1
+  PUTFIELD _ -> 3
+  PUTSTATIC _ -> 3
+  RETURN -> 1
+  SIPUSH _ -> 3
+  _ -> len -- trace (printf "insn: %s -> len: %d\n" (show x) (fromIntegral len :: Word32)) len
   where
     len = fromIntegral . B.length . encodeInstructions . (:[]) $ x
 
