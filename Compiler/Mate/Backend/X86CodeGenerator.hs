@@ -10,7 +10,6 @@ module Compiler.Mate.Backend.X86CodeGenerator
 
 import Prelude hiding (and, div, or)
 
-import qualified Data.Set as S
 import qualified Data.Map as M
 import qualified Data.IntervalMap as IM
 import qualified Data.ByteString.Lazy as B
