@@ -161,7 +161,7 @@ instance Show t => Show (RTPool t) where
   show RTNone = ""
   show (RTArray w8 mot _ len) =
     -- (concatMap (\x -> printf "\t\t%s\n" (show x)) regmap) ++
-    (printf "Array(%02d, len=%s, %s)\n" w8 (show len) (show mot))
+    printf "Array(%02d, len=%s, %s)\n" w8 (show len) (show mot)
 
 data VarType = JInt | JFloat | JRef deriving (Show, Eq, Ord)
 

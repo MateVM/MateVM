@@ -21,6 +21,7 @@ import qualified Data.IntervalMap.Interval as IIM
 import qualified Data.ByteString.Lazy as B
 import Data.Int
 import Data.Word
+import Data.Maybe
 
 import Control.Applicative hiding ((<*>))
 import Control.Monad
@@ -107,15 +108,14 @@ resolveReferences = do
     addPCs :: Int32 -> Word16 -> J.Instruction -> ParseState ()
     addPCs pc rel ins = do
       addPC (pc + insnLength ins)
-      addPC (pc + (w16Toi32 rel))
+      addPC (pc + w16Toi32 rel)
     addSwitch :: Int32 -> Word32 -> [Word32] -> ParseState ()
     addSwitch pc def offs = do
       mapM_ (addPC . (+pc) . fromIntegral) offs
       addPC $ pc + fromIntegral def
 
 addPC :: Int32 -> ParseState ()
-addPC bcoff = do
-  modify (\s -> s { blockEntries = S.insert bcoff (blockEntries s) })
+addPC bcoff = modify (\s -> s { blockEntries = S.insert bcoff (blockEntries s) })
 
 
 mkMethod :: Graph (MateIR Var) C C -> ParseState (Graph (MateIR Var) O C)
@@ -152,13 +152,13 @@ mkBlock = do
       apush (VReg (VR preeax JRef))
       return $ Just $ fromIntegral pc
     else return Nothing
-  let extable = map (\(x,y) -> (x, fromIntegral y))
+  let extable = map (second fromIntegral)
                 $ concatMap snd
                 $ handlermap `IM.containing` pc
   let f' = irlabel l extable handlerStart
   -- fixup block boundaries
   be <- -- trace (printf "pc: %d\nhstart: %s\nextable: %s\n" pc (show handlerStart) (show extable)) $
-        (M.lookup l) <$> blockInterfaces <$> get
+        M.lookup l <$> blockInterfaces <$> get
   fixup <- case be of
     Nothing -> return []
     Just ts -> forM ts $ \x -> do
@@ -174,9 +174,9 @@ addLabel boff = do
   if M.member boff lmap
     then return $ lmap M.! boff
     else do
-      label <- lift $ freshLabel
+      label <- lift freshLabel
       modify (\s -> s {labels = M.insert boff label (labels s) })
-      modify (\s -> s {nextTargets = label : (nextTargets s) })
+      modify (\s -> s {nextTargets = label : nextTargets s })
       return label
 
 popInstruction :: ParseState ()
@@ -199,31 +199,27 @@ toMid = do
         popInstruction
         return res
       else do
-        insIR <- normalIns ins
+        insIR <- tir ins
         incrementPC ins
         popInstruction
         first (insIR ++) <$> toMid
   where
-    normalIns ins = do
-      insIR <- tir ins
-      return insIR
-
     toLast :: J.Instruction -> ParseState ([MateIR Var O O], MateIR Var O C)
     toLast ins = do
       pc <- pcOffset <$> get
       let ifstuff jcmp rel op1 op2 = do
             truejmp <- addLabel (pc + w16Toi32 rel)
             falsejmp <- addLabel (pc + insnLength ins)
-            return $ ([], irifelse jcmp op1 op2 truejmp falsejmp)
+            return ([], irifelse jcmp op1 op2 truejmp falsejmp)
       let switchins def switch' = do
             y <- apop
             switch <- forM switch' $ \(v, o) -> do
               offset <- addLabel $ pc + fromIntegral o
               return (Just (w32Toi32 v), offset)
             defcase <- addLabel $ pc + fromIntegral def
-            return $ ([], irswitch y $ switch ++ [(Nothing, defcase)])
+            return ([], irswitch y $ switch ++ [(Nothing, defcase)])
       (ret1, ret2) <- case ins of
-        RETURN -> return $ ([], irreturn Nothing)
+        RETURN -> return ([], irreturn Nothing)
         ARETURN -> returnSomething JRef
         IRETURN -> returnSomething JInt
         LRETURN -> error "toLast: LReturn"
@@ -248,37 +244,34 @@ toMid = do
           ifstuff jcmp rel op1 op2
         (GOTO rel) -> do
           jump <- addLabel (pc + w16Toi32 rel)
-          return $ ([], IRJump jump)
+          return ([], IRJump jump)
         TABLESWITCH _ def low high offs -> switchins def $ zip [low..high] offs
         LOOKUPSWITCH _ def _ switch -> switchins def switch
         _ -> do -- fallthrough case
           next <- addLabel (pc + insnLength ins)
-          insIR <- normalIns ins
-          return $ (insIR, IRJump next)
+          insIR <- tir ins
+          return (insIR, IRJump next)
       foo <- handleBlockEnd
       return (ret1 ++ foo, ret2)
       where
         returnSomething t = do
           r <- apop
           unless (varType r == t) $ error "toLast return: type mismatch"
-          return $ ([], irreturn $ Just r)
+          return ([], irreturn $ Just r)
 
 handleBlockEnd :: ParseState [MateIR Var O O]
 handleBlockEnd = do
   st <- get
-  let len = L.genericLength $ stack $ st
+  let len = L.genericLength $ stack st
   if len > 0
-    then do
+    then
       forM [500000 .. (500000 + len - 1)] $ \r -> do
         x <- apop
         let vreg = VReg (VR r (varType x))
         targets <- nextTargets <$> get
-        forM targets $ \t -> do
-          be <- M.lookup t <$> blockInterfaces <$> get
-          let be' = case be of
-                      Just x' -> x'
-                      Nothing -> []
-          modify (\s -> s { blockInterfaces = M.insert t (vreg:be') (blockInterfaces s)})
+        forM_ targets $ \t -> do
+          be <- fromMaybe [] <$> M.lookup t <$> blockInterfaces <$> get
+          modify (\s -> s { blockInterfaces = M.insert t (vreg:be) (blockInterfaces s)})
         return (irop Add vreg x (nul (varType x)))
     else return []
 
@@ -286,12 +279,12 @@ insnLength :: Integral a => J.Instruction -> a
 insnLength x = case x of
   (TABLESWITCH padding _ _ _ xs) ->
     fromIntegral $ 1 {- opcode -}
-                 + (fromIntegral padding)
+                 + fromIntegral padding
                  + (3 * 4) {- def, low, high -}
                  + 4 * length xs {- entries -}
   (LOOKUPSWITCH padding _ _ xs) ->
     fromIntegral $ 1 {- opcode -}
-                 + (fromIntegral padding)
+                 + fromIntegral padding
                  + (2 * 4) {- def, n -}
                  + 8 * length xs {- pairs -}
   -- TODO: better idea anyone?
@@ -332,7 +325,7 @@ incrementPC :: J.Instruction -> ParseState ()
 incrementPC ins = modify (\s -> s { pcOffset = pcOffset s + insnLength ins})
 
 resetPC :: [J.Instruction] -> ParseState ()
-resetPC jvmins = do
+resetPC jvmins =
   modify (\s -> s { pcOffset = 0, instructions = jvmins })
 
 imm2num :: Num a => IMM -> a
@@ -350,7 +343,7 @@ fieldType cls off = fieldType2VarType $ ntSignature nt
 methodType :: Bool -> Class Direct -> Word16 -> ([VarType], Maybe VarType)
 methodType isVirtual cls off = (map fieldType2VarType argst', rett)
   where
-    argst' = if isVirtual then (ObjectType "lol"):argst else argst
+    argst' = if isVirtual then ObjectType "this" : argst else argst
     (MethodSignature argst returnt) =
       case constsPool cls M.! off of
         (CMethod _ nt') -> ntSignature nt'
@@ -380,7 +373,7 @@ fieldType2VarType x = error $ "fieldType2VarType: " ++ show x
 
 -- tir = transform to IR
 tir :: J.Instruction -> ParseState [MateIR Var O O]
-tir ACONST_NULL = do apush $ JRefNull; return []
+tir ACONST_NULL = do apush JRefNull; return []
 tir ICONST_M1 = tir (BIPUSH 0xff) -- (-1)
 tir ICONST_0 = tir (BIPUSH 0)
 tir ICONST_1 = tir (BIPUSH 1)
@@ -401,7 +394,7 @@ tir (IINC x con) = do
   nv <- newvar JInt
   apush nv
   storeinsn <- tirStore x JInt
-  return $ [irop Add nv y (JIntValue (w8Toi32 con))] ++ storeinsn
+  return $ irop Add nv y (JIntValue (w8Toi32 con)) : storeinsn
 tir (ALOAD_ x) = tir (ALOAD (imm2num x))
 tir (ALOAD x) = tirLoad x JRef
 tir (FLOAD_ x) = tir (FLOAD (imm2num x))
@@ -590,7 +583,7 @@ tirInvoke ct ident = do
         apush movtarget
       return (Just nv, Just $ irop Add movtarget nv (JIntValue 0))
     Nothing -> return (Nothing, Nothing)
-  let r = (IRPrep SaveRegs []): pushes ++
+  let r =  IRPrep SaveRegs [] : pushes ++
           [irinvoke (RTPoolCall ident []) targetreg ct, IRPrep RestoreRegs []]
   case maybemov of
     Nothing -> return r
@@ -609,11 +602,11 @@ maybeArgument x t = do
     then do
       ((tup'k, tup'v), assign') <- case t of
        JFloat -> do
-         let assign = preFloats !! (fromIntegral x)
+         let assign = preFloats !! fromIntegral x
          let tup = (VR assign JFloat, HFReg . XMMReg . fromIntegral $ x)
          return (tup, assign)
        _ -> do
-         let assign = preArgs !! (fromIntegral x)
+         let assign = preArgs !! fromIntegral x
          let constr = case t of
                   JRef -> SpillIReg
                   JInt -> SpillIReg
@@ -698,7 +691,7 @@ irload = IRLoad liveAnnEmpty
 irstore = IRStore liveAnnEmpty
 irinvoke = IRInvoke liveAnnEmpty
 irpush = IRPush liveAnnEmpty
-irifelse = (IRIfElse liveAnnEmpty)
+irifelse = IRIfElse liveAnnEmpty
 irswitch = IRSwitch liveAnnEmpty
 irreturn = IRReturn liveAnnEmpty
 irmisc1 = IRMisc1 liveAnnEmpty

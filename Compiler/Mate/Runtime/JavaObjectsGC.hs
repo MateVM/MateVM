@@ -97,11 +97,7 @@ getSize ptr = do
   isarray <- isArray ptr
   if isarray
     then getArrayObjectSize ptr
-    else do 
-           --print "knobbl"
-           s <- getObjectSizePtr ptr
-           --print "got knobbl"
-           return s
+    else getObjectSizePtr ptr
 
 getArrayObjectSize :: Ptr a -> IO Int
 getArrayObjectSize ptr = do
@@ -139,7 +135,7 @@ printRef' ptr = do
          printfGc $ printf "type: %s\n" $ toString clazzName
          fieldCnt <- getObjectFieldCountPtr ptr    
          printfGc $ printf "children 0x%08x\n" fieldCnt
-         markedBit <- (peekByteOff ptr markByteOffset :: IO Int32)           
+         markedBit <- peekByteOff ptr markByteOffset :: IO Int32
          printInt32 "marked 0x%08x\n" markedBit
          printInt32 "newRef 0x%08x\n" =<< (peekByteOff ptr newPtrOffset :: IO Int32)
          printChildren ptr

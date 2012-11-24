@@ -107,13 +107,12 @@ fromJavaString objaddr = do
   straddr <- peek $ intPtrToPtr (fromIntegral $ objaddr + 0x8) :: IO CPtrdiff
   len <-     peek $ intPtrToPtr (fromIntegral $ objaddr + 0xc) :: IO CPtrdiff
   let rptr = intPtrToPtr (fromIntegral $ straddr + 0xc) :: Ptr CPtrdiff
-  vals <- forM [0..(len - 1)] $ \i -> do
+  vals <- forM [0..(len - 1)] $ \i ->
     peek (plusPtr rptr (fromIntegral i)) :: IO Word8
   return $ toString $ B.pack vals
 
 fromJavaInteger :: JavaObject -> IO Int32
-fromJavaInteger objaddr = do
-  peek $ intPtrToPtr $ fromIntegral $ objaddr + 0x8
+fromJavaInteger objaddr = peek $ intPtrToPtr $ fromIntegral $ objaddr + 0x8
 
 foreign export ccall printf0 :: JavaObject -> IO CInt
 printf0 :: JavaObject -> IO CInt

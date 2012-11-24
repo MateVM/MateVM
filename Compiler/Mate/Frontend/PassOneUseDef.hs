@@ -33,7 +33,7 @@ oudTransfer = mkBTransfer3 usesCO usesOO usesOC
   where
     usesCO _ f = f
     usesOO (IROp Add dst@(VReg _ _) src@(VReg _ _) c) f=
-      if c == JIntValue 0 || c == JFloatValue 0 || c == JRefNull
+      if c `elem` [JIntValue 0, JFloatValue 0, JRefNull]
         then if M.member src f
               -- more than one use, so don't look at it any more
               then M.insert src Top f
@@ -49,7 +49,7 @@ oudTransferID = mkBTransfer3 usesCO usesOO usesOC
   where
     usesCO _ f = f
     usesOO _ f = f
-    usesOC _ f = foldl (M.union) M.empty (mapElems f)
+    usesOC _ f = foldl M.union M.empty (mapElems f)
 
 oudKill :: forall m. FuelMonad m => BwdRewrite m (MateIR Var) OneUseDefFact
 oudKill = mkBRewrite rw
@@ -63,7 +63,7 @@ oudKill = mkBRewrite rw
                           PElem dstnew -> do
                             let newins = IROp Add dstnew src c
                             return $ Just $ mkMiddle $
-                                   tracePipe (printf "rewrote1: \"%s\" to \"%s\"\n" (show ins) (show newins)) $
+                                   tracePipe (printf "rewrote1: \"%s\" to \"%s\"\n" (show ins) (show newins))
                                    newins
                           _ -> return Nothing
                     else return Nothing
@@ -78,14 +78,14 @@ oudKill = mkBRewrite rw
       Just (PElem newdst) -> do
         let newins = IROp Add newdst c1 c2
         return $ Just $ mkMiddle $
-          tracePipe (printf "rewrote2: \"%s\" to \"%s\"\n" (show ins) (show newins)) $
+          tracePipe (printf "rewrote2: \"%s\" to \"%s\"\n" (show ins) (show newins))
           newins
       _ -> return Nothing
     rw ins@(IRLoadRT rt dst@(VReg _ _)) f = case M.lookup dst f of
       Just (PElem newdst) -> do
         let newins = IRLoadRT rt newdst
         return $ Just $ mkMiddle $
-          tracePipe (printf "rewrote3: \"%s\" to \"%s\"\n" (show ins) (show newins)) $
+          tracePipe (printf "rewrote3: \"%s\" to \"%s\"\n" (show ins) (show newins))
           newins
       _ -> return Nothing
     rw _ _ = return Nothing

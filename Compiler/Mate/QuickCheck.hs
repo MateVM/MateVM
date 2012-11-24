@@ -6,3 +6,4 @@ import Compiler.Mate.Frontend
 main :: IO ()
 main = do
   testLSRA
+  putStrLn "QuickCheck done"

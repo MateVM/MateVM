@@ -81,8 +81,8 @@ getSizeDebug obj = do
 --evacuateList objs = evacuate' objs
 
 validRef' :: IntPtr -> TwoSpace -> Bool
-validRef' ptr twoSpace = (ptr >= (fst $ validRange twoSpace)) && 
-                         (ptr <= (snd $ validRange twoSpace))
+validRef' ptr twoSpace = (ptr >= fst (validRange twoSpace)) && 
+                         (ptr <= snd (validRange twoSpace))
 
 initTwoSpace :: Int -> IO TwoSpace
 initTwoSpace size' =  do printfStr $ printf "initializing TwoSpace memory manager with %d bytes.\n" size'

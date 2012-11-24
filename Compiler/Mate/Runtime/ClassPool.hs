@@ -26,6 +26,9 @@ import qualified Data.Set as S
 import Data.List
 import qualified Data.ByteString.Lazy as B
 import Data.String.Utils
+
+import Control.Arrow
+import Control.Applicative
 import Control.Monad
 
 -- import JVM.Dump
@@ -105,7 +108,7 @@ getMethodTableReverse :: NativeWord -> IO (Maybe B.ByteString)
 getMethodTableReverse mtable = do
   class_map <- getClassMap
   let f x = ciMethodBase x == mtable
-  return $ find f (M.elems class_map) >>= return . ciName
+  return $ ciName <$> find f (M.elems class_map)
 
 getObjectSize :: B.ByteString -> IO NativeWord
 getObjectSize path = do
@@ -125,13 +128,13 @@ getFieldCount path = do
 getStaticFieldTypes :: B.ByteString -> IO [(Int32, FieldSignature)]
 getStaticFieldTypes path = do
   ci <- getClassInfo path
-  return $ map (\(x, y) -> (x, fieldSignature y)) $ M.toList (ciStaticFieldTypeMap ci)
+  return $ map (second fieldSignature) $ M.toList (ciStaticFieldTypeMap ci)
 
 -- TODO: not very well tested
 getFieldTypes :: B.ByteString -> IO [(Int32, FieldSignature)]
 getFieldTypes path = do
   ci <- getClassInfo path
-  return $ map (\(x, y) -> (x, fieldSignature y)) $ M.toList (ciFieldTypeMap ci)
+  return $ map (second fieldSignature) $ M.toList (ciFieldTypeMap ci)
 
 getStaticFieldAddr :: CPtrdiff -> IO CPtrdiff
 getStaticFieldAddr from = do

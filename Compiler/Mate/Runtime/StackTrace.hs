@@ -41,7 +41,7 @@ stackFrames accum prevRbp rebp = do
         forM_ points $ \x -> do
           let point :: Word32
               -- TODO(bernhard): I'm not sure here, maybe s/rebp/prevRbp/
-              point = x + (fromIntegral rebp)
+              point = x + fromIntegral rebp
           printfMem $ printf "stackFrames: candidate: %08x\n" point
     let accum' = StackDescription { base = rebp, end = prevRbp, stackinfo = stackinfo' } : accum
     if bottomOfStack stackinfo'
@@ -78,7 +78,7 @@ possibleRefs f = [from, from + 4 .. to]
 
 refsToString :: [IntPtr] -> String
 refsToString ptrs = printf "Reference Candidates: %s\n" (ptrStr ptrs)
-  where ptrStr = concat . intersperse "," . map printElement
+  where ptrStr = intercalate "," . map printElement
         printElement ptr = printf "0x%08x" (fromIntegral ptr :: Word32)
 
 bottomOfStack :: RuntimeStackInfo -> Bool
@@ -106,6 +106,6 @@ printStackTrace depth rebp = do
 printFrame :: Int -> (String -> Bool) -> RuntimeStackInfo -> IO Bool
 printFrame d bottomCheck = print' . toString . rsiMethodname
   where print' sig  | bottomCheck sig 
-                      = (printfStr $ printf "reached bottom of stack [%d]\n" d) >> return True
+                      = printfStr (printf "reached bottom of stack [%d]\n" d) >> return True
                     | otherwise 
-                      = (printfStr $ printf "stacktrace @ malloc: %s [%d]\n" sig d) >> return False
+                      = printfStr (printf "stacktrace @ malloc: %s [%d]\n" sig d) >> return False

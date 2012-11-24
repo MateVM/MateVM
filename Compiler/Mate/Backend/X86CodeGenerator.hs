@@ -21,6 +21,7 @@ import Data.Ord
 import Data.Binary.IEEE754
 import qualified Data.Bits as DB
 
+import Control.Arrow
 import Control.Applicative hiding ((<*>))
 import Control.Monad
 
@@ -105,7 +106,7 @@ compileLinear lbls linsn stackAlloc = do
         -- liftIO $ printf "hmap: %s\n\n" (show hmap)
         case maybeHandler of
           Nothing -> return ()
-          Just jvmpc -> do
+          Just jvmpc ->
             modifyState (\s -> s {exHandler = M.insert jvmpc reip (exHandler s)})
         case hmap of
           [] -> return ()
@@ -118,26 +119,22 @@ compileLinear lbls linsn stackAlloc = do
             let l1 = lmap M.! h1
             let l2 = lmap M.! h2
             case (src1, src2) of -- attention: swap args
-              (HIReg s1, HIReg s2) -> do
-                cmp s2 s1
-              (SpillIReg d1, HIReg s2) -> do
-                cmp s2 (d1, ebp)
+              (HIReg s1, HIReg s2) -> cmp s2 s1
+              (SpillIReg d1, HIReg s2) -> cmp s2 (d1, ebp)
               (HIReg s1, SpillIReg d2) -> do
                 mov eax (d2, ebp)
                 cmp eax s1
               (SpillIReg d1, SpillIReg d2) -> do
                 mov eax (d2, ebp)
                 cmp eax (d1, ebp)
-              (HIConstant c, HIReg s1) -> do
-                cmp s1 (i32Tow32 c)
+              (HIConstant c, HIReg s1) -> cmp s1 (i32Tow32 c)
               (HIReg s1, HIConstant c) -> do
                 mov eax (i32Tow32 c)
                 cmp eax s1
               (SpillIReg d1, HIConstant c) -> do
                 mov eax (i32Tow32 c)
                 cmp eax (d1, ebp)
-              (HIConstant c, SpillIReg s1) -> do
-                cmp (s1, ebp) (i32Tow32 c)
+              (HIConstant c, SpillIReg s1) -> cmp (s1, ebp) (i32Tow32 c)
               x -> error $ "IRifelse: not impl. yet" ++ show x
             case jcmp of
               C_EQ -> je  l1; C_NE -> jne l1
@@ -145,14 +142,14 @@ compileLinear lbls linsn stackAlloc = do
               C_GE -> jge l1; C_LE -> jle l1
             jmp l2
           IRJump h -> jmp (lmap M.! h)
-          IRExHandler _ -> error $ "emit: IRExHandlers: should not happen"
+          IRExHandler _ -> error "emit: IRExHandlers: should not happen"
           IRSwitch _ src table -> do
             r2r eax src
             forM_ table $ \x -> case x of
                 (Just val, label) -> do
                   cmp eax (i32Tow32 val)
                   je (lmap M.! label)
-                (Nothing, label) -> do
+                (Nothing, label) ->
                   jmp (lmap M.! label)
           IRReturn _ Nothing -> retseq
           IRReturn _ (Just (HFReg r)) -> do
@@ -185,12 +182,7 @@ compileLinear lbls linsn stackAlloc = do
   -- liftIO $ printf "exHandls: %s\n" (show exHandls)
   let exmap :: ExceptionMap Word32
       exmap = foldl'
-              (\db key -> IM.update
-                          (\entries ->
-                            Just $
-                             map (\(cn, x) -> (cn, exHandls M.! x)) entries
-                          ) key db
-              )
+              (flip (IM.update (Just .  map (second ((M.!) exHandls)))))
               exTab
               (IM.keys exTab)
   mname <- methodName <$> getState
@@ -198,8 +190,7 @@ compileLinear lbls linsn stackAlloc = do
   liftIO $ printfJit "gcpoints:\n"
   liftIO $ forM_ (M.toList gcpts) $ \(ip, lst) -> do
             printfJit $ printf "\teip: %08x\n" ip
-            forM_ lst $ \x -> do
-              printfJit $ printf "\t\t0x%08x\n" x
+            forM_ lst $ \x -> printfJit $ printf "\t\t0x%08x\n" x
   let rsi = RuntimeStackInfo
              { rsiMethodname = mname
              , rsiExceptionMap = exmap
@@ -272,10 +263,8 @@ girEmitOO (IROp _ operation dst' src1' src2') =
         y -> error $ "emit: ge: opx: src1: " ++ show y
       r2r dst eax
 
-    girMul = do
-      -- edx is killed by `mul' instruction
-      freeRegFor edx dst' $ do
-        gm dst' src1' src2'
+    -- edx is killed by `mul' instruction
+    girMul = freeRegFor edx dst' $ gm dst' src1' src2'
     gm dst src1 src2
         | hvarIsConst src2 = gm' dst src2 src1
         | otherwise = gm' dst src1 src2
@@ -290,9 +279,7 @@ girEmitOO (IROp _ operation dst' src1' src2') =
     girShift :: (forall a b. (Shr a b, Sar a b, Sal a b)
                           => a -> b -> CodeGen e s ())
              -> CodeGen e s ()
-    girShift shiftop = do
-      freeRegFor ecx dst' $ do
-        gs shiftop dst' src1' src2'
+    girShift shiftop = freeRegFor ecx dst' $ gs shiftop dst' src1' src2'
 
     gs :: (forall a b. (Shr a b, Sar a b, Sal a b)
                     => a -> b -> CodeGen e s ())
@@ -303,8 +290,8 @@ girEmitOO (IROp _ operation dst' src1' src2') =
       so eax cl
       r2r dst eax
 
-    girDiv resreg = do -- `div' destroys eax and edx
-      freeRegFor edx dst' $ do
+    girDiv resreg = -- `div' destroys eax and edx
+      freeRegFor edx dst' $
         freeRegFor ebx dst' $ do
           r2r eax src2'
           r2r ebx src1'
@@ -366,8 +353,7 @@ girEmitOO (IRLoad _ (RTPool x) (HIConstant 0) dst) = do
     (CString s) -> do -- load str (ldc)
       sref <- liftIO $ getUniqueStringAddr s
       r2r dst sref
-    (CInteger i) -> do -- load integer (ldc)
-      r2r dst i
+    (CInteger i) -> r2r dst i -- load integer (ldc)
     (CField rc fnt) -> do -- getstatic
       let sfi = StaticField $ StaticFieldInfo rc (ntName fnt)
       trapaddr <- getCurrentOffset
@@ -380,7 +366,7 @@ girEmitOO (IRLoad _ (RTPool x) (HIConstant 0) dst) = do
 girEmitOO (IRLoad _ (RTPool x) src dst) = do
   cls <- classf <$> getState
   case constsPool cls M.! x of
-    (CField rc fnt) -> do -- getfield
+    (CField rc fnt) -> -- getfield
       freeRegFor ebx dst $ do
         r2r eax src
         trapaddr <- emitSigIllTrap 7
@@ -416,10 +402,10 @@ girEmitOO (IRLoad _ RTNone src dst) = do -- arraylength
   mov eax (Disp 8, eax)
   r2r dst eax
 
-girEmitOO (IRLoad _ (RTIndex idx typ) src dst) = do
+girEmitOO (IRLoad _ (RTIndex idx typ) src dst) =
     freeRegFor edx dst $ do
       case idx of
-        HIConstant i -> mov eax $ ((i32Tow32 i) * (typeSize typ)) + 0xc
+        HIConstant i -> mov eax $ (i32Tow32 i * typeSize typ) + 0xc
         _ -> do
           case idx of
             HIReg i -> mov eax i
@@ -430,10 +416,10 @@ girEmitOO (IRLoad _ (RTIndex idx typ) src dst) = do
           add eax (0xc :: Word32)
       case src of
         HIReg s -> if s == edx then add eax (Disp 0, esp) else add eax s
-        SpillIReg d -> do add eax (d, ebp)
+        SpillIReg d -> add eax (d, ebp)
         y -> error $ "girEmitOO: irload: rtindex: src: " ++ show y
       case dst of
-        HIReg d -> do mov d (Disp 0, eax)
+        HIReg d -> mov d (Disp 0, eax)
         SpillIReg d -> do
           mov edx (Disp 0, eax)
           mov (d, ebp) edx
@@ -442,7 +428,7 @@ girEmitOO (IRLoad _ (RTIndex idx typ) src dst) = do
 girEmitOO (IRStore _ (RTPool x) obj src) = do
   cls <- classf <$> getState
   case constsPool cls M.! x of
-    (CField rc fnt) -> do
+    (CField rc fnt) ->
       if obj == HIConstant 0
         then do -- putstatic
           let sfi = StaticField $ StaticFieldInfo rc (ntName fnt)
@@ -466,7 +452,7 @@ girEmitOO (IRStore _ (RTPool x) obj src) = do
           s <- getState
           setState (s { traps = M.insert trapaddr (ObjectField patcher) (traps s)})
     e -> error $ "emit: irstore: missing impl.: " ++ show e
-girEmitOO (IRStore _ (RTIndex idx typ) dst src) = do
+girEmitOO (IRStore _ (RTIndex idx typ) dst src) =
     freeRegFor edx dst $ do
       case idx of
         HIConstant _ -> mov eax (0 :: Word32)
@@ -485,21 +471,20 @@ girEmitOO (IRStore _ (RTIndex idx typ) dst src) = do
       -- store array elem
       r2r edx src
       case idx of
-        HIConstant i -> mov (Disp ((+0xc) . (*(typeSize typ)) $ i32Tow32 i), eax) edx
+        HIConstant i -> mov (Disp ((+0xc) . (* typeSize typ) $ i32Tow32 i), eax) edx
         _ -> mov (Disp 0, eax) edx
 
-girEmitOO ins@(IRStore _ _ _ _) = do
-  error $ "irstore: emit: " ++ show ins
+girEmitOO ins@(IRStore{}) = error $ "irstore: emit: " ++ show ins
 girEmitOO (IRPush _ _ (HIReg x)) = push x
 girEmitOO (IRPush _ _ (HIConstant x)) = push (i32Tow32 x)
 girEmitOO (IRPush _ _ (SpillIReg d)) = push (d, ebp)
-girEmitOO (IRPrep SaveRegs regs) = do
-  forM_ regs $ \(HIReg x, _) -> do
+girEmitOO (IRPrep SaveRegs regs) =
+  forM_ regs $ \(HIReg x, _) ->
     mov (Disp (fromJust (saveReg x)), ebp) x
-girEmitOO (IRPrep RestoreRegs regs) = do
-  forM_ regs $ \(HIReg x, _) -> do
+girEmitOO (IRPrep RestoreRegs regs) =
+  forM_ regs $ \(HIReg x, _) ->
     mov x (Disp (fromJust (saveReg x)), ebp)
-girEmitOO (IRMisc1 _ jins vreg) = do
+girEmitOO (IRMisc1 _ jins vreg) =
   case jins of
     ATHROW -> do
       r2r eax vreg
@@ -509,15 +494,15 @@ girEmitOO (IRMisc1 _ jins vreg) = do
             liftIO $ handleExceptionPatcher wbr
       s <- getState
       setState (s { traps = M.insert trapaddr (ThrowException patcher) (traps s) })
-    CHECKCAST _ -> do
+    CHECKCAST _ ->
       nop -- TODO ..
     x -> error $ "emit: misc1: " ++ show x
-girEmitOO (IRMisc2 _ jins dst src) = do
+girEmitOO (IRMisc2 _ jins dst src) =
   case jins of
     INSTANCEOF cpidx -> do
       cls <- classf <$> getState
       let movres :: Word32 -> CodeGen e s ()
-          movres r = r2r dst r
+          movres = r2r dst
       r2r eax src
       -- place something like `mov edx $mtable_of_objref' instead
       trapaddr <- emitSigIllTrap 4
@@ -526,9 +511,7 @@ girEmitOO (IRMisc2 _ jins dst src) = do
             emitSigIllTrap 4
             let classname = buildClassID cls cpidx
             check <- liftIO $ isInstanceOf (fromIntegral $ wbEax wbr) classname
-            if check
-              then movres 1
-              else movres 0
+            movres (if check then 1 else 0)
             return $ wbr {wbEip = wbEip wbr + 4}
       s <- getState
       setState (s { traps = M.insert trapaddr (InstanceOf patcher) (traps s) })
@@ -676,13 +659,13 @@ saveReg (Reg32 w8) =
     _ -> error "saveReg: ?????"
 
 saveRegs :: CodeGen e s ()
-saveRegs = do
-  forM_ [ecx, edx, ebx, esi, edi] $ \x -> do
+saveRegs =
+  forM_ [ecx, edx, ebx, esi, edi] $ \x ->
     mov (Disp (fromJust (saveReg x)), ebp) x
 
 restoreRegs :: CodeGen e s ()
-restoreRegs = do
-  forM_ [ecx, edx, ebx, esi, edi] $ \x -> do
+restoreRegs =
+  forM_ [ecx, edx, ebx, esi, edi] $ \x ->
     mov x (Disp (fromJust (saveReg x)), ebp)
 
 -- helper

@@ -42,7 +42,7 @@ livenessTransfer :: BwdTransfer (MateIR Var) LiveSet
 livenessTransfer = mkBTransfer live
   where
     live :: (MateIR Var) e x -> Fact x LiveSet -> LiveSet
-    live (IRLabel _ _ _ _) f = f
+    live IRLabel{} f = f
     live (IROp _ _ dst src1 src2) f = removeVar dst $ addVar src1 $ addVar src2 f
     live (IRPrep _ _) f = f
     live (IRStore _ rt dst src) f = rtVar rt $ addVar dst $ addVar src f
@@ -65,11 +65,6 @@ livenessTransfer = mkBTransfer live
     rtVar :: RTPool Var -> LiveSet -> LiveSet
     rtVar (RTIndex v _) f = addVar v f
     rtVar _ f = f
-
-    bot :: LiveSet
-    bot = fact_bot livenessLattice
-    factLabel :: FactBase LiveSet -> Label -> LiveSet
-    factLabel f l = fromMaybe bot $ lookupFact l f
 
     addVar :: Var -> LiveSet -> LiveSet
     addVar (VReg v) f = S.insert v f
@@ -119,10 +114,10 @@ livenessAnnotate = mkBRewrite annotate
           -> m1 (Maybe (Graph (MateIR Var) O C))
     retOC = return . Just . mkLast
 
-    bot :: LiveSet
-    bot = fact_bot livenessLattice
-    factLabel :: FactBase LiveSet -> Label -> LiveSet
-    factLabel f l = fromMaybe bot $ lookupFact l f
+bot :: LiveSet
+bot = fact_bot livenessLattice
+factLabel :: FactBase LiveSet -> Label -> LiveSet
+factLabel f l = fromMaybe bot $ lookupFact l f
 
 -- live ranges
 -- TODO: limitation: one reg can just have one live range
@@ -158,7 +153,7 @@ computeLiveRanges insn = LiveRanges ls le
 step :: LiveState ()
 step = do
   insn <- linstructions <$> get
-  when (not $ null insn) $ do
+  unless (null insn) $ do
     pc <- pcCnt <$> get
     let (ins:insns) = insn
 
@@ -174,7 +169,7 @@ step = do
     modify (\s -> s { linstructions = insns
                     , active = la
                     , lstarts = M.alter alt pc lsmap
-                    , lends   = S.fold (\k -> M.insert k pc) lemap deadguys
+                    , lends   = S.fold (`M.insert` pc) lemap deadguys
                     })
     incPC
     step
@@ -201,11 +196,11 @@ extractLiveAnnotation ins =
       IRReturn la _         -> return la
 
 incPC :: LiveState ()
-incPC = modify (\s -> s { pcCnt = 1 + (pcCnt s) })
+incPC = modify (\s -> s { pcCnt = 1 + pcCnt s })
 
 instance Show LiveRanges where
-  show (LiveRanges ls le) = do
-    (flip concatMap) (M.keys ls) $ \frompc ->
-        (flip concatMap) (ls M.! frompc) $ \var ->
+  show (LiveRanges ls le) =
+    flip concatMap (M.keys ls) $ \frompc ->
+        flip concatMap (ls M.! frompc) $ \var ->
           let topc = le M.! var in
           printf "%12s: from %04d -> %04d active\n" (show var) frompc topc

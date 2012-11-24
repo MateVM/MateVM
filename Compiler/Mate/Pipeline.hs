@@ -55,12 +55,12 @@ pipeline cls meth jvminsn = do
     printfPipe $ printMapping lsramap
     prettyHeader "Register Allocation"
     printfPipe $ printf "%s\n" (show ra)
-    when mateDEBUG $ do
+    when mateDEBUG $
       unless (noLiveRangeCollision liveranges lsramap) $ error "live range collision!"
     prettyHeader "Code Generation"
 
     let cgconfig = defaultCodeGenConfig
-                  { codeBufferSize = fromIntegral $ (length jvminsn) * 0x40 }
+                  { codeBufferSize = fromIntegral $ length jvminsn * 0x40 }
     let stinit = compileStateInit cls (methodName meth)
     (_, res) <- runCodeGenWithConfig (compileLinear lbls ra stackAlloc) () stinit cgconfig
     (dis, entry, trapmap) <- case res of
@@ -149,7 +149,7 @@ prettyHeader str = do
   printfPipe $ printf "%s\n" (replicate len ' ')
 
 compileMethod :: B.ByteString -> MethodSignature -> Class Direct -> IO (NativeWord, TrapMap)
-compileMethod meth sig cls = do
+compileMethod meth sig cls =
   case lookupMethodWithSig meth sig cls of
     Just m -> do
       let c = codeInstructions $ decodeMethod $ fromMaybe (error "no code seg") (attrByName m "Code")

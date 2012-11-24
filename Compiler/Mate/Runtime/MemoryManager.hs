@@ -90,17 +90,17 @@ buildGCAction stack size = do let rootsOnStack = concatMap T.possibleRefs stack
         dereference intPtr = do printfGc $ printf "deref stacklocation: 0x%08x\n" (fromIntegral intPtr :: Int)
                                 obj <- peek $ intPtrToPtr intPtr :: IO IntPtr
                                 printfGc $ printf "deref location: "
-                                printfGc ((show $ intPtrToPtr obj) ++ "\n")
+                                printfGc (show (intPtrToPtr obj) ++ "\n")
                                 return (intPtr,obj)
 
 -- (stackLocation,obj)
 buildRootPatcher :: (IntPtr,IntPtr) -> RootSet a -> RootSet a
-buildRootPatcher (ptr,obj) = M.insertWith (both) ptr' patch 
+buildRootPatcher (ptr,obj) = M.insertWith both ptr' patch 
   where --patch = poke ptr' 
         patch newLocation = do printfGc $ printf "patch new ref: 0x%08x on stackloc: 0x%08x\n" 
                                  (fromIntegral newLocation :: Int) (fromIntegral ptr :: Int)
                                poke (intPtrToPtr ptr) newLocation   
         ptr' = intPtrToPtr obj
 
-        both newPatch oldPatch = \newLocation -> do newPatch newLocation
-                                                    oldPatch newLocation
+        both newPatch oldPatch newLocation = do newPatch newLocation
+                                                oldPatch newLocation

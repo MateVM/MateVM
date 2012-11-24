@@ -50,9 +50,9 @@ preArgs :: [Integer]
 preArgs = [preArgsStart .. (preArgsStart + preArgsLength - 1)]
 
 preAssignedRegs :: RegMapping
-preAssignedRegs = M.fromList $
-                  [ ((VR preeax JInt),  HIReg eax)
-                  , ((VR prexmm7 JRef), HFReg xmm7)
+preAssignedRegs = M.fromList
+                  [ (VR preeax JInt,  HIReg eax)
+                  , (VR prexmm7 JRef, HFReg xmm7)
                   ]
 
 -- calling convention for floats is different: arguments are passed via xmm
@@ -82,10 +82,10 @@ allFloatRegs = S.fromList $ map HFReg [xmm0, xmm1, xmm2, xmm3, xmm4, xmm5, xmm6]
 stupidRegAlloc :: RegMapping -> PCActiveMap -> [LinearIns Var] -> Word32
                -> ([LinearIns HVarX86], Word32)
 stupidRegAlloc preAssigned pcactive linsn stackcnt =
-    (reslin, 0 - spillOffset stateres)
+    (reslin, negate $ spillOffset stateres)
   where
     (reslin, stateres) = runState regAlloc' startmapping
-    startassign = M.union (regMap emptyRegs) preAssigned
+    startassign = regMap emptyRegs `M.union` preAssigned
     startmapping = emptyRegs { regMap = startassign, spillOffset = stackcnt }
     regAlloc' = forM linsn $ \x -> do
                     r <- assignReg x
@@ -93,25 +93,25 @@ stupidRegAlloc preAssigned pcactive linsn stackcnt =
                     return r
 
     pcInc :: State MappedRegs ()
-    pcInc = modify (\s -> s { pcCounter = 1 + (pcCounter s)})
+    pcInc = modify (\s -> s { pcCounter = 1 + pcCounter s })
 
     pointMapping :: State MappedRegs [(HVarX86, VarType)]
     pointMapping = do
       pc <- pcCounter <$> get
       rm <- regMap <$> get
-      return [ (rm M.! vreg, vrTyp vreg) | vreg <- (pcactive M.! pc) ]
+      return [ (rm M.! vreg, vrTyp vreg) | vreg <- pcactive M.! pc ]
 
     rtRepack :: RTPool Var -> State MappedRegs (RTPool HVarX86)
     rtRepack (RTPool w16) = return $ RTPool w16
     rtRepack (RTPoolCall w16 []) = do
       mapping <- pointMapping
       return $ RTPoolCall w16 mapping
-    rtRepack (RTPoolCall _ x) = do
+    rtRepack (RTPoolCall _ x) =
       error $ "regalloc: rtpoolcall: mapping should be empty: " ++ show x
     rtRepack (RTArray w8 obj [] w32) = do
       mapping <- pointMapping
       return $ RTArray w8 obj mapping w32
-    rtRepack (RTArray _ _ x _) = do
+    rtRepack (RTArray _ _ x _) =
       error $ "regalloc: rtArray: mapping should be empty: " ++ show x
     rtRepack (RTIndex vreg typ) = do
       newreg <- doAssign vreg
@@ -227,7 +227,7 @@ lsraMapping precolored (LiveRanges lstarts lends) =
     (regmapping mapping, stackDisp mapping, pc2active mapping)
   where
     lastPC = S.findMax $ M.keysSet lstarts
-    mapping = execState lsra $
+    mapping = execState lsra
               LsraStateData { pcCnt = 0
                             , regmapping = preAssignedRegs `M.union` precolored
                             , freeRegs = S.toList allIntRegs
@@ -248,14 +248,14 @@ lsraMapping precolored (LiveRanges lstarts lends) =
             freeGuys pc
             forM_ new $ \vreg -> do
               hasMapping <- M.member vreg <$> regmapping <$> get -- maybe pre assigned
-              when (not hasMapping) $ do
+              unless hasMapping $ do
                 fr <- freeRegs <$> get
                 if null fr
                   then spillGuy vreg
                   else do
                     let hreg = head fr
                     modify (\s -> s { freeRegs = tail fr
-                                    , activeRegs = vreg : (activeRegs s)
+                                    , activeRegs = vreg : activeRegs s
                                     , regmapping = M.insert vreg hreg (regmapping s)
                                     })
         active <- activeRegs <$> get
@@ -265,12 +265,12 @@ lsraMapping precolored (LiveRanges lstarts lends) =
     freeGuys :: Int -> LsraState ()
     freeGuys pc = do
       active <- activeRegs <$> get
-      forM_ active $ \vreg -> do
+      forM_ active $ \vreg ->
         -- TODO: test if `<=' works too
         when ((lends M.! vreg) < pc) $ do
           hreg <- (M.! vreg) <$> regmapping <$> get
           modify (\s -> s { activeRegs = L.delete vreg (activeRegs s)
-                          , freeRegs = hreg:(freeRegs s) })
+                          , freeRegs = hreg : freeRegs s })
     spillGuy :: VirtualReg -> LsraState()
     spillGuy vreg = do
       sc <- stackDisp <$> get
@@ -284,7 +284,7 @@ noLiveRangeCollision :: LiveRanges -> RegMapping -> Bool
 noLiveRangeCollision (LiveRanges lstarts lends) rmapping =
     and [ and
             [ noCollision intk (intervalOfVreg j)
-            | j <- (sameHReg k) ]
+            | j <- sameHReg k ]
         | k <- vregs , let intk = intervalOfVreg k ]
   where
     vregs = M.keys rmapping
@@ -334,6 +334,6 @@ instance Arbitrary LiveRanges where
 
 
 printMapping :: RegMapping -> String
-printMapping m = do
-  (flip concatMap) (M.keys m) $ \x ->
+printMapping m =
+  flip concatMap (M.keys m) $ \x ->
     printf "vreg %12s  -> %10s\n" (show x) (show $ m M.! x)
