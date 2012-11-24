@@ -103,7 +103,6 @@ livenessAnnotate = mkBRewrite annotate
       retOC $ IRIfElse (factLabel f l1 `S.union` factLabel f l2) jcmp src1 src2 l1 l2
     annotate (IRSwitch _ src lbls) f =
       retOC $ IRSwitch (foldl S.union S.empty (map (factLabel f . snd) lbls)) src lbls
-    annotate y _ = error $ "livenessAnnotate: not impl. yet: " ++ show y
 
     retCO :: forall m1. FuelMonad m1
           => (MateIR Var) C O
