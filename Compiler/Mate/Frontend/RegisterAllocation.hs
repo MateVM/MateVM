@@ -308,10 +308,10 @@ prop_noCollision lr = noLiveRangeCollision lr res
   where
     (res, _, _) = lsraMapping M.empty lr
 
-testLSRA :: IO ()
+testLSRA :: IO Result
 testLSRA = do
   putStrLn "quickcheck lsra..."
-  quickCheck prop_noCollision
+  quickCheckResult prop_noCollision
 
 instance Arbitrary LiveRanges where
   arbitrary = do
