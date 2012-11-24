@@ -38,8 +38,8 @@ gitinstall git://github.com/MateVM/hs-java.git
 gitinstall git://github.com/MateVM/harpy.git
 
 # cabal install hoopl $CABAL_OPT
-# gitinstall git://github.com/MateVM/hoopl.git
-gitinstall http://darcs.haskell.org/libraries/hoopl.git
+gitinstall git://github.com/MateVM/hoopl.git
+# gitinstall https://github.com/ghc/packages-hoopl
 
 
 gitinstallWithCustomSetup git://github.com/MateVM/hs-boehmgc.git
