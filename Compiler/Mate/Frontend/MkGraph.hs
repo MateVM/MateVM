@@ -69,12 +69,12 @@ addExceptionBlocks :: ParseState ()
 addExceptionBlocks = do
   -- split on a new exception handler block
   hstarts <- S.toList <$> handlerStarts <$> get
-  forM_ hstarts $ addPC . fromIntegral
+  forM_ hstarts addPC
   -- split on a try block
   exKeys <- IM.keys <$> exceptionMap <$> get
-  forM_ (map IIM.lowerBound exKeys) $ addPC . fromIntegral
+  forM_ (map IIM.lowerBound exKeys) addPC
   -- increment in order to get next block (cf. decrement in 
-  forM_ (map IIM.upperBound exKeys) $ addPC . (+1) . fromIntegral
+  forM_ (map IIM.upperBound exKeys) $ addPC . (+1)
 
 -- forward references wouldn't be a problem, but backwards are
 resolveReferences :: ParseState ()
@@ -90,7 +90,6 @@ resolveReferences = do
         let ins = head jvminsn
         addJumpTarget ins pc
         incrementPC ins
-        popInstruction
         resolveReferences
   where
     addJumpTarget :: J.Instruction -> Int32 -> ParseState ()
@@ -113,8 +112,9 @@ resolveReferences = do
       addPC (pc + w16Toi32 rel)
     addSwitch :: Int32 -> Word32 -> [Word32] -> ParseState ()
     addSwitch pc def offs = do
-      mapM_ (addPC . (+pc) . fromIntegral) offs
-      addPC $ pc + fromIntegral def
+      let addrel = addPC . (+ pc) . fromIntegral
+      mapM_ addrel offs
+      addrel def
 
 addPC :: Int32 -> ParseState ()
 addPC bcoff = modify (\s -> s { blockEntries = S.insert bcoff (blockEntries s) })
@@ -177,9 +177,14 @@ addLabel boff = do
     then return $ lmap M.! boff
     else do
       label <- lift freshLabel
-      modify (\s -> s {labels = M.insert boff label (labels s) })
-      modify (\s -> s {nextTargets = label : nextTargets s })
+      modify (\s -> s { labels = M.insert boff label (labels s)
+                      , nextTargets = label : nextTargets s })
       return label
+
+incrementPC :: J.Instruction -> ParseState ()
+incrementPC ins = do
+  modify (\s -> s { pcOffset = pcOffset s + insnLength ins})
+  popInstruction
 
 popInstruction :: ParseState ()
 popInstruction = do
@@ -198,12 +203,10 @@ toMid = do
       then do
         res <- toLast ins
         incrementPC ins
-        popInstruction
         return res
       else do
         insIR <- tir ins
         incrementPC ins
-        popInstruction
         first (insIR ++) <$> toMid
   where
     toLast :: J.Instruction -> ParseState ([MateIR Var O O], MateIR Var O C)
@@ -253,8 +256,8 @@ toMid = do
           next <- addLabel (pc + insnLength ins)
           insIR <- tir ins
           return (insIR, IRJump next)
-      foo <- handleBlockEnd
-      return (ret1 ++ foo, ret2)
+      fixups <- handleBlockEnd
+      return (ret1 ++ fixups, ret2)
       where
         returnSomething t = do
           r <- apop
@@ -281,14 +284,14 @@ insnLength :: Integral a => J.Instruction -> a
 insnLength x = case x of
   (TABLESWITCH padding _ _ _ xs) ->
     fromIntegral $ 1 {- opcode -}
-                 + fromIntegral padding
+                 + padding
                  + (3 * 4) {- def, low, high -}
-                 + 4 * length xs {- entries -}
+                 + 4 * L.genericLength xs {- entries -}
   (LOOKUPSWITCH padding _ _ xs) ->
     fromIntegral $ 1 {- opcode -}
-                 + fromIntegral padding
+                 + padding
                  + (2 * 4) {- def, n -}
-                 + 8 * length xs {- pairs -}
+                 + 8 * L.genericLength xs {- pairs -}
   -- TODO: better idea anyone?
   AALOAD -> 1
   AASTORE -> 1
@@ -322,9 +325,6 @@ insnLength x = case x of
   _ -> len -- trace (printf "insn: %s -> len: %d\n" (show x) (fromIntegral len :: Word32)) len
   where
     len = fromIntegral . B.length . encodeInstructions . (:[]) $ x
-
-incrementPC :: J.Instruction -> ParseState ()
-incrementPC ins = modify (\s -> s { pcOffset = pcOffset s + insnLength ins})
 
 resetPC :: [J.Instruction] -> ParseState ()
 resetPC jvmins =
@@ -599,7 +599,7 @@ maybeArgument x t = do
               -> (VirtualReg, HVarX86)
       genVReg constructor a w8 t' =
         (VR a t'
-        ,constructor . Disp . (+0xc) . fromIntegral $ (ptrSize * w8))
+        ,constructor . Disp . (+ (3 * ptrSize)) . fromIntegral $ (ptrSize * w8))
   if x < methodArgs meth
     then do
       ((tup'k, tup'v), assign') <- case t of
