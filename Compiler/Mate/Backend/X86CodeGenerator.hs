@@ -38,7 +38,7 @@ import Harpy.X86Disassembler
 
 import qualified Compiler.Hoopl as H
 import Compiler.Hoopl hiding (Label)
-import Compiler.Mate.Frontend hiding (ptrSize, classf)
+import Compiler.Mate.Frontend hiding (classf)
 import Compiler.Mate.Backend.NativeSizes
 import Compiler.Mate.Runtime.ClassHierarchy
 import Compiler.Mate.Runtime.JavaObjects

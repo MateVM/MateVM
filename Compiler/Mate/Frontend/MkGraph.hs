@@ -39,6 +39,8 @@ import Compiler.Mate.Types
 import Compiler.Mate.Frontend.IR
 import Compiler.Mate.Frontend.RegisterAllocation
 
+import Compiler.Mate.Backend.NativeSizes
+
 -- import Debug.Trace
 
 data ParseState' = ParseState'

@@ -6,7 +6,6 @@ module Compiler.Mate.Frontend.RegisterAllocation
   , preFloats
   , preArgs
   , stupidRegAlloc
-  , ptrSize -- TODO...
   , lsraMapping
   , noLiveRangeCollision
   , testLSRA
@@ -32,13 +31,12 @@ import Compiler.Mate.Frontend.IR
 import Compiler.Mate.Frontend.Linear
 import Compiler.Mate.Frontend.LivenessPass
 
+import Compiler.Mate.Backend.NativeSizes
+
 data MappedRegs = MappedRegs
   { regMap :: RegMapping
   , pcCounter :: Int
   , spillOffset :: Word32 }
-
-ptrSize :: Num a => a
-ptrSize = 4
 
 {- pre assign hardware registers -}
 preeax, prexmm7, preArgsLength, preArgsStart :: Integer
