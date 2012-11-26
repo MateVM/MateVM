@@ -6,6 +6,7 @@
 module Compiler.Mate.Frontend.IR
  ( MateIR(..)
  , VirtualReg(..)
+ , VRegNR
  , PC
  , RegMapping
  , HandlerMap
@@ -42,8 +43,10 @@ type HandlerMap = [(B.ByteString {- exception class -}
                    )]
 type MaybeHandler = Maybe Word32
 
+type VRegNR = Integer
+
 data VirtualReg = VR
-  { vrNr :: Integer
+  { vrNr :: VRegNR
   , vrTyp :: VarType
   } deriving Show
 
@@ -51,6 +54,7 @@ instance Eq VirtualReg where
   (VR x _) == (VR y _) = x == y
 
 instance Ord VirtualReg where
+  {-# INLINE compare #-}
   compare (VR x _) (VR y _) = x `compare` y
 
 type PC = Int

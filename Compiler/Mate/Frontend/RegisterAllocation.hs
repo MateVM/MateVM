@@ -39,12 +39,12 @@ data MappedRegs = MappedRegs
   , spillOffset :: Word32 }
 
 {- pre assign hardware registers -}
-preeax, prexmm7, preArgsLength, preArgsStart :: Integer
+preeax, prexmm7, preArgsLength, preArgsStart :: Num a => a
 preeax = 99999
 prexmm7 = 100000
 preArgsLength = 6
 preArgsStart = 200000
-preArgs :: [Integer]
+preArgs :: (Num a, Enum a) => [a]
 preArgs = [preArgsStart .. (preArgsStart + preArgsLength - 1)]
 
 preAssignedRegs :: RegMapping
@@ -56,9 +56,9 @@ preAssignedRegs = M.fromList
 -- calling convention for floats is different: arguments are passed via xmm
 -- registers, while int arguements are passed via stack slots
 
-preFloatStart :: Integer
+preFloatStart :: Num a => a
 preFloatStart = 300000
-preFloats :: [Integer]
+preFloats :: (Num a, Enum a) => [a]
 preFloats = [preFloatStart .. (preFloatStart + 5)]
 
 {- the slots before are reservered for spilling registers on
@@ -314,7 +314,7 @@ testLSRA = do
 instance Arbitrary LiveRanges where
   arbitrary = do
     pcEnd <- choose (10, 700) :: Gen Int
-    vRegs' <- choose (10, 1500) :: Gen Integer
+    vRegs' <- choose (10, 1500) :: Gen VRegNR
     vRegs <- forM [0 .. vRegs'] $ \vreg -> do
       typ <- elements [JRef, JInt]
       return (VR vreg typ)

@@ -52,7 +52,7 @@ data ParseState' = ParseState'
 
   , pcOffset :: Int32 {- programm counter -}
   , stack :: [Var] {- simulation stack -}
-  , regcnt :: Integer {- counter for virtual registers -}
+  , regcnt :: VRegNR {- counter for virtual registers -}
   , classf :: Class Direct {- reference to class of processed method -}
   , method :: Method Direct {- reference to processed method -}
   , preRegs :: RegMapping
@@ -594,7 +594,7 @@ tirInvoke ct ident = do
 maybeArgument :: Word8 -> VarType -> ParseState Var
 maybeArgument x t = do
   meth <- method <$> get
-  let genVReg :: (Disp -> HVarX86) -> Integer
+  let genVReg :: (Disp -> HVarX86) -> VRegNR
               -> Word8 -> VarType
               -> (VirtualReg, HVarX86)
       genVReg constructor a w8 t' =
