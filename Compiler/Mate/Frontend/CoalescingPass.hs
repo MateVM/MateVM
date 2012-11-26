@@ -7,6 +7,7 @@ module Compiler.Mate.Frontend.CoalescingPass
 import Prelude hiding (lookup)
 
 import qualified Data.Map as M
+import qualified Data.List as L
 import Data.Maybe
 
 import Compiler.Hoopl
@@ -62,7 +63,7 @@ coalTransfer = mkBTransfer3 usesCO usesOO usesOC
         else f
     usesOO ins f = addFacts (useIR ins) f
 
-    usesOC ins f = addFacts (useIR ins) $ foldl M.union bot succs
+    usesOC ins f = addFacts (useIR ins) $ L.foldl' M.union bot succs
       where
         succs = map (factLabel f) $ successors ins
 
@@ -104,7 +105,8 @@ coalTransferID = mkBTransfer3 usesCO usesOO usesOC
   where
     usesCO _ f = f
     usesOO _ f = f
-    usesOC _ f = foldl M.union bot (mapElems f)
+    -- again, some hack to gain faster runtime
+    usesOC _ f = fromMaybe bot (lookupFact (head . mapKeys $ f) f)
 
 coalPass :: BwdPass SimpleFuelMonad (MateIR Var) CoalFact
 coalPass = BwdPass
