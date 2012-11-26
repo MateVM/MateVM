@@ -235,8 +235,14 @@ toMid = do
           op2 <- apop
           unless (varType op2 == JInt) $ error "toLast IF: type mismatch"
           ifstuff jcmp rel op1 op2
-        (IFNULL _) -> error "toLast: IFNULL"
-        (IFNONNULL _) -> error "toLast: IFNONNULL"
+        (IFNULL rel) -> do
+          op1 <- apop
+          unless (varType op1 == JRef) $ error "toLast IFNULL: type mismatch"
+          ifstuff C_EQ rel op1 (JIntValue 0)
+        (IFNONNULL rel) -> do
+          op1 <- apop
+          unless (varType op1 == JRef) $ error "toLast IFNONNULL: type mismatch"
+          ifstuff C_NE rel op1 (JIntValue 0)
         (IF_ICMP jcmp rel) -> do
           op1 <- apop
           op2 <- apop
