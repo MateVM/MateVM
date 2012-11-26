@@ -254,6 +254,9 @@ girEmitOO (IROp _ operation dst' src1' src2') =
                   Sub -> error "emit: ge: opx: not sure if c1 - c2 or c2 - c1"
                   y -> error $ "emit: ge: opx: constant: " ++ show y
       mov (d, ebp) res
+    ge opx (HIReg dst) (HIReg src1) (HIReg src2) = do
+      mov dst src2
+      opx dst src1
     ge opx dst src1 src2 = do
       r2r eax src2
       case src1 of
@@ -284,6 +287,10 @@ girEmitOO (IROp _ operation dst' src1' src2') =
     gs :: (forall a b. (Shr a b, Sar a b, Sal a b)
                     => a -> b -> CodeGen e s ())
           -> HVarX86 -> HVarX86 -> HVarX86 -> CodeGen e s ()
+    gs so (HIReg dst) (HIReg src1) (HIReg src2) = do
+      mov dst src2
+      mov ecx src1
+      so dst cl
     gs so dst src1 src2 = do
       r2r eax src2
       r2r ecx src1
