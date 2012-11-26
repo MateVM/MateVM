@@ -469,6 +469,12 @@ tir DUP = do
   nv <- newvar (varType x)
   apush nv
   return [irop Add nv x (JIntValue 0)]
+tir DUP_X1 = do
+  v1 <- apop; v2 <- apop
+  nv <- newvar (varType v1)
+  apush nv
+  apush v2; apush v1
+  return [irop Add nv v1 (JIntValue 0)]
 tir DUP_X2 = do
   -- WARNING: different behaviour for LONG & DOUBLE!!
   -- see, category 2 computational type (§2.11.1).
