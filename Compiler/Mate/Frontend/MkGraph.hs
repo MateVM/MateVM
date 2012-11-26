@@ -270,7 +270,7 @@ handleBlockEnd = do
   let len = L.genericLength $ stack st
   if len > 0
     then
-      forM [500000 .. (500000 + len - 1)] $ \r -> do
+      forM [600000 .. (600000 + len - 1)] $ \r -> do
         x <- apop
         let vreg = VReg (VR r (varType x))
         targets <- nextTargets <$> get
@@ -389,7 +389,7 @@ tir FCONST_0 =  do apush $ JFloatValue 0; return []
 tir FCONST_1 =  do apush $ JFloatValue 1; return []
 tir FCONST_2 =  do apush $ JFloatValue 3; return []
 tir (ILOAD_ x) = tir (ILOAD (imm2num x))
-tir (ILOAD x) = tirLoad x JInt
+tir (ILOAD x) = do tirLoad x JInt -- tirLoad' x JInt; return []
 tir (IINC x con) = do
   tirLoad' x JInt
   y <- apop

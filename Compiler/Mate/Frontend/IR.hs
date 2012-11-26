@@ -2,6 +2,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE RankNTypes #-}
 module Compiler.Mate.Frontend.IR
  ( MateIR(..)
  , VirtualReg(..)
@@ -20,6 +21,7 @@ module Compiler.Mate.Frontend.IR
  , PreGCPoint
  , VarType(..)
  , varType
+ , mapIR, defIR, useIR, varsIR
  ) where
 
 import qualified Data.ByteString.Lazy as B
@@ -31,7 +33,7 @@ import Text.Printf
 
 import JVM.Assembler
 import Compiler.Hoopl
-import Harpy hiding (Label)
+import Harpy hiding (Label, fst)
 
 import Compiler.Mate.Types
 
@@ -223,3 +225,68 @@ showAnno :: LiveAnnotation -> String
 showAnno _ = ""
 -- showAnno live = printf "\n\t\tnow living:  %s" (show $ S.toList live)
 {- /show -}
+
+mapRT :: (t -> r) -> RTPool t -> RTPool r
+mapRT f (RTIndex var vt) = RTIndex (f var) vt
+mapRT _ (RTPool w16) = RTPool w16
+mapRT _ (RTPoolCall w16 pregcp) = RTPoolCall w16 pregcp
+mapRT _ (RTArray w8 mobj pregcp w32) = RTArray w8 mobj pregcp w32
+mapRT _ RTNone = RTNone
+
+varsRT' :: RTPool t -> ([t], [t])
+varsRT' (RTIndex var _) = ([], [var])
+varsRT' _ = ([], [])
+
+
+mapIR :: Show r => (t -> r) -> MateIR t e x -> MateIR r e x
+mapIR _ (IRLabel la l hmap mhand) = IRLabel la l hmap mhand
+
+mapIR f (IROp la ot dst src1 src2) = IROp la ot (f dst) (f src1) (f src2)
+mapIR f (IRStore la rt oref src) = IRStore la (mapRT f rt) (f oref) (f src)
+mapIR f (IRLoad la rt oref dst) = IRLoad la (mapRT f rt) (f oref) (f dst)
+mapIR f (IRMisc1 la ins src) = IRMisc1 la ins (f src)
+mapIR f (IRMisc2 la ins src1 src2) = IRMisc2 la ins (f src1) (f src2)
+mapIR _ (IRPrep ct emap) = IRPrep ct emap
+mapIR f (IRInvoke la rt Nothing ct) = IRInvoke la (mapRT f rt) Nothing ct
+mapIR f (IRInvoke la rt (Just r) ct) = IRInvoke la (mapRT f rt) (Just (f r)) ct
+mapIR f (IRPush la w8 src) = IRPush la w8 (f src)
+
+mapIR _ (IRJump l) = IRJump l
+mapIR f (IRIfElse la jcmp src1 src2 l1 l2) = IRIfElse la jcmp (f src1) (f src2) l1 l2
+mapIR _ (IRExHandler lbls) = IRExHandler lbls
+mapIR f (IRSwitch la src smap) = IRSwitch la (f src) smap
+mapIR _ (IRReturn la Nothing) = IRReturn la Nothing
+mapIR f (IRReturn la (Just r)) = IRReturn la (Just (f r))
+
+defIR :: MateIR t e x -> [t]
+defIR = fst . varsIR'
+
+useIR :: MateIR t e x -> [t]
+useIR = snd . varsIR'
+
+varsIR :: MateIR t e x -> [t]
+varsIR ins = defIR ins ++ useIR ins
+
+
+varsIR' :: MateIR t e x -> ([t], [t])
+varsIR' IRLabel{} = ([], [])
+
+varsIR' (IROp _ _ dst src1 src2) = ([dst], [src1, src2])
+varsIR' (IRStore _ rt oref src) = ([], [oref, src]) `tupcons` varsRT' rt
+varsIR' (IRLoad _ rt oref dst) = ([dst], [oref]) `tupcons` varsRT' rt
+varsIR' (IRMisc1 _ _ src) = ([], [src])
+varsIR' (IRMisc2 _ _ src1 src2) = ([], [src1, src2])
+varsIR' IRPrep{} = ([], [])
+varsIR' (IRInvoke _ rt (Just r) _) = ([r], []) `tupcons` varsRT' rt
+varsIR' IRInvoke{} = ([], [])
+varsIR' (IRPush _ _ src) = ([], [src])
+
+varsIR' (IRJump _) = ([], [])
+varsIR' (IRIfElse _ _ src1 src2 _ _) = ([], [src1, src2])
+varsIR' (IRExHandler _) = ([], [])
+varsIR' (IRSwitch _ src _) = ([], [src])
+varsIR' (IRReturn _ (Just r)) = ([], [r])
+varsIR' (IRReturn _ _) = ([], [])
+
+tupcons :: ([a], [b]) -> ([a], [b]) -> ([a], [b])
+tupcons (x1, y1) (x2, y2) = (x1 ++ x2, y1 ++ y2)

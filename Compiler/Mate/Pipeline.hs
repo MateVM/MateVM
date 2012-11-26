@@ -25,6 +25,7 @@ import Control.Monad.State
 import Control.Arrow
 
 import Text.Printf
+import Debug.Trace
 import Compiler.Mate.Debug
 
 import Compiler.Mate.Frontend
@@ -40,12 +41,12 @@ pipeline :: Class Direct -> Method Direct -> [J.Instruction]
 pipeline cls meth jvminsn = do
     prettyHeader "JVM Input"
     mapM_ (printfPipe . printf "\t%s\n" . show) jvminsn
-    -- prettyHeader "Hoopl Graph"
-    -- printfPipe $ printf "%s\n" (showGraph show graph)
+    prettyHeader "Hoopl Graph"
+    printfPipe $ printf "%s\n" (showGraph show graph)
     -- prettyHeader "Label Map"
     -- printfPipe $ printf "%s\n" (show lbls)
-    -- prettyHeader "Hoopl Opt-Graph"
-    -- printfPipe $ printf "%s\n" (showGraph show optgraph)
+    prettyHeader "Hoopl Opt-Graph"
+    printfPipe $ printf "%s\n" (showGraph show optgraph)
     -- prettyHeader "Flatten Graph"
     -- printfPipe $ printf "%s\n" (show linear)
     prettyHeader "Live Ranges"
@@ -122,17 +123,19 @@ pipeline cls meth jvminsn = do
     runFM = runSimpleUniqueMonad . runWithFuel infiniteFuel
     runOpts g = runFM $ do
       let nothingc = NothingC :: MaybeC O Label
+      gm <- if True
+        then do
+          (_, f, _) <- analyzeAndRewriteBwd
+                       coalPass nothingc g noFacts
+          (gm', _, _) <- analyzeAndRewriteBwd
+                         coalPass { bp_transfer = coalTransferID
+                                  , bp_rewrite = coalKill }
+                         nothingc g f
+          tracePipe (printf "facts of coal: %s\n" (show f)) (return gm')
+        else return g
       (g', _, _) <- analyzeAndRewriteBwd
-                       livenessPass nothingc g noFacts
+                    livenessPass nothingc gm noFacts
       return g'
-      -- let nothingc = NothingC :: MaybeC O H.Label
-      -- (_, f, _) <- analyzeAndRewriteBwd
-      --                oneUseDefPass nothingc g noFacts
-      -- (gm', _, _) <- analyzeAndRewriteBwd
-      --                oneUseDefPass { bp_transfer = oudTransferID
-      --                              , bp_rewrite = oudKill }
-      --                 nothingc g f
-      -- tracePipe (printf "facts: %s\n" (show f)) $ return gm'
     optgraph = runOpts graph
     lbls = labels transstate
     linear = mkLinear optgraph
