@@ -26,6 +26,7 @@ import Compiler.Mate.Runtime.MemoryManager
 
 import JVM.ClassFile
 import Compiler.Mate.Debug
+import Compiler.Mate.Flags
 import Compiler.Mate.Types
 
 foreign export ccall mallocObjectGC_stackstrace :: CPtrdiff -> CPtrdiff -> Int -> IO CPtrdiff

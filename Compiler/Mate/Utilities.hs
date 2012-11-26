@@ -41,3 +41,7 @@ methodGetArgsCount nt = genericLength args
 lookupMethodWithSig :: B.ByteString -> MethodSignature -> Class Direct -> Maybe (Method Direct)
 lookupMethodWithSig name sig cls =
   find (\x -> methodName x == name && methodSignature x == sig) $ classMethods cls
+
+checkNothing :: String -> Maybe a -> a
+checkNothing m Nothing   = error m
+checkNothing _ (Just v)  = v

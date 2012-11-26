@@ -14,8 +14,6 @@ module Compiler.Mate.Debug
   , printfPipe
   , tracePipe
   , mateDEBUG
-  , usePreciseGC
-  , checkNothing
   , printf -- TODO: delete me
   ) where
 
@@ -76,11 +74,3 @@ tracePipe :: String -> a -> a
 tracePipe string expr = unsafePerformIO $ do
   printfPipe string
   return expr
-
-{-# INLINE usePreciseGC #-}
-usePreciseGC :: Bool
-usePreciseGC = False
-
-checkNothing :: String -> Maybe a -> a
-checkNothing m Nothing   = error m
-checkNothing _ (Just v)  = v
