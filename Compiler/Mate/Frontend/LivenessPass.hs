@@ -121,7 +121,6 @@ factLabel f l = fromMaybe bot $ lookupFact l f
 
 -- live ranges
 -- TODO: limitation: one reg can just have one live range
-type PC = Int
 type LiveStart = M.Map PC [VirtualReg]
 type LiveEnd = M.Map VirtualReg PC
 data LiveRanges = LiveRanges LiveStart LiveEnd

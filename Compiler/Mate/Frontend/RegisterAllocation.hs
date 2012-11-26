@@ -193,7 +193,7 @@ stupidRegAlloc preAssigned pcactive linsn stackcnt =
         -- only use spill slots)
         insertAssign :: Var -> State MappedRegs HVarX86
         insertAssign (VReg vreg) = do
-          disp <- (+(-4)) <$> spillOffset <$> get
+          disp <- (+(-ptrSize)) <$> spillOffset <$> get
           let hreg = SpillIReg (Disp disp)
           modify (\s -> s { spillOffset = disp
                           , regMap = M.insert vreg hreg (regMap s)})
@@ -202,7 +202,7 @@ stupidRegAlloc preAssigned pcactive linsn stackcnt =
 
 -- lsra
 data LsraStateData = LsraStateData
-  { pcCnt :: Int
+  { pcCnt :: PC
   -- mapping of virtual to hardware register (or spills)
   , regmapping :: RegMapping
   -- set of non-used hardware registers
@@ -273,7 +273,7 @@ lsraMapping precolored (LiveRanges lstarts lends) =
     spillGuy vreg = do
       sc <- stackDisp <$> get
       let spill = SpillIReg (Disp sc)
-      modify (\s -> s { stackDisp = stackDisp s - 4
+      modify (\s -> s { stackDisp = stackDisp s - ptrSize
                       , regmapping = M.insert vreg spill (regmapping s)
                       })
 

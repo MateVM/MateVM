@@ -5,6 +5,7 @@
 module Compiler.Mate.Frontend.IR
  ( MateIR(..)
  , VirtualReg(..)
+ , PC
  , RegMapping
  , HandlerMap
  , MaybeHandler
@@ -50,6 +51,7 @@ instance Eq VirtualReg where
 instance Ord VirtualReg where
   compare (VR x _) (VR y _) = x `compare` y
 
+type PC = Int
 type RegMapping = M.Map VirtualReg HVarX86
 
 type LiveAnnotation = S.Set VirtualReg {- vars which are live after this instruction -}
