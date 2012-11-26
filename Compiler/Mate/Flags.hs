@@ -7,4 +7,4 @@ usePreciseGC = False
 
 {-# INLINE enableCoalescing #-}
 enableCoalescing :: Bool
-enableCoalescing = True
+enableCoalescing = False
