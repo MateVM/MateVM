@@ -1,10 +1,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 module Compiler.Mate.Frontend.CoalescingPass
-  ( coalPass
-  , coalTransferID
-  , coalTransfer
-  , coalKill
+  ( coalBwdPass
   ) where
 
 import Prelude hiding (lookup)
@@ -15,6 +12,8 @@ import Data.Maybe
 import Compiler.Hoopl
 import Compiler.Mate.Frontend.IR
 import Compiler.Mate.Frontend.RegisterAllocation
+import Compiler.Mate.Debug
+import Compiler.Mate.Flags
 
 -- either map to useage-count or actual merged var
 type CoalFact = M.Map Var (WithTop (Either Int Var))
@@ -112,3 +111,22 @@ coalPass = BwdPass
   { bp_lattice = coalLattice
   , bp_transfer = coalTransfer
   , bp_rewrite = noBwdRewrite }
+
+
+coalBwdPass :: forall x.
+               Fact x CoalFact ~ LabelMap CoalFact => -- dafuq?
+               Graph (MateIR Var) O x ->
+               SimpleFuelMonad (Graph (MateIR Var) O x)
+coalBwdPass g = do
+  let nothingc = NothingC :: MaybeC O Label
+  if enableCoalescing
+    then do
+      (_, f, _) <- analyzeAndRewriteBwd
+                   coalPass nothingc g noFacts
+      (gopt, _, _) <- analyzeAndRewriteBwd
+                      coalPass { bp_transfer = coalTransferID
+                               , bp_rewrite = coalKill }
+                      nothingc g f
+      tracePipe (printf "facts of coal: %s\n" (show f)) $
+        return gopt
+    else return g

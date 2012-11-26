@@ -25,7 +25,6 @@ import Control.Monad.State
 import Control.Arrow
 
 import Text.Printf
-import Debug.Trace
 import Compiler.Mate.Debug
 
 import Compiler.Mate.Frontend
@@ -123,16 +122,7 @@ pipeline cls meth jvminsn = do
     runFM = runSimpleUniqueMonad . runWithFuel infiniteFuel
     runOpts g = runFM $ do
       let nothingc = NothingC :: MaybeC O Label
-      gm <- if True
-        then do
-          (_, f, _) <- analyzeAndRewriteBwd
-                       coalPass nothingc g noFacts
-          (gm', _, _) <- analyzeAndRewriteBwd
-                         coalPass { bp_transfer = coalTransferID
-                                  , bp_rewrite = coalKill }
-                         nothingc g f
-          tracePipe (printf "facts of coal: %s\n" (show f)) (return gm')
-        else return g
+      gm <- coalBwdPass g
       (g', _, _) <- analyzeAndRewriteBwd
                     livenessPass nothingc gm noFacts
       return g'
