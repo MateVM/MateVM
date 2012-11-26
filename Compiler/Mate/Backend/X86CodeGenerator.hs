@@ -452,7 +452,7 @@ girEmitOO (IRStore _ (RTPool x) obj src) = do
           s <- getState
           setState (s { traps = M.insert trapaddr (ObjectField patcher) (traps s)})
     e -> error $ "emit: irstore: missing impl.: " ++ show e
-girEmitOO (IRStore _ (RTIndex idx typ) dst src) =
+girEmitOO (IRStore _ (RTIndex idx typ) obj dst) =
     freeRegFor edx dst $ do
       case idx of
         HIConstant _ -> mov eax (0 :: Word32)
@@ -464,12 +464,12 @@ girEmitOO (IRStore _ (RTIndex idx typ) dst src) =
           mov edx (typeSize typ :: Word32)
           mul edx
           add eax (0xc :: Word32)
-      case dst of
+      case obj of
         HIReg d -> if d == edx then add eax (Disp 0, esp) else add eax d
         SpillIReg d -> add eax (d, ebp)
         y -> error $ "girEmitOO: irstore: rtindex: dst: " ++ show y
       -- store array elem
-      r2r edx src
+      r2r edx dst
       case idx of
         HIConstant i -> mov (Disp ((+0xc) . (* typeSize typ) $ i32Tow32 i), eax) edx
         _ -> mov (Disp 0, eax) edx
