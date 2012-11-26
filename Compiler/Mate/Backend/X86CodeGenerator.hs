@@ -388,21 +388,24 @@ girEmitOO (IRLoad _ (RTPool x) src dst) = do
     y -> error $ "emit: irload: missing impl.: getfield or something: " ++ show y
 
 girEmitOO (IRLoad _ (RTArray ta objType regmapping arrlen) (HIConstant 0) dst) = do
-  let tsize = case decodeS (0 :: Integer) (B.pack [ta]) of
-                T_INT -> 4
-                T_CHAR -> 4
-                _ -> error "newarray: type not implemented yet"
-  let len = arrlen * tsize
-  saveRegs
-  push (len + (3 * ptrSize))
-  callMallocGCPoint regmapping
-  restoreRegs
-  case objType of
-    PrimitiveType -> mov (Disp 0, eax) (0x1228babe :: Word32)
-    ReferenceType -> mov (Disp 0, eax) (0x1227babe :: Word32)
-  mov (Disp 4, eax) (0x1337babe :: Word32) -- gcinfo
-  mov (Disp 8, eax) arrlen -- store length at offset 0
-  r2r dst eax
+  freeRegFor ebx dst $ do
+    let tsize = case decodeS (0 :: Integer) (B.pack [ta]) of
+                  T_INT -> S4
+                  T_CHAR -> S4
+                  _ -> error "newarray: type not implemented yet"
+    r2r ebx arrlen
+    lea eax (Disp $ 3 * ptrSize, ebx, tsize)
+    saveRegs
+    push eax
+    callMallocGCPoint regmapping
+    restoreRegs
+    case objType of
+      PrimitiveType -> mov (Disp 0, eax) (0x1228babe :: Word32)
+      ReferenceType -> mov (Disp 0, eax) (0x1227babe :: Word32)
+    mov (Disp 4, eax) (0x1337babe :: Word32) -- gcinfo
+    mov (Disp 8, eax) ebx -- store length at offset 0
+    r2r dst eax
+
 
 girEmitOO (IRLoad _ RTNone src dst) = do -- arraylength
   r2r eax src

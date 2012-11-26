@@ -106,9 +106,10 @@ stupidRegAlloc preAssigned pcactive linsn stackcnt =
       return $ RTPoolCall w16 mapping
     rtRepack (RTPoolCall _ x) =
       error $ "regalloc: rtpoolcall: mapping should be empty: " ++ show x
-    rtRepack (RTArray w8 obj [] w32) = do
+    rtRepack (RTArray w8 obj [] vreg) = do
+      newreg <- doAssign vreg
       mapping <- pointMapping
-      return $ RTArray w8 obj mapping w32
+      return $ RTArray w8 obj mapping newreg
     rtRepack (RTArray _ _ x _) =
       error $ "regalloc: rtArray: mapping should be empty: " ++ show x
     rtRepack (RTIndex vreg typ) = do

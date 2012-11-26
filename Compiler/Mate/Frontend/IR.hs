@@ -158,7 +158,7 @@ type PreGCPoint = [(HVarX86, VarType)]
 data RTPool t
   = RTPool Word16
   | RTPoolCall Word16 PreGCPoint
-  | RTArray Word8 MateObjType PreGCPoint Word32
+  | RTArray Word8 MateObjType PreGCPoint t
   | RTIndex t VarType
   | RTNone
 
@@ -232,13 +232,14 @@ showAnno _ = ""
 
 mapRT :: (t -> r) -> RTPool t -> RTPool r
 mapRT f (RTIndex var vt) = RTIndex (f var) vt
+mapRT f (RTArray w8 mobj pregcp var) = RTArray w8 mobj pregcp (f var)
 mapRT _ (RTPool w16) = RTPool w16
 mapRT _ (RTPoolCall w16 pregcp) = RTPoolCall w16 pregcp
-mapRT _ (RTArray w8 mobj pregcp w32) = RTArray w8 mobj pregcp w32
 mapRT _ RTNone = RTNone
 
 varsRT' :: RTPool t -> ([t], [t])
 varsRT' (RTIndex var _) = ([], [var])
+varsRT' (RTArray _ _ _ var) = ([], [var])
 varsRT' _ = ([], [])
 
 

@@ -511,12 +511,10 @@ tir x = error $ "tir: " ++ show x
 tirArray :: MateObjType -> Word8 -> ParseState [MateIR Var O O]
 tirArray objtype w8 = do
   len <- apop
-  let len' = case len of
-              JIntValue x -> fromIntegral x
-              x -> error $ "tir: anewarray: len is not constant: " ++ show x
+  when (varType len /= JInt) $ error "tir: tirArray: type mismatch"
   nv <- newvar JRef
   apush nv
-  return [irload (RTArray w8 objtype [] len') JRefNull nv]
+  return [irload (RTArray w8 objtype [] len) JRefNull nv]
 
 tirArrayLoad :: VarType -> Maybe Int32 {- Mask -} -> ParseState [MateIR Var O O]
 tirArrayLoad t mask = do
