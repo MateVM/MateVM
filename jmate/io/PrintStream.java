@@ -1,5 +1,7 @@
 package jmate.io;
 
+import jmate.lang.*;
+
 public class PrintStream {
 	public void println(String a) {
 		// TODO: `a + "\n"' when StringBuilder is available
@@ -26,6 +28,10 @@ public class PrintStream {
 			this.printf_X(format, len);
 		}
 		return this;
+	}
+
+	public void printInteger(String fmt, int lol) {
+		this.printf_1(fmt, new jmate.lang.Integer(lol));
 	}
 
 	public native static void printf_X(String a, Object b);
