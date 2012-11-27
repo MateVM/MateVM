@@ -523,6 +523,10 @@ tir i@(INSTANCEOF _) = do
 tir i@ATHROW = do
   y <- apop
   return [irmisc1 i y]
+tir MONITORENTER = do -- TODO: stub!
+  apop; return []
+tir MONITOREXIT = do -- TODO: stub!
+  apop; return []
 tir x = error $ "tir: " ++ show x
 
 tirArray :: MateObjType -> Word8 -> ParseState [MateIR Var O O]
