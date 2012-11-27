@@ -20,7 +20,8 @@
 
 #include <sys/ucontext.h>
 
-void mateHandler(ptrdiff_t, ptrdiff_t, ptrdiff_t, ptrdiff_t, ptrdiff_t, ptrdiff_t, ptrdiff_t*);
+void mateHandler(ptrdiff_t, ptrdiff_t, ptrdiff_t, ptrdiff_t,
+		         ptrdiff_t, ptrdiff_t, ptrdiff_t, ptrdiff_t*);
 
 #ifdef DBG_TRAP
 #define dprintf(args...) do { printf (args); } while (0);
@@ -36,6 +37,7 @@ void chandler(int nSignal, siginfo_t *info, void *ctx)
 	ptrdiff_t eip = (ptrdiff_t) regs[REG_EIP];
 	ptrdiff_t eax = (ptrdiff_t) regs[REG_EAX];
 	ptrdiff_t ebx = (ptrdiff_t) regs[REG_EBX];
+	ptrdiff_t ecx = (ptrdiff_t) regs[REG_ECX];
 	ptrdiff_t esp = (ptrdiff_t) regs[REG_ESP];
 	ptrdiff_t esi = (ptrdiff_t) regs[REG_ESI];
 	ptrdiff_t ebp = (ptrdiff_t) regs[REG_EBP];
@@ -45,7 +47,7 @@ void chandler(int nSignal, siginfo_t *info, void *ctx)
 
 
 	ptrdiff_t ret[4] = {0};
-	mateHandler(eip, eax, ebx, esi, ebp, esp, ret);
+	mateHandler(eip, eax, ebx, esi, ebp, esp, ecx, ret);
 	if (ret[0] == -1) {
 		dprintf("regdump @ EIP: 0x%08x\n", regs[REG_EIP]);
 		dprintf("\tEAX: 0x%08lx EBX: 0x%08lx ECX: 0x%08lx EDX: 0x%08lx\n",

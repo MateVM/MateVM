@@ -32,10 +32,10 @@ foreign import ccall "register_signal"
 
 type MateHandlerType = CPtrdiff -> CPtrdiff -> CPtrdiff ->
                        CPtrdiff -> CPtrdiff -> CPtrdiff ->
-                       CUIntPtr -> IO ()
+                       CPtrdiff -> CUIntPtr -> IO ()
 foreign export ccall mateHandler :: MateHandlerType
 mateHandler :: MateHandlerType
-mateHandler reip reax rebx resi rebp resp retarr = do
+mateHandler reip reax rebx resi rebp resp recx retarr = do
   tmap <- getTrapMap
   printfTrap "----------------------\nenter matehandler\n"
   let reipw32 = fromIntegral reip
@@ -65,6 +65,7 @@ mateHandler reip reax rebx resi rebp resp retarr = do
            ++ concatMap (`showHex` ", ") (M.keys tmap)
            ++ printf "\neax: 0x%08x" (fromIntegral reax :: Word32)
            ++ printf "\nebx: 0x%08x" (fromIntegral rebx :: Word32)
+           ++ printf "\necx: 0x%08x" (fromIntegral recx :: Word32)
            ++ printf "\nesi: 0x%08x" (fromIntegral resi :: Word32)
            ++ printf "\nebp: 0x%08x" (fromIntegral rebp :: Word32)
       -- push exception ref on the stack
