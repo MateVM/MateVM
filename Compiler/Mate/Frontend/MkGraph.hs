@@ -486,6 +486,11 @@ tir DUP_X2 = do
 tir POP = do apop; return []
 tir IADD = tirOpInt Add JInt
 tir ISUB = tirOpInt Sub JInt
+tir INEG = do
+  x <- apop
+  apush (JIntValue 0)
+  apush x
+  tirOpInt Sub JInt
 tir IMUL = tirOpInt Mul JInt
 tir IDIV = tirOpInt Div JInt
 tir IREM = tirOpInt Rem JInt
