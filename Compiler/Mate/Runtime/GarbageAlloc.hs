@@ -72,7 +72,9 @@ mallocObjectGC size = do
   ptr <- alloc Nothing size
   BI.memset (castPtr ptr) 0 (fromIntegral size)
   printfMem $ printf "mallocObject: %d\n" size
-  return $ fromIntegral $ ptrToIntPtr ptr
+  let addr = fromIntegral $ ptrToIntPtr ptr
+  when (addr == 0) $ error "mallocObjectGC: ptr is null"
+  return addr
 
 -- allocates using precise or boehmgc. the first argument describes whether
 -- gc may take place (if nothing, no rebp provided and no precise gc can ever work)
