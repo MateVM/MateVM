@@ -22,7 +22,7 @@ module Compiler.Mate.Frontend.IR
  , PreGCPoint
  , VarType(..)
  , varType
- , mapIR, defIR, useIR, varsIR
+ , mapIR, defIR, useIR, varsIR, varsIR'
  ) where
 
 import qualified Data.ByteString.Lazy as B

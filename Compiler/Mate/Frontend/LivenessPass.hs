@@ -39,39 +39,24 @@ livenessLattice = DataflowLattice
           merged = new `S.union` old
 
 livenessTransfer :: BwdTransfer (MateIR Var) LiveSet
-livenessTransfer = mkBTransfer live
+livenessTransfer = mkBTransfer3 liveCO liveOO liveOC
   where
-    live :: (MateIR Var) e x -> Fact x LiveSet -> LiveSet
-    live IRLabel{} f = f
-    live (IROp _ _ dst src1 src2) f = removeVar dst $ addVar src1 $ addVar src2 f
-    live (IRPrep _ _) f = f
-    live (IRStore _ rt dst src) f = rtVar rt $ addVar dst $ addVar src f
-    live (IRLoad  _ rt dst src) f = rtVar rt $ addVar dst $ removeVar src f
-    live (IRPush _ _ src) f = addVar src f
-    live (IRMisc1 _ _ src) f = addVar src f
-    live (IRMisc2 _ _ dst src) f = removeVar dst $ addVar src f
-    live (IRInvoke _ _ (Just retreg) _) f = removeVar retreg f
-    live (IRInvoke _ _ Nothing _) f = f
-
-    live (IRReturn _ (Just t)) _ = addVar t bot
-    live (IRReturn _ _) _ = bot
-    live (IRIfElse _ _ src1 src2 lt lf) f =
-      addVar src1 $ addVar src2 $ factLabel f lt `S.union` factLabel f lf
-    live (IRSwitch _ src lbls) f =
-      addVar src $ foldl S.union S.empty (map (factLabel f . snd) lbls)
-    live (IRJump lab) f = factLabel f lab
-    live y _ = error $ "hoopl: livetransfer: not impl. yet: " ++ show y
-
-    rtVar :: RTPool Var -> LiveSet -> LiveSet
-    rtVar (RTIndex v _) f = addVar v f
-    rtVar _ f = f
+    liveCO ins f = factMerge f (varsIR' ins)
+    liveOO ins f = factMerge f (varsIR' ins)
+    liveOC ins f = factMerge facts (varsIR' ins)
+      where
+        facts = foldl S.union bot (map (factLabel f) $ successors ins)
 
     addVar :: Var -> LiveSet -> LiveSet
     addVar (VReg v) f = S.insert v f
     addVar _ f = f
+
     removeVar :: Var -> LiveSet -> LiveSet
     removeVar (VReg v) f = S.delete v f
     removeVar _ f = f
+
+    factMerge :: LiveSet -> ([Var], [Var]) -> LiveSet
+    factMerge f (defs, uses) = foldr removeVar (foldr addVar f uses) defs
 
 
 livenessAnnotate :: forall m . FuelMonad m => BwdRewrite m (MateIR Var) LiveSet
