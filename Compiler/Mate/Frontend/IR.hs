@@ -272,7 +272,6 @@ useIR = snd . varsIR'
 varsIR :: MateIR t e x -> [t]
 varsIR ins = defIR ins ++ useIR ins
 
-
 varsIR' :: MateIR t e x -> ([t], [t])
 varsIR' IRLabel{} = ([], [])
 

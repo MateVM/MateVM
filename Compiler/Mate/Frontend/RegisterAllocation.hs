@@ -99,78 +99,24 @@ stupidRegAlloc preAssigned pcactive linsn stackcnt =
       rm <- regMap <$> get
       return [ (rm M.! vreg, vrTyp vreg) | vreg <- pcactive M.! pc ]
 
-    rtRepack :: RTPool Var -> State MappedRegs (RTPool HVarX86)
-    rtRepack (RTPool w16) = return $ RTPool w16
-    rtRepack (RTPoolCall w16 []) = do
-      mapping <- pointMapping
-      return $ RTPoolCall w16 mapping
-    rtRepack (RTPoolCall _ x) =
-      error $ "regalloc: rtpoolcall: mapping should be empty: " ++ show x
-    rtRepack (RTArray w8 obj [] vreg) = do
-      newreg <- doAssign vreg
-      mapping <- pointMapping
-      return $ RTArray w8 obj mapping newreg
-    rtRepack (RTArray _ _ x _) =
-      error $ "regalloc: rtArray: mapping should be empty: " ++ show x
-    rtRepack (RTIndex vreg typ) = do
-      newreg <- doAssign vreg
-      return $ RTIndex newreg typ
-    rtRepack RTNone = return RTNone
-
     assignReg :: LinearIns Var -> State MappedRegs (LinearIns HVarX86)
     assignReg lv = case lv of
-      Fst x -> case x of
-        IRLabel la x' y z -> return $ Fst $ IRLabel la x' y z
+      Fst ins -> assignReg' ins Fst
       Mid ins -> case ins of
-        IROp la op dst src1 src2 -> do
-          dstnew <- doAssign dst
-          src1new <- doAssign src1
-          src2new <- doAssign src2
-          return $ Mid $ IROp la op dstnew src1new src2new
-        IRStore la rt obj src -> do
-          objnew <- doAssign obj
-          srcnew <- doAssign src
-          nrt <- rtRepack rt
-          return $ Mid $ IRStore la nrt objnew srcnew
-        IRLoad la rt obj dst -> do
-          objnew <- doAssign obj
-          dstnew <- doAssign dst
-          nrt <- rtRepack rt
-          return $ Mid $ IRLoad la nrt objnew dstnew
-        IRMisc1 la jins src -> do
-          srcnew <- doAssign src
-          return $ Mid $ IRMisc1 la jins srcnew
-        IRMisc2 la jins dst src -> do
-          dstnew <- doAssign dst
-          srcnew <- doAssign src
-          return $ Mid $ IRMisc2 la jins dstnew srcnew
         IRPrep typ _ -> do
           ru <- pointMapping
           return $ Mid $ IRPrep typ ru
-        IRPush la nr src -> do
-          srcnew <- doAssign src
-          return $ Mid $ IRPush la nr srcnew
-        IRInvoke la rt (Just r) ct -> do
-          rnew <- Just <$> doAssign r
-          nrt <- rtRepack rt
-          return $ Mid $ IRInvoke la nrt rnew ct
-        IRInvoke la rt Nothing ct -> do
-          nrt <- rtRepack rt
-          return $ Mid $ IRInvoke la nrt Nothing ct
-      Lst ins -> case ins of
-        IRJump l -> return $ Lst $ IRJump l
-        IRIfElse la jcmp cmp1 cmp2 l1 l2 -> do
-          cmp1new <- doAssign cmp1
-          cmp2new <- doAssign cmp2
-          return $ Lst $ IRIfElse la jcmp cmp1new cmp2new l1 l2
-        IRExHandler t -> return $ Lst $ IRExHandler t
-        IRSwitch la reg t -> do
-          regnew <- doAssign reg
-          return $ Lst $ IRSwitch la regnew t
-        IRReturn la (Just b) -> do
-          bnew <- Just <$> doAssign b
-          return $ Lst $ IRReturn la bnew
-        IRReturn la Nothing -> return $ Lst $ IRReturn la Nothing
+        _ -> assignReg' ins Mid
+      Lst ins -> assignReg' ins Lst
+
+    assignReg' :: MateIR Var e x
+               -> (MateIR HVarX86 e x -> LinearIns HVarX86)
+               -> State MappedRegs (LinearIns HVarX86)
+    assignReg' ins blocktype = do
+      assigns <- forM (varsIR ins) $ \x -> do
+        y <- doAssign x; return (x, y)
+      let f = (M.!) (M.fromList assigns)
+      return $ blocktype $ mapIR f ins
 
     doAssign :: Var -> State MappedRegs HVarX86
     doAssign (JIntValue x) = return $ HIConstant x
