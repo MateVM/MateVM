@@ -1,9 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Compiler.Mate.Types
-  ( w8Toi32
-  , w16Toi32
-  , w32Toi32
-  , i32Tow32
+  ( w8Toi32, w16Toi32, w32Toi32, i32Tow32
+  , objectMtable, objectGC
+  , arrayMagic, arrayGC, arrayLength, arrayBase
   , ExceptionMap
   , RuntimeStackInfo(..)
   , StackDisp, GCPoint, GCPoints, GCSet, rootSet
@@ -59,6 +58,18 @@ w32Toi32 = fromIntegral
 
 i32Tow32 :: Int32 -> Word32
 i32Tow32 = fromIntegral
+
+-- object offsets
+objectMtable, objectGC :: Num a => a
+objectMtable = 0x0
+objectGC = 0x4
+
+-- array offsets
+arrayMagic, arrayGC, arrayLength, arrayBase :: Num a => a
+arrayMagic = 0x0
+arrayGC = 0x4
+arrayLength = 0x8
+arrayBase = 0xc
 
 
 type ExceptionMap a = IM.IntervalMap a [(B.ByteString, a)]

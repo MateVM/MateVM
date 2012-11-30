@@ -337,8 +337,8 @@ girEmitOO (IRLoad _ (RTPoolCall x mapping) (HIConstant 0) dst) = do
       callMallocGCPoint mapping
       restoreRegs
       -- 0x13371337 is just a placeholder; will be replaced with mtable ptr
-      mov (Disp 0, eax) (0x13371337 :: Word32)
-      mov (Disp 4, eax) (0 :: Word32)
+      mov (Disp objectMtable, eax) (0x13371337 :: Word32)
+      mov (Disp objectGC, eax) (0 :: Word32)
       r2r dst eax
       let patcher wbr = do
             objsize <- liftIO $ getObjectSize objname
@@ -346,8 +346,8 @@ girEmitOO (IRLoad _ (RTPoolCall x mapping) (HIConstant 0) dst) = do
             callMalloc
             restoreRegs
             mtable <- liftIO $ getMethodTable objname
-            mov (Disp 0, eax) mtable
-            mov (Disp 4, eax) (0 :: Word32)
+            mov (Disp objectMtable, eax) mtable
+            mov (Disp objectGC, eax) (0 :: Word32)
             r2r dst eax
             return wbr
       s <- getState
@@ -400,26 +400,26 @@ girEmitOO (IRLoad _ (RTArray ta objType regmapping arrlen) (HIConstant 0) dst) =
     callMallocGCPoint regmapping
     restoreRegs
     case objType of
-      PrimitiveType -> mov (Disp 0, eax) (0x1228babe :: Word32)
-      ReferenceType -> mov (Disp 0, eax) (0x1227babe :: Word32)
-    mov (Disp 4, eax) (0x1337babe :: Word32) -- gcinfo
-    mov (Disp 8, eax) ebx -- store length at offset 0
+      PrimitiveType -> mov (Disp arrayMagic, eax) (0x1228babe :: Word32)
+      ReferenceType -> mov (Disp arrayMagic, eax) (0x1227babe :: Word32)
+    mov (Disp arrayGC, eax) (0x1337babe :: Word32) -- gcinfo
+    mov (Disp arrayLength, eax) ebx -- store length at offset 0
     r2r dst eax
 
 
 girEmitOO (IRLoad _ RTNone src dst) = do -- arraylength
   r2r eax src
-  mov eax (Disp 8, eax)
+  mov eax (Disp arrayLength, eax)
   r2r dst eax
 
 girEmitOO (IRLoad _ (RTIndex idx typ) src dst) =
     freeRegFor edx dst $ do
       case idx of
-        HIConstant i -> mov eax $ (i32Tow32 i * typeSize typ) + 0xc
-        HIReg i -> lea eax (Disp 0xc, i, typeSize' typ)
+        HIConstant i -> mov eax $ (i32Tow32 i * typeSize typ) + arrayBase
+        HIReg i -> lea eax (Disp arrayBase, i, typeSize' typ)
         SpillIReg d -> do
           mov eax (d, ebp)
-          lea eax (Disp 0xc, eax, typeSize' typ)
+          lea eax (Disp arrayBase, eax, typeSize' typ)
         y -> error $ "girEmitOO: irload: rtindex: idx: " ++ show y
       case src of
         HIReg s -> if s == edx then add eax (Disp 0, esp) else add eax s
@@ -463,10 +463,10 @@ girEmitOO (IRStore _ (RTIndex idx typ) obj dst) =
     freeRegFor edx dst $ do
       case idx of
         HIConstant _ -> mov eax (0 :: Word32)
-        HIReg i -> lea eax (Disp 0xc, i, typeSize' typ)
+        HIReg i -> lea eax (Disp arrayBase, i, typeSize' typ)
         SpillIReg d -> do
           mov eax (d, ebp)
-          lea eax (Disp 0xc, eax, typeSize' typ)
+          lea eax (Disp arrayBase, eax, typeSize' typ)
         y -> error $ "girEmitOO: irstore: rtindex: idx: " ++ show y
       case obj of
         HIReg d -> if d == edx then add eax (Disp 0, esp) else add eax d
@@ -475,7 +475,7 @@ girEmitOO (IRStore _ (RTIndex idx typ) obj dst) =
       -- store array elem
       r2r edx dst
       case idx of
-        HIConstant i -> mov (Disp ((+0xc) . (* typeSize typ) $ i32Tow32 i), eax) edx
+        HIConstant i -> mov (Disp ((+ arrayBase) . (* typeSize typ) $ i32Tow32 i), eax) edx
         _ -> mov (Disp 0, eax) edx
 
 girEmitOO ins@(IRStore{}) = error $ "irstore: emit: " ++ show ins
@@ -565,9 +565,9 @@ girVirtual cpidx haveReturn ct mapping = do
   -- objref lives somewhere on the argument stack
   mov ebx (Disp 0, esp)
   when isInterface $
-    mov ebx (Disp 0, ebx) -- get method-table-ptr, keep it in ebx
+    mov ebx (Disp objectMtable, ebx) -- get method-table-ptr, keep it in ebx
   -- get method-table-ptr (or interface-table-ptr)
-  mov eax (Disp 0, ebx)
+  mov eax (Disp objectMtable, ebx)
   -- make actual (indirect) call
   calladdr <- getCurrentOffset
   -- will be patched to this: call (Disp 0xXXXXXXXX, eax)

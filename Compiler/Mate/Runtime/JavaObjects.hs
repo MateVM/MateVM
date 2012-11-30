@@ -64,7 +64,6 @@ allocateJavaString str = do
   tblptr <- mallocObjectUnmanaged $ fromIntegral fsize
   let ptr = intPtrToPtr (fromIntegral tblptr) :: Ptr CPtrdiff
   mtbl <- getMethodTable "java/lang/String"
-  poke ptr $ fromIntegral mtbl
 
   -- build array layout
   let strlen = fromIntegral $ B.length str
@@ -82,8 +81,10 @@ allocateJavaString str = do
   let newstr_length = castPtr newstr :: Ptr CPtrdiff
   poke newstr_length $ fromIntegral strlen
 
+  -- set mtable
+  poke (plusPtr ptr objectMtable) (fromIntegral mtbl :: CPtrdiff)
   -- set GC Data (TODO)
-  poke (plusPtr ptr 0x4) (0 :: CPtrdiff)
+  poke (plusPtr ptr objectGC) (0 :: CPtrdiff)
   -- set value pointer
   poke (plusPtr ptr 0x8) (fromIntegral (ptrToIntPtr newstr) :: CPtrdiff)
   -- set count field
@@ -105,8 +106,8 @@ allocAndInitObject p = do
   obj <- fromIntegral <$> getObjectSize p >>= mallocObjectGC
   let objptr = intPtrToPtr (fromIntegral obj)
   mtable <- getMethodTable p
-  poke (plusPtr objptr 0) mtable
-  poke (plusPtr objptr 4) (0x1337babe :: CPtrdiff)
+  poke (plusPtr objptr objectMtable) mtable
+  poke (plusPtr objptr objectGC) (0x1337babe :: CPtrdiff)
   entry <- lookupMethodEntry mi
   let fptr = (castPtrToFunPtr . intPtrToPtr . fromIntegral $ entry) :: FunPtr (CPtrdiff -> IO ())
   code_ref fptr obj
