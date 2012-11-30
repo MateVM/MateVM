@@ -416,14 +416,11 @@ girEmitOO (IRLoad _ (RTIndex idx typ) src dst) =
     freeRegFor edx dst $ do
       case idx of
         HIConstant i -> mov eax $ (i32Tow32 i * typeSize typ) + 0xc
-        _ -> do
-          case idx of
-            HIReg i -> mov eax i
-            SpillIReg d -> mov eax (d, ebp)
-            y -> error $ "girEmitOO: irload: rtindex: idx: " ++ show y
-          mov edx (typeSize typ :: Word32)
-          mul edx
-          add eax (0xc :: Word32)
+        HIReg i -> lea eax (Disp 0xc, i, typeSize' typ)
+        SpillIReg d -> do
+          mov eax (d, ebp)
+          lea eax (Disp 0xc, eax, typeSize' typ)
+        y -> error $ "girEmitOO: irload: rtindex: idx: " ++ show y
       case src of
         HIReg s -> if s == edx then add eax (Disp 0, esp) else add eax s
         SpillIReg d -> add eax (d, ebp)
@@ -466,14 +463,11 @@ girEmitOO (IRStore _ (RTIndex idx typ) obj dst) =
     freeRegFor edx dst $ do
       case idx of
         HIConstant _ -> mov eax (0 :: Word32)
-        _ -> do
-          case idx of
-            HIReg i -> mov eax i
-            SpillIReg d -> mov eax (d, ebp)
-            y -> error $ "emit: irstore: rtindex: idx: " ++ show y
-          mov edx (typeSize typ :: Word32)
-          mul edx
-          add eax (0xc :: Word32)
+        HIReg i -> lea eax (Disp 0xc, i, typeSize' typ)
+        SpillIReg d -> do
+          mov eax (d, ebp)
+          lea eax (Disp 0xc, eax, typeSize' typ)
+        y -> error $ "girEmitOO: irstore: rtindex: idx: " ++ show y
       case obj of
         HIReg d -> if d == edx then add eax (Disp 0, esp) else add eax d
         SpillIReg d -> add eax (d, ebp)
@@ -726,6 +720,12 @@ typeSize :: Num a => VarType -> a
 typeSize JInt = 4
 typeSize JRef = 4
 typeSize x = error $ "typeSize: " ++ show x
+
+typeSize' :: VarType -> Scale
+typeSize' vt = case typeSize vt :: Integer of
+  1 -> S1; 2 -> S2; 4 -> S4
+  y -> error $ "codegen: typeSize': not supported size: "
+             ++ show y ++ ", " ++ show vt
 
 handleExceptionPatcher :: ExceptionHandler
 handleExceptionPatcher wbr = do
