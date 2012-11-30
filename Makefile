@@ -80,7 +80,7 @@ quickcheck: mate.quickcheck
 
 mate.quickcheck: Compiler/Mate/QuickCheck.hs ffi/trap.c $(HS_FILES) $(HS_BOOT) ffi/native.o $(CLASS_FILES)
 	@mkdir -p $(B_QUICKCHECK)
-	ghc --make -O2 Compiler/Mate/QuickCheck.hs -o $@ -outputdir $(B_QUICKCHECK)
+	ghc --make -O2 Compiler/Mate/QuickCheck.hs $(GHC_CPP) -o $@ -outputdir $(B_QUICKCHECK)
 
 
 # see http://www.haskell.org/ghc/docs/7.0.4/html/users_guide/hpc.html
