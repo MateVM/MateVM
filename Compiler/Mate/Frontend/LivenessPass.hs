@@ -2,7 +2,8 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 module Compiler.Mate.Frontend.LivenessPass
-  ( livenessPass
+  ( liveBwdPass
+  , LiveMateIR(..)
   , computeLiveRanges
   , LiveRanges(..)
   ) where
@@ -17,9 +18,26 @@ import Text.Printf
 
 import Compiler.Hoopl
 import Compiler.Mate.Frontend.IR
-import Compiler.Mate.Frontend.Linear
 
-livenessPass :: BwdPass SimpleFuelMonad (MateIR Var) LiveSet
+type LiveMateIR' e x = (LiveAnnotation, MateIR Var e x)
+newtype LiveMateIR e x = LiveMateIR (LiveMateIR' e x) deriving Show
+
+instance NonLocal LiveMateIR where
+  entryLabel (LiveMateIR (_, ins)) = entryLabel ins
+  successors (LiveMateIR (_, ins)) = successors ins
+
+liveBwdPass :: forall x.
+               Fact x LiveSet ~ LabelMap LiveSet =>
+               Graph (MateIR Var) O x ->
+               SimpleFuelMonad (Graph LiveMateIR O x)
+liveBwdPass g = do
+  let nothingc = NothingC :: MaybeC O Label
+  let gg = mapGraph (\x -> LiveMateIR (liveAnnEmpty, x)) g
+  (g', _, _) <- analyzeAndRewriteBwd
+                livenessPass nothingc gg noFacts
+  return g'
+
+livenessPass :: BwdPass SimpleFuelMonad LiveMateIR LiveSet
 livenessPass = BwdPass
   { bp_lattice = livenessLattice
   , bp_transfer = livenessTransfer
@@ -38,12 +56,17 @@ livenessLattice = DataflowLattice
         where
           merged = new `S.union` old
 
-livenessTransfer :: BwdTransfer (MateIR Var) LiveSet
-livenessTransfer = mkBTransfer3 liveCO liveOO liveOC
+unpacklr :: forall e x. LiveMateIR e x -> LiveMateIR' e x
+unpacklr (LiveMateIR x) = x
+
+livenessTransfer :: BwdTransfer LiveMateIR LiveSet
+livenessTransfer = mkBTransfer3 (unpacker liveCO) (unpacker liveOO) (unpacker liveOC)
   where
-    liveCO ins f = factMerge f (varsIR' ins)
-    liveOO ins f = factMerge f (varsIR' ins)
-    liveOC ins f = factMerge facts (varsIR' ins)
+    unpacker g ins f = g (unpacklr ins) f
+
+    liveCO (_, ins) f = factMerge f (varsIR' ins)
+    liveOO (_, ins) f = factMerge f (varsIR' ins)
+    liveOC (_, ins) f = factMerge facts (varsIR' ins)
       where
         facts = foldl S.union bot (map (factLabel f) $ successors ins)
 
@@ -59,45 +82,45 @@ livenessTransfer = mkBTransfer3 liveCO liveOO liveOC
     factMerge f (defs, uses) = foldr removeVar (foldr addVar f uses) defs
 
 
-livenessAnnotate :: forall m . FuelMonad m => BwdRewrite m (MateIR Var) LiveSet
-livenessAnnotate = mkBRewrite annotate
+livenessAnnotate :: forall m . FuelMonad m => BwdRewrite m LiveMateIR LiveSet
+livenessAnnotate = mkBRewrite3 (unpacker annotateCO) (unpacker annotateOO)
+                               (unpacker annotateOC)
   where
-    annotate :: (MateIR Var) e x -> Fact x LiveSet -> m (Maybe (Graph (MateIR Var) e x))
-    annotate (IRLabel _ l hm mh) f = retCO (IRLabel f l hm mh)
-    annotate (IROp _ opt dvreg{-@(VReg dst)-} src1 src2) f
+    unpacker g ins f = g (unpacklr ins) f
+
+    annotateCO :: LiveMateIR' C O -> Fact O LiveSet -> m (Maybe (Graph LiveMateIR C O))
+    annotateCO (_, ins) f = retCO (f, ins)
+
+    annotateOO :: LiveMateIR' O O -> Fact O LiveSet -> m (Maybe (Graph LiveMateIR O O))
+    annotateOO (_, IROp opt dvreg{-@(VReg dst)-} src1 src2) f
       -- fu @ java. see ./tests/Exception13
       -- | not (dst `S.member` f) = return $ Just emptyGraph
-      | otherwise = retOO (IROp f opt dvreg src1 src2)
-    annotate (IRStore _ rt dst src) f = retOO (IRStore f rt dst src)
-    annotate (IRLoad _ rt src dst) f = retOO (IRLoad f rt src dst)
-    annotate (IRPrep _ _) _ = return Nothing
-    annotate (IRInvoke _ rt mret ct) f = retOO (IRInvoke f rt mret ct)
-    annotate (IRPush _ w8 src) f = retOO (IRPush f w8 src)
-    annotate (IRMisc1 _ ins src) f = retOO (IRMisc1 f ins src)
-    annotate (IRMisc2 _ ins dst src) f = retOO (IRMisc2 f ins dst src)
+      | otherwise = retOO (f, IROp opt dvreg src1 src2)
+    annotateOO (_, ins) f = retOO (f, ins)
 
-    annotate (IRReturn _ ret) _ = retOC (IRReturn bot ret)
-    annotate (IRJump _) _ = return Nothing
-    annotate (IRExHandler _) _ = return Nothing
-    annotate (IRIfElse _ jcmp src1 src2 l1 l2) f =
-      retOC $ IRIfElse (factLabel f l1 `S.union` factLabel f l2) jcmp src1 src2 l1 l2
-    annotate (IRSwitch _ src lbls) f =
-      retOC $ IRSwitch (foldl S.union S.empty (map (factLabel f . snd) lbls)) src lbls
+    annotateOC :: LiveMateIR' O C -> Fact C LiveSet -> m (Maybe (Graph LiveMateIR O C))
+    annotateOC (_, IRReturn ret) _ = retOC (bot, IRReturn ret)
+    annotateOC (_, IRJump _) _ = return Nothing
+    annotateOC (_, IRExHandler _) _ = return Nothing
+    annotateOC (_, IRIfElse jcmp src1 src2 l1 l2) f =
+      retOC $ ((factLabel f l1 `S.union` factLabel f l2), IRIfElse jcmp src1 src2 l1 l2)
+    annotateOC (_, IRSwitch src lbls) f =
+      retOC $ ((foldl S.union S.empty (map (factLabel f . snd) lbls)), IRSwitch src lbls)
 
     retCO :: forall m1. FuelMonad m1
-          => (MateIR Var) C O
-          -> m1 (Maybe (Graph (MateIR Var) C O))
-    retCO = return . Just . mkFirst
+          => LiveMateIR' C O
+          -> m1 (Maybe (Graph LiveMateIR C O))
+    retCO = return . Just . mkFirst . LiveMateIR
 
     retOO :: forall m1. FuelMonad m1
-          => (MateIR Var) O O
-          -> m1 (Maybe (Graph (MateIR Var) O O))
-    retOO = return . Just . mkMiddle
+          => LiveMateIR' O O
+          -> m1 (Maybe (Graph LiveMateIR O O))
+    retOO = return . Just . mkMiddle . LiveMateIR
 
     retOC :: forall m1. FuelMonad m1
-          => (MateIR Var) O C
-          -> m1 (Maybe (Graph (MateIR Var) O C))
-    retOC = return . Just . mkLast
+          => LiveMateIR' O C
+          -> m1 (Maybe (Graph LiveMateIR O C))
+    retOC = return . Just . mkLast . LiveMateIR
 
 bot :: LiveSet
 bot = fact_bot livenessLattice
@@ -112,7 +135,7 @@ data LiveRanges = LiveRanges LiveStart LiveEnd
 
 data LiveStateData = LiveStateData
   { active :: LiveSet
-  , linstructions :: [LinearIns Var]
+  , lannos :: [LiveAnnotation]
   , lstarts :: LiveStart
   , lends :: LiveEnd
   , pcCnt :: Int
@@ -120,15 +143,15 @@ data LiveStateData = LiveStateData
 
 type LiveState a = State LiveStateData a
 
-computeLiveRanges :: [LinearIns Var] -> LiveRanges
-computeLiveRanges insn = LiveRanges ls le
+computeLiveRanges :: [LiveAnnotation] -> LiveRanges
+computeLiveRanges liveannos = LiveRanges ls le
   where
     endstate = snd $ runState step initstate
     ls = lstarts endstate
     le = lends endstate
     initstate = LiveStateData
                   { active = S.empty
-                  , linstructions = insn
+                  , lannos = liveannos
                   , lstarts = M.empty
                   , lends = M.empty
                   , pcCnt = 0
@@ -136,12 +159,11 @@ computeLiveRanges insn = LiveRanges ls le
 
 step :: LiveState ()
 step = do
-  insn <- linstructions <$> get
-  unless (null insn) $ do
+  annos <- lannos <$> get
+  unless (null annos) $ do
     pc <- pcCnt <$> get
-    let (ins:insns) = insn
+    let (la:las) = annos
 
-    la <- extractLiveAnnotation ins
     lsmap <- lstarts <$> get
     lemap <- lends <$> get
     cur <- active <$> get
@@ -150,34 +172,13 @@ step = do
 
     let alt Nothing = Just newguys
         alt (Just old) = Just $ newguys ++ old
-    modify (\s -> s { linstructions = insns
+    modify (\s -> s { lannos = las
                     , active = la
                     , lstarts = M.alter alt pc lsmap
                     , lends   = S.fold (`M.insert` pc) lemap deadguys
                     })
     incPC
     step
-
-extractLiveAnnotation :: LinearIns Var -> LiveState LiveAnnotation
-extractLiveAnnotation ins =
-  case ins of
-    Fst i -> case i of
-      IRLabel la _ _ _  -> return la
-    Mid i -> case i of
-      IROp la _ _ _ _   -> return la
-      IRStore la _ _ _  -> return la
-      IRLoad la _ _ _   -> return la
-      IRMisc1 la _ _    -> return la
-      IRMisc2 la _ _ _  -> return la
-      IRPrep _ _        -> active <$> get
-      IRInvoke la _ _ _ -> return la
-      IRPush la _ _     -> return la
-    Lst i -> case i of
-      IRJump _              -> active <$> get
-      IRIfElse la _ _ _ _ _ -> return la
-      IRExHandler _         -> active <$> get
-      IRSwitch la _ _       -> return la
-      IRReturn la _         -> return la
 
 incPC :: LiveState ()
 incPC = modify (\s -> s { pcCnt = 1 + pcCnt s })

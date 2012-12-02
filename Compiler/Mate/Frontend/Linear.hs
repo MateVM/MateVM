@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -fno-warn-deprecations #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE GADTs #-}
 module Compiler.Mate.Frontend.Linear
   ( mkLinear
@@ -9,6 +10,7 @@ import Text.Printf
 
 import Compiler.Hoopl
 import Compiler.Mate.Frontend.IR
+import Compiler.Mate.Frontend.LivenessPass
 
 data LinearIns t
   = Fst (MateIR t C O)
@@ -20,21 +22,33 @@ instance Show (LinearIns t) where
   show (Mid n) = printf "%s\n" $ show n
   show (Lst n) = printf "%s\n" $ show n
 
-{- flatten hoople graph -}
-mkLinear :: Graph (MateIR Var) O x -> [LinearIns Var] -- [Block (MateIR Var) C C]
-mkLinear = concatMap lineariseBlock . postorder_dfs
+mkLinear :: Graph LiveMateIR O x -> ([LiveAnnotation], [LinearIns Var])
+mkLinear = foldr (join . lineariseBlock) ([], []) . postorder_dfs
   where
+    join (x1, y1) (x2, y2) = (x1 ++ x2, y1 ++ y2)
     -- see compiler/Lambdachine/Grin/RegAlloc.hs
-    -- lineariseBlock :: Block (MateIR Var) C C -> [LinearIns Var]
-    lineariseBlock block = entry_ins
-                           ++ map Mid (blockToList middles)
-                           ++ tail_ins
+    -- lineariseBlock :: Block LiveMateIR C C -> ([LiveAnnotation, [LinearIns Var])
+    lineariseBlock block = (las, linsn)
       where
-        (entry, middles, tailb) = blockSplitAny block
-        entry_ins :: [LinearIns Var]
-        entry_ins = case entry of JustC n -> [Fst n]; NothingC -> []
-        tail_ins :: [LinearIns Var]
-        tail_ins = case tailb of JustC n -> [Lst n]; NothingC -> []
+        las =    mybe fst entry_ins
+              ++ map (\(LiveMateIR (l, _)) -> l) middles
+              ++ mybe fst tail_ins
+        linsn =    mybe snd entry_ins
+                ++ map (\(LiveMateIR (_, x)) -> Mid x) middles
+                ++ mybe snd tail_ins
 
+        (entry, middles', tailb) = blockSplitAny block
+        middles = blockToList middles'
+        entry_ins :: [(LiveAnnotation, LinearIns Var)]
+        entry_ins = case entry of
+                      JustC (LiveMateIR (ela, n)) -> [(ela, Fst n)]
+                      NothingC -> []
+        tail_ins :: [(LiveAnnotation, LinearIns Var)]
+        tail_ins = case tailb of
+                      JustC (LiveMateIR (tla, n)) -> [(tla, Lst n)]
+                      NothingC -> []
 
-{- /linear -}
+        mybe :: forall a x. (a -> x) -> [a] -> [x]
+        mybe _ [] = []
+        mybe f [i] = [f i]
+        mybe _ _ = error "linear: mybe: doesn't happen"

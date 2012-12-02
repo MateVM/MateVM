@@ -99,7 +99,7 @@ compileLinear lbls linsn stackAlloc = do
                   pop ebp {- kill exmap ref on stack -}
                   pop ebp
                   ret
-  let compileIns (Fst (IRLabel _ hlabel hmap maybeHandler)) = do
+  let compileIns (Fst (IRLabel hlabel hmap maybeHandler)) = do
         defineLabel $ lmap M.! hlabel
         reip <- getCurrentOffset
         -- liftIO $ printf "maybeHandler: %s\n" (show maybeHandler)
@@ -115,7 +115,7 @@ compileLinear lbls linsn stackAlloc = do
       compileIns (Lst ins) = do
         case ins of
           -- TODO: signed values
-          IRIfElse _ jcmp src1 src2 h1 h2 -> do
+          IRIfElse jcmp src1 src2 h1 h2 -> do
             let l1 = lmap M.! h1
             let l2 = lmap M.! h2
             case (src1, src2) of -- attention: swap args
@@ -143,7 +143,7 @@ compileLinear lbls linsn stackAlloc = do
             jmp l2
           IRJump h -> jmp (lmap M.! h)
           IRExHandler _ -> error "emit: IRExHandlers: should not happen"
-          IRSwitch _ src table -> do
+          IRSwitch src table -> do
             r2r eax src
             forM_ table $ \x -> case x of
                 (Just val, label) -> do
@@ -151,11 +151,11 @@ compileLinear lbls linsn stackAlloc = do
                   je (lmap M.! label)
                 (Nothing, label) ->
                   jmp (lmap M.! label)
-          IRReturn _ Nothing -> retseq
-          IRReturn _ (Just (HFReg r)) -> do
+          IRReturn Nothing -> retseq
+          IRReturn (Just (HFReg r)) -> do
             movss xmm7 r
             retseq
-          IRReturn _ (Just retreg) -> do
+          IRReturn (Just retreg) -> do
             r2r eax retreg
             retseq
         st <- getState
@@ -220,7 +220,7 @@ select Xor = xor
 select x = error $ "codegen: select: not impl.: " ++ show x
 
 girEmitOO :: MateIR HVarX86 O O -> CodeGen e CompileState ()
-girEmitOO (IROp _ operation dst' src1' src2') =
+girEmitOO (IROp operation dst' src1' src2') =
     case operation of
       Mul -> girMul
       Div -> girDiv eax -- result is in eax
@@ -320,7 +320,7 @@ girEmitOO (IROp _ operation dst' src1' src2') =
           -- move result (depending on the operation) into destination
           r2r dst' resreg
 
-girEmitOO (IRInvoke _ (RTPoolCall cpidx mapping) haveReturn ct) = do
+girEmitOO (IRInvoke (RTPoolCall cpidx mapping) haveReturn ct) = do
   let static = girStatic cpidx haveReturn ct mapping
   let virtual = girVirtual cpidx haveReturn ct mapping
   case ct of
@@ -328,7 +328,7 @@ girEmitOO (IRInvoke _ (RTPoolCall cpidx mapping) haveReturn ct) = do
     CallSpecial -> static
     CallVirtual -> virtual
     CallInterface -> virtual
-girEmitOO (IRLoad _ (RTPoolCall x mapping) (HIConstant 0) dst) = do
+girEmitOO (IRLoad (RTPoolCall x mapping) (HIConstant 0) dst) = do
   cls <- classf <$> getState
   case constsPool cls M.! x of
     (CClass objname) -> do -- `new' object
@@ -354,7 +354,7 @@ girEmitOO (IRLoad _ (RTPoolCall x mapping) (HIConstant 0) dst) = do
       setState (s { traps = M.insert trapaddr (NewObject patcher) (traps s) })
     e -> error $ "emit irload: missing impl.: " ++ show e
 
-girEmitOO (IRLoad _ (RTPool x) (HIConstant 0) dst) = do
+girEmitOO (IRLoad (RTPool x) (HIConstant 0) dst) = do
   cls <- classf <$> getState
   case constsPool cls M.! x of
     (CString s) -> do -- load str (ldc)
@@ -370,7 +370,7 @@ girEmitOO (IRLoad _ (RTPool x) (HIConstant 0) dst) = do
       setState (s { traps = M.insert trapaddr sfi (traps s) })
     e -> error $ "emit: irload2: missing impl.: " ++ show e
 
-girEmitOO (IRLoad _ (RTPool x) src dst) = do
+girEmitOO (IRLoad (RTPool x) src dst) = do
   cls <- classf <$> getState
   case constsPool cls M.! x of
     (CField rc fnt) -> -- getfield
@@ -387,7 +387,7 @@ girEmitOO (IRLoad _ (RTPool x) src dst) = do
         setState (s { traps = M.insert trapaddr ofp (traps s) })
     y -> error $ "emit: irload: missing impl.: getfield or something: " ++ show y
 
-girEmitOO (IRLoad _ (RTArray ta objType regmapping arrlen) (HIConstant 0) dst) = do
+girEmitOO (IRLoad (RTArray ta objType regmapping arrlen) (HIConstant 0) dst) = do
   freeRegFor ebx dst $ do
     let tsize = case decodeS (0 :: Integer) (B.pack [ta]) of
                   T_INT -> S4
@@ -407,12 +407,12 @@ girEmitOO (IRLoad _ (RTArray ta objType regmapping arrlen) (HIConstant 0) dst) =
     r2r dst eax
 
 
-girEmitOO (IRLoad _ RTNone src dst) = do -- arraylength
+girEmitOO (IRLoad RTNone src dst) = do -- arraylength
   r2r eax src
   mov eax (Disp arrayLength, eax)
   r2r dst eax
 
-girEmitOO (IRLoad _ (RTIndex idx typ) src dst) =
+girEmitOO (IRLoad (RTIndex idx typ) src dst) =
     freeRegFor edx dst $ do
       case idx of
         HIConstant i -> mov eax $ (i32Tow32 i * typeSize typ) + arrayBase
@@ -432,7 +432,7 @@ girEmitOO (IRLoad _ (RTIndex idx typ) src dst) =
           mov (d, ebp) edx
         y -> error $ "girEmitOO: irload: rtindex: dst: " ++ show y
 
-girEmitOO (IRStore _ (RTPool x) obj src) = do
+girEmitOO (IRStore (RTPool x) obj src) = do
   cls <- classf <$> getState
   case constsPool cls M.! x of
     (CField rc fnt) ->
@@ -459,7 +459,7 @@ girEmitOO (IRStore _ (RTPool x) obj src) = do
           s <- getState
           setState (s { traps = M.insert trapaddr (ObjectField patcher) (traps s)})
     e -> error $ "emit: irstore: missing impl.: " ++ show e
-girEmitOO (IRStore _ (RTIndex idx typ) obj dst) =
+girEmitOO (IRStore (RTIndex idx typ) obj dst) =
     freeRegFor edx dst $ do
       case idx of
         HIConstant _ -> mov eax (0 :: Word32)
@@ -479,16 +479,16 @@ girEmitOO (IRStore _ (RTIndex idx typ) obj dst) =
         _ -> mov (Disp 0, eax) edx
 
 girEmitOO ins@(IRStore{}) = error $ "irstore: emit: " ++ show ins
-girEmitOO (IRPush _ _ (HIReg x)) = push x
-girEmitOO (IRPush _ _ (HIConstant x)) = push (i32Tow32 x)
-girEmitOO (IRPush _ _ (SpillIReg d)) = push (d, ebp)
+girEmitOO (IRPush _ (HIReg x)) = push x
+girEmitOO (IRPush _ (HIConstant x)) = push (i32Tow32 x)
+girEmitOO (IRPush _ (SpillIReg d)) = push (d, ebp)
 girEmitOO (IRPrep SaveRegs regs) =
   forM_ regs $ \(HIReg x, _) ->
     mov (Disp (fromJust (saveReg x)), ebp) x
 girEmitOO (IRPrep RestoreRegs regs) =
   forM_ regs $ \(HIReg x, _) ->
     mov x (Disp (fromJust (saveReg x)), ebp)
-girEmitOO (IRMisc1 _ jins vreg) =
+girEmitOO (IRMisc1 jins vreg) =
   case jins of
     ATHROW -> do
       r2r eax vreg
@@ -501,7 +501,7 @@ girEmitOO (IRMisc1 _ jins vreg) =
     CHECKCAST _ ->
       nop -- TODO ..
     x -> error $ "emit: misc1: " ++ show x
-girEmitOO (IRMisc2 _ jins dst src) =
+girEmitOO (IRMisc2 jins dst src) =
   case jins of
     INSTANCEOF cpidx -> do
       cls <- classf <$> getState

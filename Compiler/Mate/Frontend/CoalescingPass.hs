@@ -47,7 +47,7 @@ coalTransfer = mkBTransfer3 usesCO usesOO usesOC
   where
     usesCO _ f = f
 
-    usesOO (IROp _ Add dst@(VReg (VR dstnr _)) src@(VReg (VR srcnr _)) c) f =
+    usesOO (IROp Add dst@(VReg (VR dstnr _)) src@(VReg (VR srcnr _)) c) f =
       if c `elem` [JIntValue 0, JFloatValue 0, JRefNull]
          && (srcnr /= preeax)
          && (srcnr > 9999) -- don't consider local vars (TODO)
@@ -79,7 +79,7 @@ coalKill = mkBRewrite3 rwCO rwOO rwOC
   where
     rwCO ins f = rewrite ins f mkFirst
 
-    rwOO ins@(IROp _ Add dst@(VReg _) (VReg _) c) f =
+    rwOO ins@(IROp Add dst@(VReg _) (VReg _) c) f =
       if c `elem` [JIntValue 0, JFloatValue 0, JRefNull]
         then case M.lookup dst f of
               Just (PElem (Right _)) -> return $ Just emptyGraph

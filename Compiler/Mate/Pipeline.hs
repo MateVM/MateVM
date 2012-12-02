@@ -121,15 +121,13 @@ pipeline cls meth jvminsn = do
     runFM :: SimpleFuelMonad a -> a
     runFM = runSimpleUniqueMonad . runWithFuel infiniteFuel
     runOpts g = runFM $ do
-      let nothingc = NothingC :: MaybeC O Label
-      gm <- coalBwdPass g
-      (g', _, _) <- analyzeAndRewriteBwd
-                    livenessPass nothingc gm noFacts
-      return g'
+      gc <- coalBwdPass g
+      gl <- liveBwdPass gc
+      return gl
     optgraph = runOpts graph
     lbls = labels transstate
-    linear = mkLinear optgraph
-    liveranges = computeLiveRanges linear
+    (liveness, linear) = mkLinear optgraph
+    liveranges = computeLiveRanges liveness
     preColored = preRegs transstate
     (lsramap, stackAlloc', pcactive) = lsraMapping preColored liveranges
     (ra, stackAlloc) = stupidRegAlloc lsramap pcactive linear stackAlloc'
