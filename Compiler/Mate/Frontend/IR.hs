@@ -32,6 +32,8 @@ import Data.Word
 import Data.Int
 import Text.Printf
 
+import Control.Arrow
+
 import JVM.Assembler
 import Compiler.Hoopl
 import Harpy hiding (Label, fst)
@@ -73,7 +75,7 @@ data MateIR t e x where
   IRLoad  :: (Show t) => RTPool t -> t {- objectref -} -> t {- dst-} -> MateIR t O O
   IRMisc1 :: (Show t) => Instruction -> t {- src -} -> MateIR t O O
   IRMisc2 :: (Show t) => Instruction -> t {- dst -} -> t {- src -} -> MateIR t O O
-  IRPrep  :: CallingConv -> [(HVarX86, VarType)] -> MateIR t O O
+  IRPrep  :: (Show t) => CallingConv -> [(t, VarType)] -> MateIR t O O
   IRInvoke :: (Show t) => RTPool t -> Maybe t -> CallType -> MateIR t O O
   IRPush  :: (Show t) => Word8 -> t -> MateIR t O O
 
@@ -113,12 +115,12 @@ data HVarX86
 deriving instance Eq Disp
 deriving instance Ord Disp
 
-type PreGCPoint = [(HVarX86, VarType)]
+type PreGCPoint t = [(t, VarType)]
 
 data RTPool t
   = RTPool Word16
-  | RTPoolCall Word16 PreGCPoint
-  | RTArray Word8 MateObjType PreGCPoint t
+  | RTPoolCall Word16 (PreGCPoint t)
+  | RTArray Word8 MateObjType (PreGCPoint t) t
   | RTIndex t VarType
   | RTNone
 
@@ -192,9 +194,9 @@ showAnno _ = ""
 
 mapRT :: (t -> r) -> RTPool t -> RTPool r
 mapRT f (RTIndex var vt) = RTIndex (f var) vt
-mapRT f (RTArray w8 mobj pregcp var) = RTArray w8 mobj pregcp (f var)
+mapRT f (RTArray w8 mobj pregcp var) = RTArray w8 mobj (map (first f) pregcp) (f var)
 mapRT _ (RTPool w16) = RTPool w16
-mapRT _ (RTPoolCall w16 pregcp) = RTPoolCall w16 pregcp
+mapRT f (RTPoolCall w16 pregcp) = RTPoolCall w16 $ map (first f) pregcp
 mapRT _ RTNone = RTNone
 
 varsRT' :: RTPool t -> ([t], [t])
@@ -211,7 +213,7 @@ mapIR f (IRStore rt oref src) = IRStore (mapRT f rt) (f oref) (f src)
 mapIR f (IRLoad rt oref dst) = IRLoad (mapRT f rt) (f oref) (f dst)
 mapIR f (IRMisc1 ins src) = IRMisc1 ins (f src)
 mapIR f (IRMisc2 ins src1 src2) = IRMisc2 ins (f src1) (f src2)
-mapIR _ (IRPrep ct emap) = IRPrep ct emap
+mapIR f (IRPrep ct emap) = IRPrep ct $ map (first f) emap
 mapIR f (IRInvoke rt Nothing ct) = IRInvoke (mapRT f rt) Nothing ct
 mapIR f (IRInvoke rt (Just r) ct) = IRInvoke (mapRT f rt) (Just (f r)) ct
 mapIR f (IRPush w8 src) = IRPush w8 (f src)

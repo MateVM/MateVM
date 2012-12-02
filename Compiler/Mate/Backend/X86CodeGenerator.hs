@@ -522,7 +522,7 @@ girEmitOO (IRMisc2 jins dst src) =
     x -> error $ "emit: misc2: " ++ show x
 girEmitOO x = error $ "girEmitOO: insn not implemented: " ++ show x
 
-girStatic :: Word16 -> Maybe HVarX86 -> CallType -> PreGCPoint
+girStatic :: Word16 -> Maybe HVarX86 -> CallType -> PreGCPoint HVarX86
           -> CodeGen e CompileState ()
 girStatic cpidx haveReturn ct mapping = do
   cls <- classf <$> getState
@@ -549,7 +549,7 @@ girStatic cpidx haveReturn ct mapping = do
   s <- getState
   setState (s { traps = M.insert calladdr (StaticMethod patcher) (traps s) })
 
-girVirtual :: Word16 -> Maybe HVarX86 -> CallType -> PreGCPoint
+girVirtual :: Word16 -> Maybe HVarX86 -> CallType -> PreGCPoint HVarX86
            -> CodeGen e CompileState ()
 girVirtual cpidx haveReturn ct mapping = do
   let isInterface = ct == CallInterface
@@ -680,7 +680,7 @@ callMalloc = do
   call mallocObjectAddr
   add esp ((3 * ptrSize) :: Word32)
 
-callMallocGCPoint :: PreGCPoint -> CodeGen e CompileState ()
+callMallocGCPoint :: PreGCPoint HVarX86 -> CodeGen e CompileState ()
 callMallocGCPoint regmapping = do
   push ebp
   push esp
