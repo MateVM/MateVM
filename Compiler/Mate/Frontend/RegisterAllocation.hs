@@ -115,8 +115,9 @@ stupidRegAlloc preAssigned pcactive linsn stackcnt =
     assignReg' ins blocktype = do
       assigns <- forM (varsIR ins) $ \x -> do
         y <- doAssign x; return (x, y)
+      pm <- pointMapping
       let f = (M.!) (M.fromList assigns)
-      return $ blocktype $ mapIR f ins
+      return $ blocktype $ mapIR f pm ins
 
     doAssign :: Var -> State MappedRegs HVarX86
     doAssign (JIntValue x) = return $ HIConstant x

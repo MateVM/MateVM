@@ -92,7 +92,7 @@ coalKill = mkBRewrite3 rwCO rwOO rwOC
         -- hack for return, take some random fact (the are all equal anyways)
         facts = fromMaybe bot (lookupFact (head . mapKeys $ f) f)
 
-    rewrite ins fact cnstr = return $ Just $ cnstr $ mapIR (lookup fact) ins
+    rewrite ins fact cnstr = return $ Just $ cnstr $ mapIR (lookup fact) [] ins
 
     lookup fact var =
       case M.lookup var fact of

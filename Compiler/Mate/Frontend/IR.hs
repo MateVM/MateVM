@@ -192,12 +192,12 @@ showAnno _ = ""
 -- showAnno live = printf "\n\t\tnow living:  %s" (show $ S.toList live)
 {- /show -}
 
-mapRT :: (t -> r) -> RTPool t -> RTPool r
-mapRT f (RTIndex var vt) = RTIndex (f var) vt
-mapRT f (RTArray w8 mobj pregcp var) = RTArray w8 mobj (map (first f) pregcp) (f var)
-mapRT _ (RTPool w16) = RTPool w16
-mapRT f (RTPoolCall w16 pregcp) = RTPoolCall w16 $ map (first f) pregcp
-mapRT _ RTNone = RTNone
+mapRT :: (t -> r) -> [(r, VarType)] -> RTPool t -> RTPool r
+mapRT f _ (RTIndex var vt) = RTIndex (f var) vt
+mapRT f mapping (RTArray w8 mobj _ var) = RTArray w8 mobj mapping (f var)
+mapRT _ _ (RTPool w16) = RTPool w16
+mapRT _ mapping (RTPoolCall w16 _) = RTPoolCall w16 mapping
+mapRT _ _ RTNone = RTNone
 
 varsRT' :: RTPool t -> ([t], [t])
 varsRT' (RTIndex var _) = ([], [var])
@@ -205,25 +205,25 @@ varsRT' (RTArray _ _ _ var) = ([], [var])
 varsRT' _ = ([], [])
 
 
-mapIR :: Show r => (t -> r) -> MateIR t e x -> MateIR r e x
-mapIR _ (IRLabel l hmap mhand) = IRLabel l hmap mhand
+mapIR :: Show r => (t -> r) -> [(r, VarType)] -> MateIR t e x -> MateIR r e x
+mapIR _ _ (IRLabel l hmap mhand) = IRLabel l hmap mhand
 
-mapIR f (IROp ot dst src1 src2) = IROp ot (f dst) (f src1) (f src2)
-mapIR f (IRStore rt oref src) = IRStore (mapRT f rt) (f oref) (f src)
-mapIR f (IRLoad rt oref dst) = IRLoad (mapRT f rt) (f oref) (f dst)
-mapIR f (IRMisc1 ins src) = IRMisc1 ins (f src)
-mapIR f (IRMisc2 ins src1 src2) = IRMisc2 ins (f src1) (f src2)
-mapIR f (IRPrep ct emap) = IRPrep ct $ map (first f) emap
-mapIR f (IRInvoke rt Nothing ct) = IRInvoke (mapRT f rt) Nothing ct
-mapIR f (IRInvoke rt (Just r) ct) = IRInvoke (mapRT f rt) (Just (f r)) ct
-mapIR f (IRPush w8 src) = IRPush w8 (f src)
+mapIR f _ (IROp ot dst src1 src2) = IROp ot (f dst) (f src1) (f src2)
+mapIR f mapping (IRStore rt oref src) = IRStore (mapRT f mapping rt) (f oref) (f src)
+mapIR f mapping (IRLoad rt oref dst) = IRLoad (mapRT f mapping rt) (f oref) (f dst)
+mapIR f _ (IRMisc1 ins src) = IRMisc1 ins (f src)
+mapIR f _ (IRMisc2 ins src1 src2) = IRMisc2 ins (f src1) (f src2)
+mapIR f _ (IRPrep ct emap) = IRPrep ct $ map (first f) emap
+mapIR f mapping (IRInvoke rt Nothing ct) = IRInvoke (mapRT f mapping rt) Nothing ct
+mapIR f mapping (IRInvoke rt (Just r) ct) = IRInvoke (mapRT f mapping rt) (Just (f r)) ct
+mapIR f _ (IRPush w8 src) = IRPush w8 (f src)
 
-mapIR _ (IRJump l) = IRJump l
-mapIR f (IRIfElse jcmp src1 src2 l1 l2) = IRIfElse jcmp (f src1) (f src2) l1 l2
-mapIR _ (IRExHandler lbls) = IRExHandler lbls
-mapIR f (IRSwitch src smap) = IRSwitch (f src) smap
-mapIR _ (IRReturn Nothing) = IRReturn Nothing
-mapIR f (IRReturn (Just r)) = IRReturn (Just (f r))
+mapIR _ _ (IRJump l) = IRJump l
+mapIR f _ (IRIfElse jcmp src1 src2 l1 l2) = IRIfElse jcmp (f src1) (f src2) l1 l2
+mapIR _ _ (IRExHandler lbls) = IRExHandler lbls
+mapIR f _ (IRSwitch src smap) = IRSwitch (f src) smap
+mapIR _ _ (IRReturn Nothing) = IRReturn Nothing
+mapIR f _ (IRReturn (Just r)) = IRReturn (Just (f r))
 
 defIR :: MateIR t e x -> [t]
 defIR = fst . varsIR'
