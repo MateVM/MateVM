@@ -73,7 +73,7 @@ unpackRefs ptr = do
       case classPtr of
        Just v -> 
          do fieldTypes <- getFieldTypes v
-            printfGc "got types blubber\n"
+            printfGc $ printf "got types blubber %s \n" (show v)
        Nothing -> printfGc "could not get class name ptr"
       --print "ooohuh"
       numberOfFields <- getObjectFieldCountPtr ptr

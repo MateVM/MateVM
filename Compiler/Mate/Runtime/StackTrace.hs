@@ -43,7 +43,7 @@ stackFrames accum reip rebp = do
               -- TODO(bernhard): I'm not sure here, maybe s/rebp/prevRbp/
               point = x + fromIntegral rebp
           printfMem $ printf "stackFrames: candidate: %08x\n" point
-        return $ map fromIntegral points
+        return $ map ((+ fromIntegral rebp) . fromIntegral) points
     let accum' = StackDescription { stackinfo = stackinfo', candidates = candidates' } : accum
     if bottomOfStack stackinfo'
      then return accum' -- done here. bottomOfStack claims that there are no frames left
