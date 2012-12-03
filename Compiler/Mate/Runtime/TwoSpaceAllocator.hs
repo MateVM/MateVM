@@ -87,6 +87,7 @@ validRef' ptr twoSpace = (ptr >= fst (validRange twoSpace)) &&
 initTwoSpace :: Int -> IO TwoSpace
 initTwoSpace size' =  do printfStr $ printf "initializing TwoSpace memory manager with %d bytes.\n" size'
                          fromSpace <- Alloc.mallocBytes (size' * 2)
+                         printfMem $ printf "memory area by gc: 0x%08x to 0x%08x\n" ((fromIntegral $ ptrToIntPtr fromSpace)::Word32) (size'*2 + fromIntegral (ptrToIntPtr fromSpace))
                          let toSpace   = fromSpace `plusPtr` size'
                          if fromSpace /= nullPtr && toSpace /= nullPtr 
                             then return $ buildToSpace fromSpace toSpace

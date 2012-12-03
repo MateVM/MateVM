@@ -54,7 +54,7 @@ stackFrames accum reip rebp = do
 -- of stackdescriptions is produced
 printStackTrace' :: CPtrdiff -> CPtrdiff -> IO [StackDescription]
 printStackTrace' eip ptr = do 
-  printfStr "Stacktrace:\n\n"
+  printfStr "Stacktrace:\n"
   frames <- stackFrames [] eip ptr -- build with cps toget rid of reverse?
   forM_ (reverse frames) (printfStr . printf "---> %s\n" . toString . rsiMethodname . stackinfo)  
   printfStr "End of Stack\n"        

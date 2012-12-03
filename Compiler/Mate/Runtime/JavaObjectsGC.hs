@@ -70,15 +70,26 @@ unpackRefs ptr = do
                 return [] -- is array but primitives
     else do
       classPtr <- getClassNamePtr ptr
-      case classPtr of
-       Just v -> 
-         do fieldTypes <- getFieldTypes v
-            printfGc $ printf "got types blubber %s \n" (show v)
-       Nothing -> printfGc "could not get class name ptr"
-      --print "ooohuh"
-      numberOfFields <- getObjectFieldCountPtr ptr
-      --print "got ooohuh"
-      peekArray numberOfFields (ptr `plusPtr` fieldsOffset)
+      fieldOffsets <- case classPtr of
+           Just v -> 
+             do fieldTypes <- getFieldTypes v
+                printfGc $ printf "got types blubber %s with fields: %s\n" (show v) (show fieldTypes)
+                let referenceFieldOffsets = filterReferenceFields fieldTypes
+                return referenceFieldOffsets
+           Nothing -> printfGc "could not get class name ptr" >> return []
+      -- this is wrong - use reference types only here.
+      -- numberOfFields <- getObjectFieldCountPtr ptr
+      -- peekArray numberOfFields (ptr `plusPtr` fieldsOffset)
+      mapM ( peek . plusPtr ptr) fieldOffsets
+
+filterReferenceFields :: [(Int32, FieldSignature)] -> [Int]
+filterReferenceFields = 
+    map (fromIntegral . fst) . filter (isReferenceType . snd)
+
+isReferenceType :: FieldSignature -> Bool
+isReferenceType (ObjectType _) = True
+isReferenceType (Array _ _) = True
+isReferenceType _ = False
 
 isArray :: Ptr a -> IO Bool
 isArray ptr = do
