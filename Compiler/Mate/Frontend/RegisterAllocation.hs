@@ -17,8 +17,10 @@ import qualified Data.Set as S
 import qualified Data.Map as M
 import Data.Word
 import Data.Maybe
+import Data.Tuple
 
 import Control.Applicative
+import Control.Arrow
 import Control.Monad.State
 
 import Test.QuickCheck hiding (labels)
@@ -99,6 +101,17 @@ stupidRegAlloc preAssigned pcactive linsn stackcnt =
       rm <- regMap <$> get
       return [ (rm M.! vreg, vrTyp vreg) | vreg <- pcactive M.! pc ]
 
+    -- with spills
+    pointMapping' :: State MappedRegs [(HVarX86, VarType)]
+    pointMapping' = do
+      rm <- regMap <$> get
+      regs <- pointMapping
+      let isSpill (SpillIReg _ ) = True
+          isSpill _ = False
+      let spills = M.toList $ M.filter isSpill rm
+      let spills' = map (second vrTyp . swap) spills
+      return $ regs ++ spills'
+
     assignReg :: LinearIns Var -> State MappedRegs (LinearIns HVarX86)
     assignReg lv = case lv of
       Fst ins -> assignReg' ins Fst
@@ -115,7 +128,7 @@ stupidRegAlloc preAssigned pcactive linsn stackcnt =
     assignReg' ins blocktype = do
       assigns <- forM (varsIR ins) $ \x -> do
         y <- doAssign x; return (x, y)
-      pm <- pointMapping
+      pm <- pointMapping'
       let f = (M.!) (M.fromList assigns)
       return $ blocktype $ mapIR f pm ins
 
