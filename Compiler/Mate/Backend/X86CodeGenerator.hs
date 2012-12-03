@@ -676,16 +676,18 @@ restoreRegs =
 callMalloc :: CodeGen e s ()
 callMalloc = do
   push ebp
-  push esp
+  ip <- getCurrentOffset
+  push ip
   call mallocObjectAddr
   add esp ((3 * ptrSize) :: Word32)
 
 callMallocGCPoint :: PreGCPoint HVarX86 -> CodeGen e CompileState ()
 callMallocGCPoint regmapping = do
   push ebp
-  push esp
-  call mallocObjectAddr
   setGCPoint regmapping
+  ip <- getCurrentOffset
+  push ip
+  call mallocObjectAddr
   add esp ((3 * ptrSize) :: Word32)
 
 
