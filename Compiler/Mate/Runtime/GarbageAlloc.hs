@@ -88,10 +88,11 @@ alloc regs size =
 -- | allocates gc tracked obj. sptr and rebp must be given. If now available use
 -- mallocObjectGC instead 
 mallocObjectGC_stackstrace :: CPtrdiff -> CPtrdiff -> Int -> IO CPtrdiff
-mallocObjectGC_stackstrace sptr rebp size = do
+mallocObjectGC_stackstrace eip rebp size = do
   printfMem $ printf "mallocObject: %d\n" size
   printfMem $ printf "ebp @ malloc: 0x%08x\n" (fromIntegral rebp :: Word32)
-  ptr <- alloc (Just (sptr, rebp)) size
+  printfMem $ printf "eip @ malloc: 0x%08x\n" (fromIntegral eip :: Word32)
+  ptr <- alloc (Just (eip, rebp)) size
   BI.memset (castPtr ptr) 0 (fromIntegral size)
   return $ fromIntegral $ ptrToIntPtr ptr
 
@@ -116,17 +117,17 @@ printGCStats = putStrLn "Should print GC Stats"
 
 -- from now: very hacky and very very evil test stuff
 
--- returns stacktrace if (sptr,rebp) is valid and the stack is
+-- returns stacktrace if (eip,rebp) is valid and the stack is
 -- initiated from <clinit> calls.
 getStackIfPossible :: Maybe (CPtrdiff,CPtrdiff) -> IO [StackDescription]
-getStackIfPossible (Just (sptr,rebp)) = getStack sptr rebp
+getStackIfPossible (Just (eip,rebp)) = getStack eip rebp
 getStackIfPossible Nothing = printfGc "no sptr, rebp provided. no gc should take place" >> return []
 
 -- | gets stack according to valid sptr and rebp. if stack is invalid 
 -- an empty stack is returned
 getStack :: CPtrdiff -> CPtrdiff -> IO [StackDescription]
-getStack sptr rebp = do 
-  stacktrace <- printStackTrace' sptr rebp
+getStack eip rebp = do 
+  stacktrace <- printStackTrace' eip rebp
   if isValidTrace stacktrace
    then printfGc "valid stack\n" >> return stacktrace
    else printfGc "invalid stack for gc\n" >> return []

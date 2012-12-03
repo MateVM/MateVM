@@ -4,14 +4,12 @@ module Compiler.Mate.Runtime.StackTrace
   , printStackTrace'
   , printStackTrace
   , printStackFramesPrecise
-  , possibleRefs
   )  where
 
 import Foreign
 import Foreign.C
 import Control.Monad
 import qualified Data.Map as M
-import Data.List
 import Data.String.Utils
 
 import JVM.ClassFile -- because toString
@@ -19,7 +17,7 @@ import JVM.ClassFile -- because toString
 import Compiler.Mate.Debug
 import Compiler.Mate.Types
 
-data StackDescription = StackDescription { base :: CPtrdiff, end :: CPtrdiff, 
+data StackDescription = StackDescription { --base :: CPtrdiff, end :: CPtrdiff, 
                                            stackinfo :: RuntimeStackInfo,
                                            candidates :: [IntPtr] } deriving Show
 
@@ -28,14 +26,14 @@ cPtrToIntPtr = intPtrToPtr . fromIntegral
 
 -- accumulator (tailrecursive) stackframes stream (may be written as predefined function?)
 stackFrames :: [StackDescription] -> CPtrdiff -> CPtrdiff -> IO [StackDescription]
-stackFrames accum prevRbp rebp = do 
+stackFrames accum reip rebp = do 
     stblptr <- peek (cPtrToIntPtr rebp) :: IO Word32
-    reip <- peek (cPtrToIntPtr (prevRbp + 0x8)) :: IO Word32
+    nextreip <- peek (cPtrToIntPtr (rebp + 0x8)) :: IO Word32
     let sptr = castPtrToStablePtr $ intPtrToPtr $ fromIntegral stblptr
     stackinfo' <- deRefStablePtr sptr :: IO RuntimeStackInfo
     printfMem $ printf "stackFrames: eip: %08x\n" (fromIntegral reip :: Word32)
     printfMem $ printf "stackFrames: elem:\n"
-    candidates' <- case M.lookup reip (rsiGCPoints stackinfo') of
+    candidates' <- case M.lookup (fromIntegral reip) (rsiGCPoints stackinfo') of
       Nothing -> do printfMem $ printf "stackFrames: no entry found :(\n"
                     return []
       Just points -> do
@@ -46,19 +44,18 @@ stackFrames accum prevRbp rebp = do
               point = x + fromIntegral rebp
           printfMem $ printf "stackFrames: candidate: %08x\n" point
         return $ map fromIntegral points
-    let accum' = StackDescription { base = rebp, end = prevRbp, stackinfo = stackinfo',
-		   candidates = candidates' } : accum
+    let accum' = StackDescription { stackinfo = stackinfo', candidates = candidates' } : accum
     if bottomOfStack stackinfo'
      then return accum' -- done here. bottomOfStack claims that there are no frames left
      else -- otherwise grab the next frame, put current frame into list and continue
-          peek (cPtrToIntPtr (rebp + 4)) >>= stackFrames accum' rebp
+          peek (cPtrToIntPtr (rebp + 4)) >>= stackFrames accum' (fromIntegral nextreip)
 
 -- Prints precice stacktrace to printStr. Furthermore a list
 -- of stackdescriptions is produced
 printStackTrace' :: CPtrdiff -> CPtrdiff -> IO [StackDescription]
-printStackTrace' stackPtr ptr = do 
+printStackTrace' eip ptr = do 
   printfStr "Stacktrace:\n\n"
-  frames <- stackFrames [] stackPtr ptr -- build with cps toget rid of reverse?
+  frames <- stackFrames [] eip ptr -- build with cps toget rid of reverse?
   forM_ (reverse frames) (printfStr . printf "---> %s\n" . toString . rsiMethodname . stackinfo)  
   printfStr "End of Stack\n"        
   printStackFramesPrecise frames
@@ -67,23 +64,17 @@ printStackTrace' stackPtr ptr = do
 printStackFramesPrecise :: [StackDescription] -> IO ()
 printStackFramesPrecise = mapM_ printPrecise
   where printPrecise f = do
-          let refs = possibleRefs f
-          printfStr $ printf "Method: %s, Begin: 0x%08x, End: 0x%08x\n"
-                         (name f) (base' f) (end' f)
-          printfStr $ refsToString refs
+          --let refs = possibleRefs f
+          printfStr $ printf "Method: %s\n" (name f)
+          --printfStr $ refsToString refs
         name = toString . rsiMethodname . stackinfo
-        base' = fromIntegral . base :: StackDescription -> Int
-        end' = fromIntegral . end :: StackDescription -> Int
 
-possibleRefs :: StackDescription -> [IntPtr]
-possibleRefs f = [from, from + 4 .. to]
-  where from = fromIntegral $ end f
-        to = fromIntegral $ base f
-
+{-        
 refsToString :: [IntPtr] -> String
 refsToString ptrs = printf "Reference Candidates: %s\n" (ptrStr ptrs)
   where ptrStr = intercalate "," . map printElement
         printElement ptr = printf "0x%08x" (fromIntegral ptr :: Word32)
+-}
 
 bottomOfStack :: RuntimeStackInfo -> Bool
 bottomOfStack = mainOrInit . toString . rsiMethodname

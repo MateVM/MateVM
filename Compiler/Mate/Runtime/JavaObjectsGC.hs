@@ -19,6 +19,7 @@ import JVM.ClassFile
 import Compiler.Mate.Runtime.JavaObjects
 import Compiler.Mate.Debug
 import Compiler.Mate.Utilities
+import Compiler.Mate.Runtime.ClassPool
 
 instance RefObj (Ptr a) where
   getIntPtr   = return . ptrToIntPtr
@@ -68,6 +69,12 @@ unpackRefs ptr = do
         else do printfGc "got primitive array\n"
                 return [] -- is array but primitives
     else do
+      classPtr <- getClassNamePtr ptr
+      case classPtr of
+       Just v -> 
+         do fieldTypes <- getFieldTypes v
+            printfGc "got types blubber\n"
+       Nothing -> printfGc "could not get class name ptr"
       --print "ooohuh"
       numberOfFields <- getObjectFieldCountPtr ptr
       --print "got ooohuh"

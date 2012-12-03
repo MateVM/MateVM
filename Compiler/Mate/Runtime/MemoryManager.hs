@@ -21,7 +21,6 @@ import Compiler.Mate.Runtime.GC hiding (size)
 import qualified Compiler.Mate.Runtime.StackTrace as T
 import qualified Compiler.Mate.Runtime.JavaObjectsGC as GCObj
 import Compiler.Mate.Runtime.JavaObjectsGC() -- only instances for Ptr a
-import qualified Compiler.Mate.Runtime.GC as GC
 import Compiler.Mate.Runtime.TwoSpaceAllocator
 
 type RootSet a = M.Map (Ptr a) RefUpdateAction
