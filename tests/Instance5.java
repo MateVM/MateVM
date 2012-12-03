@@ -26,7 +26,8 @@ public class Instance5 {
 		System.out.printf("before calling\n");
 		Instance5 x = new Instance5();
 		System.out.printf("result: 0x%08x\n", x.a);
-		/*System.out.printf("result: 0x%08x\n", x.b);
+		for(;;) {}
+                /*System.out.printf("result: 0x%08x\n", x.b);
 		x = new Instance5(0x333, 0x777);
 		System.out.printf("result: 0x%08x\n", x.a);
 		System.out.printf("result: 0x%08x\n", x.b);

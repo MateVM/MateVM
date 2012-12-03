@@ -81,7 +81,7 @@ buildGCAction :: AllocationManager a => [T.StackDescription] -> Int -> StateT a 
 buildGCAction [] size = mallocBytesT size
 buildGCAction stack size = do let rootsOnStack = concatMap T.candidates stack --concatMap T.possibleRefs stack
                               rootCandidates <- lift $ mapM dereference rootsOnStack
-                              realRoots <- filterM (validRef . snd) rootCandidates
+                              realRoots <- filterM (validRef2 . snd) rootCandidates
                               performCollection $ foldr buildRootPatcher M.empty realRoots
                               mallocBytesT size
   where --checkRef :: IntPtr -> StateT a IO Bool
@@ -91,6 +91,9 @@ buildGCAction stack size = do let rootsOnStack = concatMap T.candidates stack --
                                 printfGc $ printf "deref location: "
                                 printfGc (show (intPtrToPtr obj) ++ "\n")
                                 return (intPtr,obj)
+
+validRef2 :: AllocationManager a =>  IntPtr -> StateT a IO Bool
+validRef2 = return . ((>(0x19 :: Int)) . fromIntegral)
 
 -- (stackLocation,obj)
 buildRootPatcher :: (IntPtr,IntPtr) -> RootSet a -> RootSet a

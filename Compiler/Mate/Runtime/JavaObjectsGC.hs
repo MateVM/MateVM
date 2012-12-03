@@ -13,12 +13,10 @@ import Foreign.Storable
 import GHC.Int
 
 import Text.Printf
-
 import Control.Monad
 import JVM.ClassFile
 import Compiler.Mate.Runtime.JavaObjects
 import Compiler.Mate.Debug
-import Compiler.Mate.Utilities
 import Compiler.Mate.Runtime.ClassPool
 
 instance RefObj (Ptr a) where
@@ -142,6 +140,9 @@ patchRefsPtr ptr xs = do
 printInt32 :: String -> Int32 -> IO ()
 printInt32 str ptr = printfGc $ printf str ptr
 
+doLoop :: IO a
+doLoop = doLoop
+
 printRef' :: Ptr a -> IO ()
 printRef' ptr = do 
     printInt32 "Obj: address 0x%08x\n" =<< (liftM fromIntegral (getIntPtr ptr) :: IO Int32)
@@ -149,8 +150,14 @@ printRef' ptr = do
     method_table <- peekByteOff ptr 0 :: IO Int32
     
     let printObj = do
-         printfGc $ printf "we got an object"
-         clazzName <- liftM (checkNothing "getClassNamePtr called on non mate obj") $ getClassNamePtr ptr 
+         printfGc $ printf "we got an object: %s" (show ptr)
+         clazzNameM <- getClassNamePtr ptr 
+         clazzName <- case clazzNameM of
+                      Just v -> return v
+                      Nothing -> do printfGc $ "getClassNamePtr called on non mate obj: " ++ show ptr
+                                    mem <- peekArray 12 (castPtr ptr) :: IO [Ptr Int32]
+                                    printfGc $ printf  "dump: %s" (show mem)
+                                    doLoop
          printfGc $ printf "type: %s\n" $ toString clazzName
          fieldCnt <- getObjectFieldCountPtr ptr    
          printfGc $ printf "children 0x%08x\n" fieldCnt
