@@ -158,19 +158,19 @@ instance NonLocal (MateIR Var) where
 
 {- show -}
 instance Show (MateIR t e x) where
-  show (IRLabel l hmap handlerstart) = printf "label: %s:\n\texceptions: %s\n\thandlerstart? %s%s" (show l) (show hmap) (show handlerstart)
-  show (IROp op vr v1 v2) = printf "\t%s %s,  %s, %s%s" (show op) (show vr) (show v1) (show v2)
-  show (IRLoad rt obj dst) = printf "\t%s(%s) -> %s%s" (show obj) (show rt) (show dst)
-  show (IRStore rt obj src) = printf "\t%s(%s) <- %s%s" (show obj) (show rt) (show src)
-  show (IRInvoke x r typ) = printf "\tinvoke %s %s [%s]%s" (show x) (show r) (show typ)
-  show (IRPush argnr x) = printf "\tpush(%d) %s%s" argnr (show x)
+  show (IRLabel l hmap handlerstart) = printf "label: %s:\n\texceptions: %s\n\thandlerstart? %s" (show l) (show hmap) (show handlerstart)
+  show (IROp op vr v1 v2) = printf "\t%s %s,  %s, %s" (show op) (show vr) (show v1) (show v2)
+  show (IRLoad rt obj dst) = printf "\t%s(%s) -> %s" (show obj) (show rt) (show dst)
+  show (IRStore rt obj src) = printf "\t%s(%s) <- %s" (show obj) (show rt) (show src)
+  show (IRInvoke x r typ) = printf "\tinvoke %s %s [%s]" (show x) (show r) (show typ)
+  show (IRPush argnr x) = printf "\tpush(%d) %s" argnr (show x)
   show (IRJump l) = printf "\tjump %s" (show l)
-  show (IRIfElse jcmp v1 v2 l1 l2) = printf "\tif (%s `%s` %s) then %s else %s%s" (show v1) (show jcmp) (show v2) (show l1) (show l2)
+  show (IRIfElse jcmp v1 v2 l1 l2) = printf "\tif (%s `%s` %s) then %s else %s" (show v1) (show jcmp) (show v2) (show l1) (show l2)
   show (IRExHandler t) = printf "\texhandler: %s" (show t)
-  show (IRSwitch reg t) = printf "\tswitch(%s) -> %s%s" (show reg) (show t)
-  show (IRReturn b) = printf "\treturn (%s)%s" (show b)
-  show (IRMisc1 jins x) = printf "\tmisc1: \"%s\": %s%s" (show jins) (show x)
-  show (IRMisc2 jins x y) = printf "\tmisc2: \"%s\": %s %s%s" (show jins) (show x) (show y)
+  show (IRSwitch reg t) = printf "\tswitch(%s) -> %s" (show reg) (show t)
+  show (IRReturn b) = printf "\treturn (%s)" (show b)
+  show (IRMisc1 jins x) = printf "\tmisc1: \"%s\": %s" (show jins) (show x)
+  show (IRMisc2 jins x y) = printf "\tmisc2: \"%s\": %s %s" (show jins) (show x) (show y)
   show (IRPrep typ regs) = printf "\tcall preps (%s): %s" (show typ) (show regs)
 
 instance Show HVarX86 where
