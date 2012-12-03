@@ -101,17 +101,6 @@ stupidRegAlloc preAssigned pcactive linsn stackcnt =
       rm <- regMap <$> get
       return [ (rm M.! vreg, vrTyp vreg) | vreg <- pcactive M.! pc ]
 
-    -- with spills
-    pointMapping' :: State MappedRegs [(HVarX86, VarType)]
-    pointMapping' = do
-      rm <- regMap <$> get
-      regs <- pointMapping
-      let isSpill (SpillIReg _ ) = True
-          isSpill _ = False
-      let spills = M.toList $ M.filter isSpill rm
-      let spills' = map (second vrTyp . swap) spills
-      return $ regs ++ spills'
-
     assignReg :: LinearIns Var -> State MappedRegs (LinearIns HVarX86)
     assignReg lv = case lv of
       Fst ins -> assignReg' ins Fst
@@ -128,7 +117,7 @@ stupidRegAlloc preAssigned pcactive linsn stackcnt =
     assignReg' ins blocktype = do
       assigns <- forM (varsIR ins) $ \x -> do
         y <- doAssign x; return (x, y)
-      pm <- pointMapping'
+      pm <- pointMapping
       let f = (M.!) (M.fromList assigns)
       return $ blocktype $ mapIR f pm ins
 
@@ -199,6 +188,7 @@ lsraMapping precolored (LiveRanges lstarts lends) =
       pc <- pcCnt <$> get
       -- when (trace (printf "pc: %d" pc) (pc <= lastPC)) $ do
       when (pc <= lastPC) $ do
+        modify (\s -> s { pc2active = M.insert pc [] (pc2active s) })
         case pc `M.lookup` lstarts of
           Nothing -> return ()
           Just new -> do
@@ -218,7 +208,7 @@ lsraMapping precolored (LiveRanges lstarts lends) =
                                     , regmapping = M.insert vreg hreg (regmapping s)
                                     })
         active <- activeRegs <$> get
-        modify (\s -> s { pc2active = M.insert pc active (pc2active s) })
+        modify (\s -> s { pc2active = M.adjust (++ active) pc (pc2active s) })
         incPC
         lsra
     freeGuys :: Int -> LsraState ()
@@ -232,10 +222,12 @@ lsraMapping precolored (LiveRanges lstarts lends) =
                           , freeRegs = hreg : freeRegs s })
     spillGuy :: VirtualReg -> LsraState()
     spillGuy vreg = do
+      pc <- pcCnt <$> get
       sc <- stackDisp <$> get
       let spill = SpillIReg (Disp sc)
       modify (\s -> s { stackDisp = stackDisp s - ptrSize
                       , regmapping = M.insert vreg spill (regmapping s)
+                      , pc2active = M.adjust (vreg:) pc (pc2active s)
                       })
 
 
