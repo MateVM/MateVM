@@ -20,7 +20,8 @@ import Compiler.Mate.Debug
 import Compiler.Mate.Types
 
 data StackDescription = StackDescription { base :: CPtrdiff, end :: CPtrdiff, 
-                                           stackinfo :: RuntimeStackInfo } deriving Show
+                                           stackinfo :: RuntimeStackInfo,
+                                           candidates :: [IntPtr] } deriving Show
 
 cPtrToIntPtr :: CPtrdiff -> Ptr a 
 cPtrToIntPtr = intPtrToPtr . fromIntegral
@@ -34,8 +35,9 @@ stackFrames accum prevRbp rebp = do
     stackinfo' <- deRefStablePtr sptr :: IO RuntimeStackInfo
     printfMem $ printf "stackFrames: eip: %08x\n" (fromIntegral reip :: Word32)
     printfMem $ printf "stackFrames: elem:\n"
-    case M.lookup reip (rsiGCPoints stackinfo') of
-      Nothing -> printfMem $ printf "stackFrames: no entry found :(\n"
+    candidates' <- case M.lookup reip (rsiGCPoints stackinfo') of
+      Nothing -> do printfMem $ printf "stackFrames: no entry found :(\n"
+                    return []
       Just points -> do
         printfMem $ printf "stackFrames: found entry \\o/\n"
         forM_ points $ \x -> do
@@ -43,7 +45,9 @@ stackFrames accum prevRbp rebp = do
               -- TODO(bernhard): I'm not sure here, maybe s/rebp/prevRbp/
               point = x + fromIntegral rebp
           printfMem $ printf "stackFrames: candidate: %08x\n" point
-    let accum' = StackDescription { base = rebp, end = prevRbp, stackinfo = stackinfo' } : accum
+        return $ map fromIntegral points
+    let accum' = StackDescription { base = rebp, end = prevRbp, stackinfo = stackinfo',
+		   candidates = candidates' } : accum
     if bottomOfStack stackinfo'
      then return accum' -- done here. bottomOfStack claims that there are no frames left
      else -- otherwise grab the next frame, put current frame into list and continue

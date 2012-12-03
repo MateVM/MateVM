@@ -80,7 +80,7 @@ performCollectionIO refs' = do
 
 buildGCAction :: AllocationManager a => [T.StackDescription] -> Int -> StateT a IO (Ptr b)
 buildGCAction [] size = mallocBytesT size
-buildGCAction stack size = do let rootsOnStack = concatMap T.possibleRefs stack
+buildGCAction stack size = do let rootsOnStack = concatMap T.candidates stack --concatMap T.possibleRefs stack
                               rootCandidates <- lift $ mapM dereference rootsOnStack
                               realRoots <- filterM (validRef . snd) rootCandidates
                               performCollection $ foldr buildRootPatcher M.empty realRoots
