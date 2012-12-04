@@ -35,6 +35,8 @@ import Compiler.Mate.Frontend.LivenessPass
 
 import Compiler.Mate.Backend.NativeSizes
 
+import Debug.Trace
+
 data MappedRegs = MappedRegs
   { regMap :: RegMapping
   , pcCounter :: Int
@@ -99,7 +101,8 @@ stupidRegAlloc preAssigned pcactive linsn stackcnt =
     pointMapping = do
       pc <- pcCounter <$> get
       rm <- regMap <$> get
-      return [ (rm M.! vreg, vrTyp vreg) | vreg <- pcactive M.! pc ]
+      let actives = S.toList (pcactive M.! pc)
+      return [ (rm M.! vreg, vrTyp vreg) | vreg <- actives]
 
     assignReg :: LinearIns Var -> State MappedRegs (LinearIns HVarX86)
     assignReg lv = case lv of
@@ -160,12 +163,12 @@ data LsraStateData = LsraStateData
   -- current offset on stack (for simplicity, don't reuse spill slots)
   , stackDisp :: Word32
   -- set of active virtual registers
-  , activeRegs :: [VirtualReg]
+  , activeRegs :: S.Set VirtualReg
   -- on every program counter, we store the current active map, in order to have
   -- information on GC operations or method invocation
   , pc2active :: PCActiveMap
   }
-type PCActiveMap = M.Map Int [VirtualReg]
+type PCActiveMap = M.Map Int (S.Set VirtualReg)
 type LsraState a = State LsraStateData a
 
 lsraMapping :: RegMapping
@@ -181,14 +184,13 @@ lsraMapping precolored (LiveRanges lstarts lends) =
                             , freeRegs = S.toList allIntRegs
                             , stackDisp = stackOffsetStart
                             , pc2active = M.empty
-                            , activeRegs = [] }
+                            , activeRegs = S.empty }
     incPC :: LsraState ()
     incPC = modify (\s -> s { pcCnt = 1 + pcCnt s })
     lsra = do
       pc <- pcCnt <$> get
       -- when (trace (printf "pc: %d" pc) (pc <= lastPC)) $ do
       when (pc <= lastPC) $ do
-        modify (\s -> s { pc2active = M.insert (pc + 1) [] (pc2active s) })
         case pc `M.lookup` lstarts of
           Nothing -> return ()
           Just new -> do
@@ -198,28 +200,31 @@ lsraMapping precolored (LiveRanges lstarts lends) =
             forM_ new $ \vreg -> do
               hasMapping <- M.member vreg <$> regmapping <$> get -- maybe pre assigned
               unless hasMapping $ do
+                modify (\s -> s { activeRegs = S.insert vreg (activeRegs s) })
                 fr <- freeRegs <$> get
                 if null fr
                   then spillGuy vreg
                   else do
                     let hreg = head fr
                     modify (\s -> s { freeRegs = tail fr
-                                    , activeRegs = vreg : activeRegs s
                                     , regmapping = M.insert vreg hreg (regmapping s)
                                     })
         active <- activeRegs <$> get
-        modify (\s -> s { pc2active = M.adjust (++ active) (pc + 1) (pc2active s) })
+        modify (\s -> s { pc2active = M.insert pc active (pc2active s) })
         incPC
         lsra
     freeGuys :: Int -> LsraState ()
     freeGuys pc = do
       active <- activeRegs <$> get
-      forM_ active $ \vreg ->
+      forM_ (S.toList active) $ \vreg ->
         -- TODO: test if `<=' works too
         when ((lends M.! vreg) < pc) $ do
+          let isSpill (SpillIReg _) = True
+              isSpill _ = False
           hreg <- (M.! vreg) <$> regmapping <$> get
-          modify (\s -> s { activeRegs = L.delete vreg (activeRegs s)
-                          , freeRegs = hreg : freeRegs s })
+          modify (\s -> s { activeRegs = S.delete vreg (activeRegs s) })
+          unless (isSpill hreg) $ do
+            modify (\s -> s { freeRegs = hreg : freeRegs s })
     spillGuy :: VirtualReg -> LsraState()
     spillGuy vreg = do
       pc <- pcCnt <$> get
@@ -227,7 +232,6 @@ lsraMapping precolored (LiveRanges lstarts lends) =
       let spill = SpillIReg (Disp sc)
       modify (\s -> s { stackDisp = stackDisp s - ptrSize
                       , regmapping = M.insert vreg spill (regmapping s)
-                      , pc2active = M.adjust (vreg:) (pc + 1) (pc2active s)
                       })
 
 
