@@ -188,7 +188,7 @@ lsraMapping precolored (LiveRanges lstarts lends) =
       pc <- pcCnt <$> get
       -- when (trace (printf "pc: %d" pc) (pc <= lastPC)) $ do
       when (pc <= lastPC) $ do
-        modify (\s -> s { pc2active = M.insert pc [] (pc2active s) })
+        modify (\s -> s { pc2active = M.insert (pc + 1) [] (pc2active s) })
         case pc `M.lookup` lstarts of
           Nothing -> return ()
           Just new -> do
@@ -208,7 +208,7 @@ lsraMapping precolored (LiveRanges lstarts lends) =
                                     , regmapping = M.insert vreg hreg (regmapping s)
                                     })
         active <- activeRegs <$> get
-        modify (\s -> s { pc2active = M.adjust (++ active) pc (pc2active s) })
+        modify (\s -> s { pc2active = M.adjust (++ active) (pc + 1) (pc2active s) })
         incPC
         lsra
     freeGuys :: Int -> LsraState ()
@@ -227,7 +227,7 @@ lsraMapping precolored (LiveRanges lstarts lends) =
       let spill = SpillIReg (Disp sc)
       modify (\s -> s { stackDisp = stackDisp s - ptrSize
                       , regmapping = M.insert vreg spill (regmapping s)
-                      , pc2active = M.adjust (vreg:) pc (pc2active s)
+                      , pc2active = M.adjust (vreg:) (pc + 1) (pc2active s)
                       })
 
 

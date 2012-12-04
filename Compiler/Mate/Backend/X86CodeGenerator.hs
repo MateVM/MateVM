@@ -485,11 +485,13 @@ girEmitOO (IRPush _ (HIReg x)) = push x
 girEmitOO (IRPush _ (HIConstant x)) = push (i32Tow32 x)
 girEmitOO (IRPush _ (SpillIReg d)) = push (d, ebp)
 girEmitOO (IRPrep SaveRegs regs) =
-  forM_ regs $ \(HIReg x, _) ->
-    mov (Disp (fromJust (saveReg x)), ebp) x
+  forM_ regs $ \y -> case y of
+    (HIReg x, _) -> mov (Disp (fromJust (saveReg x)), ebp) x
+    _ -> return ()
 girEmitOO (IRPrep RestoreRegs regs) =
-  forM_ regs $ \(HIReg x, _) ->
-    mov x (Disp (fromJust (saveReg x)), ebp)
+  forM_ regs $ \y -> case y of
+    (HIReg x, _) -> mov x (Disp (fromJust (saveReg x)), ebp)
+    _ -> return ()
 girEmitOO (IRMisc1 jins vreg) =
   case jins of
     ATHROW -> do
