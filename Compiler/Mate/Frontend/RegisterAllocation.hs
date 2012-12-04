@@ -21,7 +21,7 @@ import Data.Tuple
 
 import Control.Applicative
 import Control.Arrow
-import Control.Monad.State
+import Control.Monad.State.Strict
 
 import Test.QuickCheck hiding (labels)
 
@@ -102,7 +102,10 @@ stupidRegAlloc preAssigned pcactive linsn stackcnt =
       pc <- pcCounter <$> get
       rm <- regMap <$> get
       let actives = S.toList (pcactive M.! pc)
-      return [ (rm M.! vreg, vrTyp vreg) | vreg <- actives]
+      forM actives $ \vreg -> do
+        unless (M.member vreg rm) $ do
+          error "regalloc: should not happen @ point mapping"
+        return (rm M.! vreg, vrTyp vreg)
 
     assignReg :: LinearIns Var -> State MappedRegs (LinearIns HVarX86)
     assignReg lv = case lv of
@@ -183,7 +186,7 @@ lsraMapping precolored (LiveRanges lstarts lends) =
                             , regmapping = preAssignedRegs `M.union` precolored
                             , freeRegs = S.toList allIntRegs
                             , stackDisp = stackOffsetStart
-                            , pc2active = M.empty
+                            , pc2active = M.insert 0 S.empty M.empty
                             , activeRegs = S.empty }
     incPC :: LsraState ()
     incPC = modify (\s -> s { pcCnt = 1 + pcCnt s })
@@ -199,8 +202,9 @@ lsraMapping precolored (LiveRanges lstarts lends) =
             freeGuys pc
             forM_ new $ \vreg -> do
               hasMapping <- M.member vreg <$> regmapping <$> get -- maybe pre assigned
-              unless hasMapping $ do
+              when (vreg /= (VR preeax JInt)) $
                 modify (\s -> s { activeRegs = S.insert vreg (activeRegs s) })
+              unless hasMapping $ do
                 fr <- freeRegs <$> get
                 if null fr
                   then spillGuy vreg
@@ -217,17 +221,17 @@ lsraMapping precolored (LiveRanges lstarts lends) =
     freeGuys pc = do
       active <- activeRegs <$> get
       forM_ (S.toList active) $ \vreg ->
-        -- TODO: test if `<=' works too
-        when ((lends M.! vreg) < pc) $ do
-          let isSpill (SpillIReg _) = True
-              isSpill _ = False
-          hreg <- (M.! vreg) <$> regmapping <$> get
-          modify (\s -> s { activeRegs = S.delete vreg (activeRegs s) })
-          unless (isSpill hreg) $ do
-            modify (\s -> s { freeRegs = hreg : freeRegs s })
+        when (M.member vreg lends) $ do
+          -- TODO: test if `<=' works too
+          when ((lends M.! vreg) < pc) $ do
+            let isSpill (SpillIReg _) = True
+                isSpill _ = False
+            hreg <- (M.! vreg) <$> regmapping <$> get
+            modify (\s -> s { activeRegs = S.delete vreg (activeRegs s) })
+            unless (isSpill hreg) $ do
+              modify (\s -> s { freeRegs = hreg : freeRegs s })
     spillGuy :: VirtualReg -> LsraState()
     spillGuy vreg = do
-      pc <- pcCnt <$> get
       sc <- stackDisp <$> get
       let spill = SpillIReg (Disp sc)
       modify (\s -> s { stackDisp = stackDisp s - ptrSize
