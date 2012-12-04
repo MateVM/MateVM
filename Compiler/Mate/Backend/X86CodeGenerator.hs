@@ -393,12 +393,14 @@ girEmitOO (IRLoad (RTArray ta objType regmapping arrlen) (HIConstant 0) dst) = d
                   T_INT -> S4
                   T_CHAR -> S4
                   _ -> error "newarray: type not implemented yet"
+    saveRegs
     r2r ebx arrlen
     lea eax (Disp $ 3 * ptrSize, ebx, tsize)
-    saveRegs
+    push ebx -- save scratch ebx value
     push eax
     callMallocGCPoint regmapping
     restoreRegs
+    pop ebx
     case objType of
       PrimitiveType -> mov (Disp arrayMagic, eax) (0x1228babe :: Word32)
       ReferenceType -> mov (Disp arrayMagic, eax) (0x1227babe :: Word32)
