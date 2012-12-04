@@ -210,7 +210,7 @@ lsraMapping precolored (LiveRanges lstarts lends) =
                                     , regmapping = M.insert vreg hreg (regmapping s)
                                     })
         active <- activeRegs <$> get
-        modify (\s -> s { pc2active = M.insert pc active (pc2active s) })
+        modify (\s -> s { pc2active = M.insert (pc + 1) active (pc2active s) })
         incPC
         lsra
     freeGuys :: Int -> LsraState ()
