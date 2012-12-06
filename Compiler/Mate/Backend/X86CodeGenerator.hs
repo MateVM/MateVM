@@ -387,7 +387,7 @@ girEmitOO (IRLoad (RTPool x) src dst) = do
         setState (s { traps = M.insert trapaddr ofp (traps s) })
     y -> error $ "emit: irload: missing impl.: getfield or something: " ++ show y
 
-girEmitOO (IRLoad (RTArray ta objType regmapping arrlen) (HIConstant 0) dst) = do
+girEmitOO (IRLoad (RTArrayNew ta objType regmapping arrlen) (HIConstant 0) dst) = do
   freeRegFor ebx dst $ do
     let tsize = case decodeS (0 :: Integer) (B.pack [ta]) of
                   T_INT -> S4
@@ -409,12 +409,12 @@ girEmitOO (IRLoad (RTArray ta objType regmapping arrlen) (HIConstant 0) dst) = d
     r2r dst eax
 
 
-girEmitOO (IRLoad RTNone src dst) = do -- arraylength
+girEmitOO (IRLoad RTArrayLength src dst) = do -- arraylength
   r2r eax src
   mov eax (Disp arrayLength, eax)
   r2r dst eax
 
-girEmitOO (IRLoad (RTIndex idx typ) src dst) =
+girEmitOO (IRLoad (RTArrayIndex idx typ) src dst) =
     freeRegFor edx dst $ do
       case idx of
         HIConstant i -> mov eax $ (i32Tow32 i * typeSize typ) + arrayBase
@@ -461,7 +461,7 @@ girEmitOO (IRStore (RTPool x) obj src) = do
           s <- getState
           setState (s { traps = M.insert trapaddr (ObjectField patcher) (traps s)})
     e -> error $ "emit: irstore: missing impl.: " ++ show e
-girEmitOO (IRStore (RTIndex idx typ) obj dst) =
+girEmitOO (IRStore (RTArrayIndex idx typ) obj dst) =
     freeRegFor edx dst $ do
       case idx of
         HIConstant _ -> mov eax (0 :: Word32)

@@ -120,16 +120,16 @@ type PreGCPoint t = [(t, VarType)]
 data RTPool t
   = RTPool Word16
   | RTPoolCall Word16 (PreGCPoint t)
-  | RTArray Word8 MateObjType (PreGCPoint t) t
-  | RTIndex t VarType
-  | RTNone
+  | RTArrayNew Word8 MateObjType (PreGCPoint t) t
+  | RTArrayIndex t VarType
+  | RTArrayLength
 
 instance Show t => Show (RTPool t) where
   show (RTPool w16) = printf "RT(%02d)" w16
   show (RTPoolCall w16 _) = printf "RTCall(%02d)" w16
-  show (RTIndex t typ) = printf "RTIdx(%s[%s])" (show t) (show typ)
-  show RTNone = ""
-  show (RTArray w8 mot _ len) =
+  show (RTArrayIndex t typ) = printf "RTIdx(%s[%s])" (show t) (show typ)
+  show RTArrayLength = ""
+  show (RTArrayNew w8 mot _ len) =
     -- (concatMap (\x -> printf "\t\t%s\n" (show x)) regmap) ++
     printf "Array(%02d, len=%s, %s)\n" w8 (show len) (show mot)
 
@@ -193,15 +193,15 @@ showAnno _ = ""
 {- /show -}
 
 mapRT :: (t -> r) -> [(r, VarType)] -> RTPool t -> RTPool r
-mapRT f _ (RTIndex var vt) = RTIndex (f var) vt
-mapRT f mapping (RTArray w8 mobj _ var) = RTArray w8 mobj mapping (f var)
+mapRT f _ (RTArrayIndex var vt) = RTArrayIndex (f var) vt
+mapRT f mapping (RTArrayNew w8 mobj _ var) = RTArrayNew w8 mobj mapping (f var)
 mapRT _ _ (RTPool w16) = RTPool w16
 mapRT _ mapping (RTPoolCall w16 _) = RTPoolCall w16 mapping
-mapRT _ _ RTNone = RTNone
+mapRT _ _ RTArrayLength = RTArrayLength
 
 varsRT' :: RTPool t -> ([t], [t])
-varsRT' (RTIndex var _) = ([], [var])
-varsRT' (RTArray _ _ _ var) = ([], [var])
+varsRT' (RTArrayIndex var _) = ([], [var])
+varsRT' (RTArrayNew _ _ _ var) = ([], [var])
 varsRT' _ = ([], [])
 
 

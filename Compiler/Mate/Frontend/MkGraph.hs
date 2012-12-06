@@ -456,7 +456,7 @@ tir ARRAYLENGTH = do
   when (varType array /= JRef) $ error "tir: arraylength: type mismatch"
   nv <- newvar JInt
   apush nv
-  return [IRLoad RTNone array nv]
+  return [IRLoad RTArrayLength array nv]
 tir AALOAD = tirArrayLoad JRef Nothing
 tir IALOAD = tirArrayLoad JInt Nothing
 tir CALOAD = tirArrayLoad JInt (Just 0xff)
@@ -535,7 +535,7 @@ tirArray objtype w8 = do
   when (varType len /= JInt) $ error "tir: tirArray: type mismatch"
   nv <- newvar JRef
   apush nv
-  return [IRLoad (RTArray w8 objtype [] len) JRefNull nv]
+  return [IRLoad (RTArrayNew w8 objtype [] len) JRefNull nv]
 
 tirArrayLoad :: VarType -> Maybe Int32 {- Mask -} -> ParseState [MateIR Var O O]
 tirArrayLoad t mask = do
@@ -550,9 +550,9 @@ tirArrayLoad t mask = do
       _ <- apop
       nv' <- newvar JInt
       apush nv'
-      return [ IRLoad (RTIndex idx t) array nv
+      return [ IRLoad (RTArrayIndex idx t) array nv
              , IROp And nv' nv (JIntValue m)]
-    _ -> return [IRLoad (RTIndex idx t) array nv]
+    _ -> return [IRLoad (RTArrayIndex idx t) array nv]
 
 tirArrayStore :: VarType -> Maybe Int32 {- Mask -} -> ParseState [MateIR Var O O]
 tirArrayStore t mask = do
@@ -569,8 +569,8 @@ tirArrayStore t mask = do
     Just m -> do
       nv <- newvar JInt
       return [ IROp And nv value (JIntValue m)
-             , IRStore (RTIndex idx t) array nv ]
-    _ -> return [IRStore (RTIndex idx t) array value]
+             , IRStore (RTArrayIndex idx t) array nv ]
+    _ -> return [IRStore (RTArrayIndex idx t) array value]
 
 tirInvoke :: CallType -> Word16 -> ParseState [MateIR Var O O]
 tirInvoke ct ident = do
