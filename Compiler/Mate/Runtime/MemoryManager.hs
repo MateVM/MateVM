@@ -2,7 +2,6 @@
 {-# LANGUAGE ExistentialQuantification #-}
 module Compiler.Mate.Runtime.MemoryManager   
     ( AllocationManager(..)
-    , RefUpdateAction
     , buildGCAction )   where
 
 import Foreign.Ptr
@@ -19,19 +18,20 @@ import qualified Compiler.Mate.Runtime.StackTrace as T
 import qualified Compiler.Mate.Runtime.JavaObjectsGC as GCObj
 import Compiler.Mate.Runtime.JavaObjectsGC() -- only instances for Ptr a
 import Compiler.Mate.Runtime.TwoSpaceAllocator
+import Compiler.Mate.Runtime.GenerationalGC
 
 type RootSet a = M.Map (Ptr a) RefUpdateAction
 
 
 instance AllocationManager TwoSpace where
-  initMemoryManager size = initTwoSpace 0x1000000 
+  initMemoryManager size = initTwoSpace size
   mallocBytesT = mallocBytes'
   performCollection = performCollection'
   
   heapSize = do space <- get
                 return $ fromIntegral $ toHeap space - fromIntegral (toBase space)
 
-  validRef ptr = return True --liftM (validRef' ptr) get
+  validRef _  = return True --liftM (validRef' ptr) get
 
 printGc :: (Show a) => a -> IO ()
 printGc = printfGc . show
@@ -42,11 +42,6 @@ performCollection' roots = do modify switchSpaces
                               liftIO (printfGc "rootSet: " >> printGc rootList >> printfGc "\n")
                               performCollectionIO rootList
                               liftIO $ patchGCRoots roots
-
-patchGCRoots :: (RefObj a) => M.Map a RefUpdateAction -> IO ()
-patchGCRoots roots = mapM_ fixRef $ M.toList roots
-  where fixRef (obj,fixupAction) = getNewRef obj >>= getIntPtr >>= fixupAction
-
 
 markedOrInvalid :: (RefObj a) => StateT TwoSpace IO (a -> IO Bool)
 markedOrInvalid = do memManager <- get
@@ -59,7 +54,6 @@ markedOrInvalid = do memManager <- get
                                                    else return True
                                           else return True -- not valid reference
 
-
 -- [todo hs] this is slow. merge phases to eliminate list with refs
 performCollectionIO :: RefObj a => [a] -> StateT TwoSpace IO ()
 performCollectionIO refs' = do 
@@ -67,7 +61,7 @@ performCollectionIO refs' = do
   objFilter <- markedOrInvalid
   lifeRefs <- liftIO $ liftM (nub . concat) $ mapM (markTree'' objFilter mark refs') refs'
   liftIO $ printfGc "marked\n"
-  liftIO $ mapM printRef lifeRefs
+  --liftIO $ mapM printRef lifeRefs
   liftIO $ printfGc "go evacuate!\n"
   evacuate' lifeRefs 
   lift $ printfGc "eacuated. patching..\n"
@@ -82,16 +76,12 @@ buildGCAction stack size = do let rootsOnStack = concatMap T.candidates stack --
                               realRoots <- filterM (notNullRef . snd) rootCandidates
                               performCollection $ foldr buildRootPatcher M.empty realRoots
                               mallocBytesT size
-  where --checkRef :: IntPtr -> StateT a IO Bool
-        dereference :: IntPtr -> IO (IntPtr,IntPtr)
+  where dereference :: IntPtr -> IO (IntPtr,IntPtr)
         dereference intPtr = do printfGc $ printf "deref stacklocation: 0x%08x\n" (fromIntegral intPtr :: Int)
                                 obj <- peek $ intPtrToPtr intPtr :: IO IntPtr
                                 printfGc $ printf "deref location: "
                                 printfGc (show (intPtrToPtr obj) ++ "\n")
                                 return (intPtr,obj)
-
-notNullRef :: AllocationManager a =>  IntPtr -> StateT a IO Bool
-notNullRef = return . (/=(0x0 :: Int)) . fromIntegral
 
 -- (stackLocation,obj)
 buildRootPatcher :: (IntPtr,IntPtr) -> RootSet a -> RootSet a

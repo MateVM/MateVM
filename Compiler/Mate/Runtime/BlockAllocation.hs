@@ -1,6 +1,6 @@
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-module MateVM.Compiler.Mate.Runtime.BlockAllocation where
+module Compiler.Mate.Runtime.BlockAllocation where
 
 import Foreign
 import Control.Monad
@@ -171,6 +171,7 @@ runTest x gcState allocState = let allocation = runStateT x gcState
                                in result
 
 
+test1 ::  ((Ptr b, GcState), AllocM)
 test1 = let x = runStateT (allocGen0 12) gcState1
             y = runStateT x emptyAllocM
         in runIdentity y
@@ -184,20 +185,20 @@ int2Ptr :: Int -> Ptr b
 int2Ptr = intPtrToPtr . fromIntegral
 
 emptyTest :: Int -> Property
-emptyTest x = let ((ptr,gcS),allocS) = runTest (allocGen0 x) start emptyAllocM 
+emptyTest x = let ((ptr,_),_) = runTest (allocGen0 x) start emptyAllocM 
               in x <= blockSize ==> ptr == int2Ptr 0
     where start = mkGcState  
                      GenState { freeBlocks = [], activeBlocks = M.empty, collections = 0 } 
 
 test3 ::  Property
-test3 = let ((ptr,gcS),allocS) = runTest (allocGen0 12) start emptyAllocM 
+test3 = let ((ptr,gcS),_) = runTest (allocGen0 12) start emptyAllocM 
         in True ==> ptr == int2Ptr 0xc && (freeBlocks . head . generations) gcS == [] 
     where aBlock = Block { beginPtr = 0x0, endPtr = 0x400, freePtr = 0xc }
           start = mkGcState  
                      GenState { freeBlocks = [aBlock], activeBlocks = M.empty, collections = 0 } 
 
 test4 ::  Property
-test4 = let ((ptr,gcS),allocS) = runTest (allocGen0 12) start emptyAllocM 
+test4 = let ((ptr,gcS),_) = runTest (allocGen0 12) start emptyAllocM 
         in True ==> ptr == int2Ptr 0x401 && (freeBlocks . head . generations) gcS == [] 
     where aBlock = Block { beginPtr = 0x0, endPtr = 0x400, freePtr = 0x400 }
           aBlock2 = Block { beginPtr = 0x401, endPtr = 0x800, freePtr = 0x401 }
@@ -207,7 +208,7 @@ test4 = let ((ptr,gcS),allocS) = runTest (allocGen0 12) start emptyAllocM
                      GenState { freeBlocks = [], activeBlocks = active'', collections = 0 } 
 
 test5 ::  Int -> Property
-test5 s = let ((ptr,gcS),allocS) = runTest (allocGen0 s) start AllocM { freeS = 0x801 }
+test5 s = let ((ptr,gcS),_) = runTest (allocGen0 s) start AllocM { freeS = 0x801 }
           in s > 1 && s < blockSize ==> ptr == int2Ptr 0x801 && (length . M.toList . activeBlocks . head . generations) gcS == 3
     where aBlock = Block { beginPtr = 0x0, endPtr = 0x400, freePtr = 0x400 }
           aBlock2 = Block { beginPtr = 0x401, endPtr = 0x800, freePtr = 0x7FF }

@@ -1,7 +1,15 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module Compiler.Mate.Runtime.GC 
-  ( RefObj(..), traverseIO, markTree'', markTree, patchAllRefs, AllocationManager(..), RefUpdateAction 
-    {- dont export generic versions for high performance -> remove for production -}) where
+  ( RefObj(..)
+  , traverseIO
+  , markTree'' 
+  , markTree
+  , patchAllRefs 
+  , AllocationManager(..)
+  , RefUpdateAction
+  , notNullRef 
+  , patchGCRoots
+  ) where
 
 import Control.Monad
 import Control.Monad.State
@@ -105,5 +113,13 @@ getNewRefIfValid predicate obj = do
 
 patchAllRefs :: (RefObj a) => (a -> IO Bool) -> [a] -> IO ()
 patchAllRefs valid = mapM_ (patchRefsObj valid)
+
+notNullRef :: AllocationManager a =>  IntPtr -> StateT a IO Bool
+notNullRef = return . (/=(0x0 :: Int)) . fromIntegral
+
+ 
+patchGCRoots :: (RefObj a) => M.Map a RefUpdateAction -> IO ()
+patchGCRoots roots = mapM_ fixRef $ M.toList roots
+  where fixRef (obj,fixupAction) = getNewRef obj >>= getIntPtr >>= fixupAction
 
 
