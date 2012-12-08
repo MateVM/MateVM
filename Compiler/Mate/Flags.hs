@@ -5,6 +5,10 @@ module Compiler.Mate.Flags where
 usePreciseGC :: Bool
 usePreciseGC = False
 
+{-# INLINE useBlockAllocator #-}
+useBlockAllocator :: Bool
+useBlockAllocator = False
+
 {-# INLINE enableCoalescing #-}
 enableCoalescing :: Bool
 enableCoalescing = False

@@ -55,9 +55,6 @@ class AllocationManager a where
 
   validRef :: IntPtr -> StateT a IO Bool
 
---class PrintableRef a where
---  printRef :: a -> IO ()
-
 -- | Generically marks a graph (can be used to set mark bit and reset mark bit at the same time
 -- using customized loopcheck and marker funcs (i.e. to set the bit check on ==1 and on ==0 otherwise)
 -- Furthermore it produces a list of visited nodes (this can be all live one (or dead on respectively)
@@ -116,7 +113,6 @@ patchAllRefs valid = mapM_ (patchRefsObj valid)
 
 notNullRef :: AllocationManager a =>  IntPtr -> StateT a IO Bool
 notNullRef = return . (/=(0x0 :: Int)) . fromIntegral
-
  
 patchGCRoots :: (RefObj a) => M.Map a RefUpdateAction -> IO ()
 patchGCRoots roots = mapM_ fixRef $ M.toList roots

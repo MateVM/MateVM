@@ -9,18 +9,30 @@ import Data.Map(Map)
 import Compiler.Mate.Runtime.BlockAllocation
 import Compiler.Mate.Runtime.GC
 
-instance AllocationManager GenState where
+instance AllocationManager GcState where
     initMemoryManager = initGen
     mallocBytesT = mallocBytesGen
     performCollection = collectGen
     heapSize = error "heap size in GenGC not implemented"
     validRef = error "valid ref in GenGC not implemented"
 
-initGen :: Int -> IO GenState
-initGen = undefined
+initGen :: Int -> IO GcState
+initGen _ = return . GcState $ map (const generation) [0..2] 
+    where generation = GenState { freeBlocks = [], 
+                                  activeBlocks = M.empty,
+                                  collections = 0 }
 
-mallocBytesGen :: Int -> StateT GenState IO (Ptr b)
-mallocBytesGen = undefined
+mallocBytesGen :: Int -> StateT GcState IO (Ptr b)
+mallocBytesGen size = do
+    current <- get
+    undefined
 
-collectGen :: (RefObj b) => Map b RefUpdateAction -> StateT GenState IO ()
+{- dafuq? could not match type?? this is well typed !11!
+runBlockAllocator2 :: Int -> GcState -> IO (Ptr b, GcState)
+runBlockAllocator2 size current = evalStateT allocT AllocIO
+    where allocT = runStateT (allocGen0 size) current
+-}
+
+
+collectGen :: (RefObj b) => Map b RefUpdateAction -> StateT GcState IO ()
 collectGen = undefined

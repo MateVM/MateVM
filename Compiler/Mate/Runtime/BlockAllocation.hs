@@ -163,6 +163,13 @@ gcState1 = GcState [emptyGenState]
 mkGcState ::  GenState -> GcState
 mkGcState = GcState . (:[])
 
+
+runBlockAllocator :: Int -> GcState -> IO (Ptr b, GcState)
+runBlockAllocator size current = evalStateT allocT AllocIO
+    where allocT = runStateT (allocGen0 size) current
+
+
+
 --dont be too frightened here. cornholio
 runTest :: StateT GcState (StateT AllocM Identity) (Ptr a) -> GcState -> AllocM -> ((Ptr a, GcState), AllocM)
 runTest x gcState allocState = let allocation = runStateT x gcState
