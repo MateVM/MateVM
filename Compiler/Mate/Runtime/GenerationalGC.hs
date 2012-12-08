@@ -7,14 +7,22 @@ import Control.Monad
 import Control.Monad.Trans
 import Control.Monad.State.Strict
 import Control.Monad.Identity
+import Test.QuickCheck
 
+import Text.Printf
 import qualified Data.Map as M
 import Data.Map(Map)
+
+blockSize :: Int
+blockSize = 1024
 
 data Block = Block { beginPtr :: !IntPtr
                    , endPtr   :: !IntPtr
                    , freePtr  :: !IntPtr
-                   } deriving Show
+                   } deriving (Eq)
+
+instance Show Block where
+    show x = printf "Begin: 0x%08x, End: 0x%08x, FreePtr: 0x%08x" (fromIntegral $ beginPtr x :: Int) (fromIntegral $ endPtr x :: Int) (fromIntegral $ freePtr x :: Int)
 
 -- Maps number of free bytes to a set of blocks with this
 -- amount of free memory
@@ -23,10 +31,10 @@ type Blocks = Map Int [Block]
 data GenState = GenState { freeBlocks :: [Block]
                          , activeBlocks :: Blocks
                          , collections :: !Int 
-                         } deriving Show
+                         } deriving (Show,Eq)
 
 data GcState = GcState { generations :: [GenState] 
-                       }
+                       } deriving (Eq,Show)
 
 generation0 :: GcState -> GenState
 generation0 = head . generations
@@ -39,7 +47,10 @@ type GenStateT m a = StateT GenState (StateT a m)
 type GcStateT m a = StateT GcState (StateT a m) 
 
 -- This is the mock allocator
-data AllocM = AllocM { freeS :: IntPtr } deriving Show 
+data AllocM = AllocM { freeS :: IntPtr } deriving (Eq)
+instance Show AllocM where
+    show x = printf "freeS: 0x%08x" (fromIntegral $ freeS x :: Int)
+
 type AllocMT a = StateT AllocM Identity a
 
 -- | allocates memory within a generation
@@ -69,7 +80,7 @@ allocateInFreshBlock :: Alloc a m => Int -> GenStateT m a (Ptr b)
 allocateInFreshBlock size = do
     current <- get
     freeBlock <- case freeBlocks current of
-                 [] -> lift $ alloc size -- make a block
+                 [] -> lift $ alloc blockSize -- make a block
                  (x:xs) -> do --reuse idle block
                               put current { freeBlocks = xs }
                               return x
@@ -87,17 +98,20 @@ allocateInBlock :: Block -> Int -> (Ptr b, Block)
 allocateInBlock b@(Block { freePtr = free', endPtr = end }) size = 
     if freePtr' > end
       then error "allocateInBlock has insufficient space. wtf"
-      else (intPtrToPtr freePtr', b { freePtr = freePtr' })
+      else (intPtrToPtr free', b { freePtr = freePtr' })
   where freePtr' = free' + fromIntegral size
 
 
 -- | allocates memory in generation 0
 allocGen0 :: Alloc a m => Int -> GcStateT m a (Ptr b)
-allocGen0 size = do
-    (gen0:xs) <- liftM generations get
-    (ptr, newState) <- lift $ runStateT (allocGen size) gen0
-    put (GcState $ newState:xs)
-    return ptr
+allocGen0 size = 
+    if size > blockSize 
+      then  error "tried to allocate superhuge object in gen0"
+      else do
+            (gen0:xs) <- liftM generations get
+            (ptr, newState) <- lift $ runStateT (allocGen size) gen0
+            put (GcState $ newState:xs)
+            return ptr
 
 emptyAllocM :: AllocM
 emptyAllocM = AllocM { freeS = 0 }
@@ -146,20 +160,63 @@ emptyGenState = GenState { freeBlocks = [], activeBlocks = M.empty, collections 
 gcState1 ::  GcState
 gcState1 = GcState [emptyGenState]
 
+mkGcState ::  GenState -> GcState
+mkGcState = GcState . (:[])
 
 --dont be too frightened here. cornholio
-runTest :: StateT GcState (StateT AllocM Identity) (Ptr a) -> GcState -> AllocM -> (Ptr a, AllocM)
-runTest x gcState allocState = let allocation = evalStateT x gcState
+runTest :: StateT GcState (StateT AllocM Identity) (Ptr a) -> GcState -> AllocM -> ((Ptr a, GcState), AllocM)
+runTest x gcState allocState = let allocation = runStateT x gcState
                                    resultT = runStateT allocation allocState
-                               in runIdentity resultT
+                                   result = runIdentity resultT
+                               in result
 
 
-test1 ::  (Ptr b, AllocM)
-test1 = let x = evalStateT (allocGen0 12) gcState1
+test1 = let x = runStateT (allocGen0 12) gcState1
             y = runStateT x emptyAllocM
         in runIdentity y
 
-test2 ::  IO (Ptr b, AllocIO)
-test2 = let x = evalStateT (allocGen0 12) gcState1
+
+
+test2 ::  IO ((Ptr b, GcState), AllocIO)
+test2 = let x = runStateT (allocGen0 12) gcState1
             y = runStateT x AllocIO
         in y
+
+int2Ptr :: Int -> Ptr b
+int2Ptr = intPtrToPtr . fromIntegral
+
+emptyTest :: Int -> Property
+emptyTest x = let ((ptr,gcS),allocS) = runTest (allocGen0 x) start emptyAllocM 
+              in x <= blockSize ==> ptr == int2Ptr 0
+    where start = mkGcState  
+                     GenState { freeBlocks = [], activeBlocks = M.empty, collections = 0 } 
+
+
+test3 ::  Property
+test3 = let ((ptr,gcS),allocS) = runTest (allocGen0 12) start emptyAllocM 
+        in True ==> ptr == int2Ptr 0xc && (freeBlocks . head . generations) gcS == [] 
+    where aBlock = Block { beginPtr = 0x0, endPtr = 0x400, freePtr = 0xc }
+          start = mkGcState  
+                     GenState { freeBlocks = [aBlock], activeBlocks = M.empty, collections = 0 } 
+
+
+test4 ::  Property
+test4 = let ((ptr,gcS),allocS) = runTest (allocGen0 12) start emptyAllocM 
+        in True ==> ptr == int2Ptr 0x401 && (freeBlocks . head . generations) gcS == [] 
+    where aBlock = Block { beginPtr = 0x0, endPtr = 0x400, freePtr = 0x400 }
+          aBlock2 = Block { beginPtr = 0x401, endPtr = 0x800, freePtr = 0x401 }
+          active' = M.insert (freeSpace aBlock) [aBlock] M.empty
+          active'' = M.insert (freeSpace aBlock2) [aBlock2] active'
+          start = mkGcState  
+                     GenState { freeBlocks = [], activeBlocks = active'', collections = 0 } 
+
+test5 ::  Int -> Property
+test5 s = let ((ptr,gcS),allocS) = runTest (allocGen0 12) start AllocM { freeS = 0x801 }
+          in s > 1 && s < blockSize ==> ptr == int2Ptr 0x801 && (length . M.toList . activeBlocks . head . generations) gcS == 3
+    where aBlock = Block { beginPtr = 0x0, endPtr = 0x400, freePtr = 0x400 }
+          aBlock2 = Block { beginPtr = 0x401, endPtr = 0x800, freePtr = 0x7FF }
+          active' = M.insertWith (++) (freeSpace aBlock) [aBlock] M.empty
+          active'' = M.insertWith (++) (freeSpace aBlock2) [aBlock2] active'
+          start = mkGcState  
+                     GenState { freeBlocks = [], activeBlocks = active'', collections = 0 } 
+
