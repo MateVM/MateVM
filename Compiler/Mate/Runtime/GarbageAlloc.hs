@@ -23,6 +23,7 @@ import Data.String.Utils
 import Mate.GC.Boehm
 import Compiler.Mate.Runtime.StackTrace
 import Compiler.Mate.Runtime.MemoryManager
+import Compiler.Mate.Runtime.TwoSpaceAllocator
 
 import JVM.ClassFile
 import Compiler.Mate.Debug
@@ -144,16 +145,22 @@ allocObjAndDoGCPrecise regs size = do
   printfGc "allocObjAndDoGCPrecise begin"
   stack <- getStackIfPossible regs 
 
-  let gcAction = buildGCAction stack size
- 
-  memoryManager <- readIORef twoSpaceGC 
-  (ptr,memoryManager') <- runStateT gcAction memoryManager 
-  writeIORef twoSpaceGC memoryManager'
-  
-  printfGc "allocObjAndDoGCPrecise end"
-  return ptr
+  if useBlockAllocator 
+    then do
+      error "not implemented"
+    else do
+      let gcAction = buildGCAction stack size
+     
+      memoryManager <- readIORef twoSpaceGC 
+      (ptr,memoryManager') <- runStateT gcAction memoryManager 
+      writeIORef twoSpaceGC memoryManager'
+      
+      printfGc "allocObjAndDoGCPrecise end"
+      return ptr
 
 {-# NOINLINE twoSpaceGC #-}
 twoSpaceGC :: IORef TwoSpace
-twoSpaceGC = unsafePerformIO $ initTwoSpace 0x1000000 >>= newIORef
+twoSpaceGC = if not useBlockAllocator
+               then unsafePerformIO $ initTwoSpace 0x1000000 >>= newIORef
+               else error "tried to initialize twospace allocator but block allocator is set according to Flags"
 

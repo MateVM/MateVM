@@ -2,9 +2,6 @@
 {-# LANGUAGE ExistentialQuantification #-}
 module Compiler.Mate.Runtime.MemoryManager   
     ( AllocationManager(..)
-    , TwoSpace(..)
-    , initTwoSpace
-    , mallocBytes'
     , RefUpdateAction
     , buildGCAction )   where
 
@@ -27,13 +24,14 @@ type RootSet a = M.Map (Ptr a) RefUpdateAction
 
 
 instance AllocationManager TwoSpace where
+  initMemoryManager size = initTwoSpace 0x1000000 
   mallocBytesT = mallocBytes'
   performCollection = performCollection'
   
   heapSize = do space <- get
                 return $ fromIntegral $ toHeap space - fromIntegral (toBase space)
 
-  validRef ptr = liftM (validRef' ptr) get
+  validRef ptr = return True --liftM (validRef' ptr) get
 
 printGc :: (Show a) => a -> IO ()
 printGc = printfGc . show
@@ -81,7 +79,7 @@ buildGCAction :: AllocationManager a => [T.StackDescription] -> Int -> StateT a 
 buildGCAction [] size = mallocBytesT size
 buildGCAction stack size = do let rootsOnStack = concatMap T.candidates stack --concatMap T.possibleRefs stack
                               rootCandidates <- lift $ mapM dereference rootsOnStack
-                              realRoots <- filterM (validRef2 . snd) rootCandidates
+                              realRoots <- filterM (notNullRef . snd) rootCandidates
                               performCollection $ foldr buildRootPatcher M.empty realRoots
                               mallocBytesT size
   where --checkRef :: IntPtr -> StateT a IO Bool
@@ -92,8 +90,8 @@ buildGCAction stack size = do let rootsOnStack = concatMap T.candidates stack --
                                 printfGc (show (intPtrToPtr obj) ++ "\n")
                                 return (intPtr,obj)
 
-validRef2 :: AllocationManager a =>  IntPtr -> StateT a IO Bool
-validRef2 = return . ((>(0x19 :: Int)) . fromIntegral)
+notNullRef :: AllocationManager a =>  IntPtr -> StateT a IO Bool
+notNullRef = return . (/=(0x0 :: Int)) . fromIntegral
 
 -- (stackLocation,obj)
 buildRootPatcher :: (IntPtr,IntPtr) -> RootSet a -> RootSet a

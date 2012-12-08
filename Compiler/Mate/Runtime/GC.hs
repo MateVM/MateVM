@@ -34,7 +34,9 @@ class (Eq a, Ord a, Show a) => RefObj a where
 type RefUpdateAction = IntPtr -> IO () -- the argument is the new location of the refobj
 
 class AllocationManager a where
-  
+ 
+  initMemoryManager :: Int -> IO a
+
   -- | allocates n bytes in current space to space (may be to space or gen0 space)
   mallocBytesT :: Int -> StateT a IO (Ptr b)
   
