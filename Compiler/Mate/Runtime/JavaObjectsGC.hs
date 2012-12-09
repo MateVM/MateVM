@@ -29,8 +29,17 @@ instance RefObj (Ptr a) where
   setNewRef   = setNewRefPtr
   patchRefs   = patchRefsPtr
   cast = castPtr
-  getNewRef ptr = peekByteOff ptr newPtrOffset
+  getNewRef ptr = do 
+                     ptr' <- peekByteOff ptr newPtrOffset
+                     if 1 == (fromIntegral $ ptrToIntPtr ptr' :: Int32) -- only marked (case for large obs)
+                       then do printfGc "not movable obj\n"
+                               return ptr
+                       else return ptr'
   allocationOffset _ = 0
+
+  validObj ptr = do 
+                    objAsPtr <- getIntPtr ptr
+                    return $ objAsPtr /= 0 && objAsPtr /= 0x1228babe && objAsPtr /= 0x1227b
 
   printRef    = printRef'
 
@@ -84,10 +93,6 @@ filterReferenceFields :: [(Int32, FieldSignature)] -> [Int]
 filterReferenceFields = 
     map (fromIntegral . fst) . filter (isReferenceType . snd)
 
-isReferenceType :: FieldSignature -> Bool
-isReferenceType (ObjectType _) = True
-isReferenceType (Array _ _) = True
-isReferenceType _ = False
 
 isArray :: Ptr a -> IO Bool
 isArray ptr = do
@@ -151,7 +156,8 @@ printRef' ptr = do
          clazzNameM <- getClassNamePtr ptr 
          clazzName <- case clazzNameM of
                       Just v -> return v
-                      Nothing -> do printfGc $ "getClassNamePtr called on non mate obj: " ++ show ptr ++ "\n"
+                      Nothing -> do printfGc $ "getClassNamePtr called on non mate obj1: " ++ show ptr ++ "\n"
+                                    printfGc $ printf "trying to dump on %s" (show ptr)
                                     mem <- peekArray 12 (castPtr ptr) :: IO [Ptr Int32]
                                     printfGc $ printf  "dump: %s" (show mem)
                                     doLoop

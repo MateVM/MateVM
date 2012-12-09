@@ -13,6 +13,7 @@ module Compiler.Mate.Runtime.ClassPool (
   getFieldTypes,
   getMethodOffset,
   getFieldOffset,
+  getFieldSignatures,
   getStaticFieldAddr,
   getInterfaceMethodOffset,
   addClassPath,
@@ -88,6 +89,7 @@ getFieldOffset path field = do
   return $ ciFieldMap ci M.! field
 
 -- method + signature plz!
+
 getMethodOffset :: B.ByteString -> B.ByteString -> IO NativeWord
 getMethodOffset path method = do
   ci <- getClassInfo path
@@ -135,6 +137,10 @@ getFieldTypes :: B.ByteString -> IO [(Int32, FieldSignature)]
 getFieldTypes path = do
   ci <- getClassInfo path
   return $ map (second fieldSignature) $ M.toList (ciFieldTypeMap ci)
+
+getFieldSignatures :: FieldTypeMap -> [(Int32, FieldSignature)]
+getFieldSignatures m = map (second fieldSignature) $ M.toList m
+
 
 getStaticFieldAddr :: CPtrdiff -> IO CPtrdiff
 getStaticFieldAddr from = do
@@ -275,11 +281,13 @@ calculateFields cf superclass = do
     let (sfields, ifields) = partition (S.member ACC_STATIC . fieldAccessFlags) (classFields cf)
 
     let sc_sm = getsupermap superclass ciStaticMap
-    staticbase <- mallocClassData $ fromIntegral (length sfields) * ptrSize
+   
+    -- TODO(bernhard): is this complete bullshit?
+    let statictypemap = zipbasetype (fromIntegral $ length sfields) sfields
+    staticbase <- mallocStaticData (fromIntegral (length sfields) * ptrSize) statictypemap
     let sm = zipbase (fromIntegral $ ptrToIntPtr staticbase) sfields
     -- new fields "overwrite" old ones, if they have the same name
     let staticmap = sm `M.union` sc_sm
-    let statictypemap = M.empty -- TODO
 
     let sc_im = getsupermap superclass ciFieldMap
     let sc_imtype = getsupermap superclass ciFieldTypeMap

@@ -36,6 +36,8 @@ class (Eq a, Ord a, Show a) => RefObj a where
 
   allocationOffset :: a -> Int
 
+  validObj :: a -> IO Bool
+
   printRef :: a -> IO ()
   
 
@@ -118,6 +120,9 @@ notNullRef = return . (/=(0x0 :: Int)) . fromIntegral
  
 patchGCRoots :: (RefObj a) => M.Map a RefUpdateAction -> IO ()
 patchGCRoots roots = mapM_ fixRef $ M.toList roots
-  where fixRef (obj,fixupAction) = getNewRef obj >>= getIntPtr >>= fixupAction
+  where fixRef (obj,fixupAction) = do valid <- validObj obj
+                                      if valid 
+                                        then getNewRef obj >>= getIntPtr >>= fixupAction
+                                        else return ()
 
 

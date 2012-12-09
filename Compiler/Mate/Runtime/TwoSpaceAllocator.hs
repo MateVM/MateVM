@@ -114,7 +114,7 @@ collectLohTwoSpace xs = do
     liftIO $ printfGc $ printf "objs in loh: %d" (S.size oldLoh)
     liftIO $ printfGc $ printf "old loh: %s" (show $ showRefs $ S.toList oldLoh)
     liftIO $ printfGc $ printf "to remove: %s" (show $ showRefs $ S.toList toRemove) 
-    --liftIO $ mapM (free . intPtrToPtr) (S.toList toRemove)
+    liftIO $ mapM (free . intPtrToPtr) (S.toList toRemove)
     put current { loh = newSet }
 
 

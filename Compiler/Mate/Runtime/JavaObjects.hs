@@ -7,6 +7,7 @@ module Compiler.Mate.Runtime.JavaObjects
   , getObjectSizePtr
   , getObjectFieldCountPtr
   , getClassNamePtr
+  , isReferenceType
   ) where
 
 import Data.Word
@@ -149,7 +150,7 @@ getObjectSizePtr :: Ptr a -> IO Int
 getObjectSizePtr ptr = do 
   clazzNameM <- getClassNamePtr ptr
   case clazzNameM of 
-   Nothing -> error "getObjectSizePtr called on non mate object (getClassNamePtr returned Nothing)"
+   Nothing -> error $ "getObjectSizePtr called on non mate object (getClassNamePtr returned Nothing)" ++ (show ptr)
    Just clazzName -> liftM fromIntegral $ getObjectSize clazzName
 
 getObjectFieldCountPtr :: Ptr a -> IO Int
@@ -158,3 +159,9 @@ getObjectFieldCountPtr ptr = do
   case clazzNameM of 
    Nothing -> error "getObjectFieldCountPtr called on non mate object (getClassNamePtr returned Nothing)"
    Just clazzName -> liftM fromIntegral $ getFieldCount clazzName
+
+
+isReferenceType :: FieldSignature -> Bool
+isReferenceType (ObjectType _) = True
+isReferenceType (Array _ _) = True
+isReferenceType _ = False

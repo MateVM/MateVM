@@ -9,7 +9,7 @@ public class StaticFieldGCTest
     StaticFieldGCTest.something = new int[1024];
     for(int i=0;i<128;i++)
     {
-      StaticFieldGCTest.something[i] = i;
+      StaticFieldGCTest.something[i] = 1024 + i;
     }
     foo();
   }

@@ -1,6 +1,7 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
 module Compiler.Mate.Runtime.GarbageAlloc(
     mallocClassData,
+    mallocStaticData,
     mallocStringGC,
     mallocObjectGC,
     mallocObjectGC_stackstrace,
@@ -16,7 +17,6 @@ import Foreign.C
 import System.IO.Unsafe
 import Data.IORef
 import Control.Monad.State
-
 import qualified Data.ByteString.Internal as BI
 import Data.String.Utils
 
@@ -24,7 +24,8 @@ import Mate.GC.Boehm
 import Compiler.Mate.Runtime.StackTrace
 import Compiler.Mate.Runtime.MemoryManager
 import Compiler.Mate.Runtime.TwoSpaceAllocator
-
+import Compiler.Mate.Runtime.JavaObjects
+import Compiler.Mate.Runtime.ClassPool
 import JVM.ClassFile
 import Compiler.Mate.Debug
 import Compiler.Mate.Flags
@@ -48,6 +49,26 @@ mallocStringUnmanaged size = do
   ptr <- F.mallocBytes size
   BI.memset (castPtr ptr) 0 (fromIntegral size)
   return ptr
+
+mallocStaticData :: Int -> FieldTypeMap -> IO (Ptr a)
+mallocStaticData size types = do
+  printfMem $ printf "mallocStaticData: %d\n" size
+  mem <- F.mallocBytes size
+  BI.memset (castPtr mem) 0 (fromIntegral size)
+  addRootGC mem (plusPtr mem size)
+  let memInt = fromIntegral $ ptrToIntPtr mem
+  printfMem $ printf "got adress %s" (show mem)
+  printfMem $ printf "Here we go: %s\n" (show types)
+  let staticFields = [memInt + (off-1)*4 | off <- extractRerefenceTypeOffsets types]
+  printfMem $ printf "classData fields: %s\n" (show $ showRefs2 staticFields)
+  mapM_ (addRootPrecise . fromIntegral) staticFields
+  return mem
+
+extractRerefenceTypeOffsets :: FieldTypeMap -> [Int32]
+extractRerefenceTypeOffsets = map fst . filter (isReferenceType . snd) . getFieldSignatures
+
+showRefs2 :: Integral a => [a] -> [String]
+showRefs2 = map (show . intPtrToPtr . fromIntegral) 
 
 mallocClassData :: Int -> IO (Ptr a)
 mallocClassData size = do
@@ -153,7 +174,8 @@ allocObjAndDoGCPrecise regs size = do
     then do
       error "not implemented"
     else do
-      let gcAction = buildGCAction stack size
+      permRoots <- readIORef permGenRoots 
+      let gcAction = buildGCAction stack permRoots size
      
       memoryManager <- readIORef twoSpaceGC 
       (ptr,memoryManager') <- runStateT gcAction memoryManager 

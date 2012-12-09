@@ -1,9 +1,11 @@
 module Compiler.Mate.Runtime.GarbageAlloc where
 
+import Compiler.Mate.Types
 import Foreign
 import Foreign.C
 
 mallocClassData :: Int -> IO (Ptr a)
+mallocStaticData :: Int -> FieldTypeMap -> IO (Ptr a)
 mallocObjectUnmanaged :: Int -> IO CPtrdiff
 mallocStringUnmanaged :: Int -> IO (Ptr a)
 mallocStringGC :: Int -> IO (Ptr a)

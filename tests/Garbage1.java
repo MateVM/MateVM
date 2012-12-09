@@ -37,11 +37,11 @@ public class Garbage1
 
 class Big2
 {
-	//private int[]arr;
+	private int[]arr;
 
 	public Big2()
 	{
-		//arr = new int[0x10];//int[0xF400];
+		arr = new int[0xF400];
 		//System.out.println("foo");
 	}
         

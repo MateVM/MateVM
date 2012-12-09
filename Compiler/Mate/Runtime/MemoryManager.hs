@@ -42,19 +42,27 @@ performCollection' roots = do modify switchSpaces
                               logGcT $ printf  "rootSet: %s\n " (show rootList)
                               performCollectionIO rootList
                               liftIO $ patchGCRoots roots
+                              logGcT "all done \\o/"
 
 markedOrInvalid :: (RefObj a, AllocationManager b) => StateT b IO (a -> IO Bool)
 markedOrInvalid = 
   return $ \obj -> do objAsPtr <- getIntPtr obj
                       printfGc $ printf "check obj: 0x%08x" (fromIntegral objAsPtr :: Int)
                       --let valid = validRef' objAsPtr memManager
-                      if objAsPtr /= 0 
+                      if uglyFilter objAsPtr-- this was not necassary before perm gens (now direct refs onto objs) 
                         then do validObj <- GCObj.validMateObj objAsPtr 
                                 if validObj
-                                 then liftIO $ marked obj
-                                 else return True
-                        else return True -- not valid reference
+                                 then do
+                                        printfGc "gheck makred\n" 
+                                        liftIO $ marked obj
+                                 else do 
+                                         printfGc "not valid1\n"
+                                         return True
+                        else do printfGc "not valid1\n"
+                                return True -- not valid reference
 
+uglyFilter :: IntPtr -> Bool
+uglyFilter objAsPtr = objAsPtr /= 0 && objAsPtr /= 0x1228babe && objAsPtr /= 0x1227babe 
 
 -- [todo hs] this is slow. merge phases to eliminate list with refs
 performCollectionIO :: (RefObj a, AllocationManager b) => [a] -> StateT b IO ()
@@ -63,12 +71,17 @@ performCollectionIO refs' = do
   objFilter <- markedOrInvalid
   allLifeRefs <- liftIO $ liftM (nub . concat) $ mapM (markTree'' objFilter mark refs') refs'
   logGcT "==>Done Phase 1.\n"
+  toEvacuate <- liftIO $ filterM (getIntPtr >=> return . uglyFilter) allLifeRefs 
   if gcLogEnabled 
-    then  liftIO $ mapM_ (getIntPtr >=> \x -> printfGc $ printf " 0x%08x" (fromIntegral x ::Int) ) allLifeRefs
+    then  liftIO $ mapM_ (getIntPtr >=> \x -> printfGc $ printf " 0x%08x" (fromIntegral x ::Int) ) toEvacuate
     else return ()
-  (largeObjs,lifeRefs) <- liftIO $ extractLargeObjects allLifeRefs
+  (largeObjs,lifeRefs) <- liftIO $ extractLargeObjects toEvacuate
   logGcT "\nPhase 2. Evacuating...\n"
-  evacuate' lifeRefs 
+
+  if gcLogEnabled 
+    then  liftIO $ mapM_ (getIntPtr >=> \x -> printfGc $ printf " 0x%08x" (fromIntegral x ::Int) ) lifeRefs
+    else return ()
+  evacuate' lifeRefs
   logGcT  "Phase 2. Done.\n"
   if useLoh
     then do 
@@ -78,7 +91,7 @@ performCollectionIO refs' = do
     else return ();
   liftIO $ patchAllRefs (getIntPtr >=> \x -> return $ x /= 0) lifeRefs
   --lift $ patchAllRefs (getIntPtr >=> return . flip validRef' memoryManager) lifeRefs 
-  logGcT "patched.\n"    
+  logGcT "patched2.\n"    
 
 
 -- splits [a] into (large objects, normal objects)
@@ -92,13 +105,14 @@ extractLargeObjects xs =
             return (map fst lohs, map fst objs)
 
 
-buildGCAction :: AllocationManager a => [T.StackDescription] -> Int -> StateT a IO (Ptr b)
-buildGCAction [] size = mallocBytesT size
-buildGCAction stack size = do let rootsOnStack = concatMap T.candidates stack --concatMap T.possibleRefs stack
-                              rootCandidates <- lift $ mapM dereference rootsOnStack
-                              realRoots <- filterM (notNullRef . snd) rootCandidates
-                              performCollection $ foldr buildRootPatcher M.empty realRoots
-                              mallocBytesT size
+buildGCAction :: AllocationManager a => [T.StackDescription] -> [IntPtr] -> Int -> StateT a IO (Ptr b)
+buildGCAction [] perm size = mallocBytesT size
+buildGCAction stack perm size = 
+    do let rootsOnStack = perm ++ concatMap T.candidates stack --concatMap T.possibleRefs stack
+       rootCandidates <- lift $ mapM dereference rootsOnStack
+       realRoots <- filterM (notNullRef . snd) rootCandidates
+       performCollection $ foldr buildRootPatcher M.empty realRoots
+       mallocBytesT size
   where dereference :: IntPtr -> IO (IntPtr,IntPtr)
         dereference intPtr = do printfGc $ printf "deref stacklocation: 0x%08x\n" (fromIntegral intPtr :: Int)
                                 obj <- peek $ intPtrToPtr intPtr :: IO IntPtr
@@ -112,7 +126,9 @@ buildRootPatcher (ptr,obj) = M.insertWith both ptr' patch
   where --patch = poke ptr' 
         patch newLocation = do printfGc $ printf "patch new ref: 0x%08x on stackloc: 0x%08x\n" 
                                  (fromIntegral newLocation :: Int) (fromIntegral ptr :: Int)
-                               poke (intPtrToPtr ptr) newLocation   
+                               x <- poke (intPtrToPtr ptr) newLocation  
+                               printfGc "died?" 
+                               return x
         ptr' = intPtrToPtr obj
 
         both newPatch oldPatch newLocation = do newPatch newLocation
