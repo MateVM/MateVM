@@ -50,13 +50,14 @@ allocateJavaString str = do
    -  | MethodTable | GC Data | value | count | cachedhashcode | offset |
    -  +-------------+---------+-------+-------+----------------+--------+
    -        |                     |
-   -        |                     +--+
-   -        v                        v
-   -  java/lang/String           +--------+--------+--------+-----+------------------+
-   -                             | length | str[0] | str[1] | ... | str [length - 1] |
-   -                             +--------+--------+--------+-----+------------------+
+   -        |              +------+
+   -        v              v         
+   -  java/lang/String     +-------+--------+--------+--------+--------+-----+------------------+
+   -                       | mtbl  | gcinfo | length | str[0] | str[1] | ... | str [length - 1] |
+   -                       +-------+--------+--------+--------+--------+-----+------------------+
    -  all cells are 32bit wide, except str[i] of course (they're 8bit [but
    -  should be 16bit, TODO]).
+   -  mtbl is a fake mtable as for all arrays, same for gcinfo.
    -}
   -- build object layout
   fsize <- getObjectSize "java/lang/String"
@@ -74,16 +75,19 @@ allocateJavaString str = do
   -- (+1) for \0, (+4) for length
   newstr <- mallocStringGC (strlen + 5 + arrayObjCorr)
   BI.memset newstr 0 (fromIntegral $ strlen + 5 + arrayObjCorr)
+  -- set array fake mtbl and gcinfo
+  poke (plusPtr newstr arrayMagic) primitiveArrayMagic 
+  poke (plusPtr newstr arrayGC) (0x0 :: Word32) 
   arr <- newArray ((map fromIntegral $ B.unpack str) :: [Word8])
   copyBytes (plusPtr newstr (4 + arrayObjCorr)) arr strlen
   printfStr $ printf "new str ptr: (%s)@%d\n" (toString str) strlen
 
   let newstr_length = castPtr newstr :: Ptr CPtrdiff
-  poke newstr_length $ fromIntegral strlen
+  poke (plusPtr newstr arrayLength) (fromIntegral strlen :: Int32)
 
   -- set mtable
   poke (plusPtr ptr objectMtable) (fromIntegral mtbl :: CPtrdiff)
-  -- set GC Data (TODO)
+  -- set GC Data (0 is ok for gc data)
   poke (plusPtr ptr objectGC) (0 :: CPtrdiff)
   -- set value pointer
   poke (plusPtr ptr 0x8) (fromIntegral (ptrToIntPtr newstr) :: CPtrdiff)

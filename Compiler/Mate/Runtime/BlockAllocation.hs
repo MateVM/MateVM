@@ -5,7 +5,7 @@ module Compiler.Mate.Runtime.BlockAllocation where
 import Foreign
 import Control.Monad
 import Control.Monad.Trans
-import Control.Monad.State.Strict
+import Control.Monad.State
 import Control.Monad.Identity
 import Test.QuickCheck
 
@@ -33,7 +33,7 @@ data GenState = GenState { freeBlocks :: [Block]
                          , collections :: !Int 
                          } deriving (Show,Eq)
 
-data GcState = GcState { generations :: [GenState] 
+data GcState = GcState { generations :: [GenState], allocs :: Int 
                        } deriving (Eq,Show)
 
 generation0 :: GcState -> GenState
@@ -110,7 +110,8 @@ allocGen0 size =
       else do
             (gen0:xs) <- liftM generations get
             (ptr, newState) <- lift $ runStateT (allocGen size) gen0
-            put (GcState $ newState:xs)
+            c <- get
+            put $ c { generations = newState:xs }
             return ptr
 
 emptyAllocM :: AllocM
@@ -158,10 +159,10 @@ blockAdresses k = iterate next first
 emptyGenState ::  GenState
 emptyGenState = GenState { freeBlocks = [], activeBlocks = M.empty, collections = 0 }
 gcState1 ::  GcState
-gcState1 = GcState [emptyGenState]
+gcState1 = GcState { generations = [emptyGenState], allocs = 0 }
 
 mkGcState ::  GenState -> GcState
-mkGcState = GcState . (:[])
+mkGcState s = GcState { generations = [s], allocs = 0}
 
 
 runBlockAllocator :: Int -> GcState -> IO (Ptr b, GcState)

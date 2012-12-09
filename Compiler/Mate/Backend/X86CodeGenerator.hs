@@ -404,7 +404,7 @@ girEmitOO (IRLoad (RTArrayNew ta objType regmapping arrlen) (HIConstant 0) dst) 
     case objType of
       PrimitiveType -> mov (Disp arrayMagic, eax) (0x1228babe :: Word32)
       ReferenceType -> mov (Disp arrayMagic, eax) (0x1227babe :: Word32)
-    mov (Disp arrayGC, eax) (0x1337babe :: Word32) -- gcinfo
+    mov (Disp arrayGC, eax) (0x0 :: Word32) -- gcinfo
     mov (Disp arrayLength, eax) ebx -- store length at offset 0
     r2r dst eax
 

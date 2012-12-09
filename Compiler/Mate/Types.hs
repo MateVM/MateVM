@@ -3,6 +3,7 @@ module Compiler.Mate.Types
   ( w8Toi32, w16Toi32, w32Toi32, i32Tow32
   , objectMtable, objectGC
   , arrayMagic, arrayGC, arrayLength, arrayBase
+  , primitiveArrayMagic, referenceArrayMagic
   , ExceptionMap
   , RuntimeStackInfo(..)
   , StackDisp, GCPoint, GCPoints, GCSet, rootSet
@@ -71,6 +72,11 @@ arrayGC = 0x4
 arrayLength = 0x8
 arrayBase = 0xc
 
+-- used to distinguish between primitive and reference type arrays (for gc)
+primitiveArrayMagic :: Word32
+primitiveArrayMagic = 0x1228babe
+referenceArrayMagic :: Word32
+referenceArrayMagic = 0x1227babe 
 
 type ExceptionMap a = IM.IntervalMap a [(B.ByteString, a)]
 data RuntimeStackInfo = RuntimeStackInfo

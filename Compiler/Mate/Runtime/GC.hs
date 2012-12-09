@@ -105,8 +105,13 @@ getNewRefIfValid predicate obj = do
               then do printfGc "yes this is valid: "
                       printfGc $ show newRef
                       return newRef
-              else return obj
-    else return obj
+              else do
+                    printfGc "getNewRefIfValid said newRef is invalid. dafuq: \n" 
+                   -- printRef obj
+                    return obj
+    else do printfGc "geNewRefIfValid said obj itself is invalid. dafuq\n"
+            --printRef obj
+            return obj
 
 patchAllRefs :: (RefObj a) => (a -> IO Bool) -> [a] -> IO ()
 patchAllRefs valid = mapM_ (patchRefsObj valid)

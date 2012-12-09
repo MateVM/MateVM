@@ -91,9 +91,7 @@ isReferenceType _ = False
 
 isArray :: Ptr a -> IO Bool
 isArray ptr = do
-    printfGc "isArray..\n"
     method_table <- peekByteOff ptr 0 :: IO Int32
-    printfGc "done array. \n"
     return $ isArrayMagicNumber method_table 
 
 validMateObj :: IntPtr -> IO Bool
@@ -101,12 +99,14 @@ validMateObj intPtr = do let ptr = intPtrToPtr intPtr
                          isarray <- isArray ptr 
                          if isarray
                           then return True 
-                          else do printfGc "check mate obj\n"
-                                  method_table <- peekByteOff ptr 0 :: IO (Ptr a)
-                                  printfGc "done checking.\n"
-                                  clazzNameM <- getClassNamePtr method_table
+                          else do 
+                                  clazzNameM <- getClassNamePtr ptr
                                   case clazzNameM of 
-                                    Nothing -> return False
+                                    Nothing -> do printfGc "invalid.\n"
+                                                  mem <- peekArray 12 (castPtr ptr) :: IO [Ptr Int32]
+                                                  printfGc $ printf  "dump: %s" (show mem)
+                                                  printRef' ptr
+                                                  return False
                                     Just _ -> return True
                                   
 getSize :: Ptr a -> IO Int
@@ -145,7 +145,7 @@ doLoop = doLoop
 
 printRef' :: Ptr a -> IO ()
 printRef' ptr = do 
-    printInt32 "Obj: address 0x%08x\n" =<< (liftM fromIntegral (getIntPtr ptr) :: IO Int32)
+    printInt32 "Print Obj: address 0x%08x\n" =<< (liftM fromIntegral (getIntPtr ptr) :: IO Int32)
     printInt32 "method_table: 0x%08x\n" =<< (peekByteOff ptr 0 :: IO Int32)
     method_table <- peekByteOff ptr 0 :: IO Int32
     
@@ -154,7 +154,7 @@ printRef' ptr = do
          clazzNameM <- getClassNamePtr ptr 
          clazzName <- case clazzNameM of
                       Just v -> return v
-                      Nothing -> do printfGc $ "getClassNamePtr called on non mate obj: " ++ show ptr
+                      Nothing -> do printfGc $ "getClassNamePtr called on non mate obj: " ++ show ptr ++ "\n"
                                     mem <- peekArray 12 (castPtr ptr) :: IO [Ptr Int32]
                                     printfGc $ printf  "dump: %s" (show mem)
                                     doLoop

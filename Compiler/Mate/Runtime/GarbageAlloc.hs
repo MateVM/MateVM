@@ -61,9 +61,11 @@ mallocStringGC :: Int -> IO (Ptr a)
 mallocStringGC size = do
   let size' = size + (size `rem` 4)
   printfMem $ printf "mallocString: %d\n" size'
-  ptr <- mallocBytesGC size'
-  BI.memset (castPtr ptr) 0 (fromIntegral size')
-  return ptr
+  addr <- mallocObjectGC size'
+  let ptr' = intPtrToPtr (fromIntegral addr)
+  printfMem $ printf "string got: %s\n" (show ptr')
+  BI.memset ptr' 0 (fromIntegral size')
+  return ptr' 
 
 
 -- | allocates gc tracked obj. for precise gc no gc will take place
@@ -103,6 +105,7 @@ allocObjBoehm regs size = do
   _ <- case (mateDEBUG, regs) of
         (True, Just(sptr,rebp)) -> printStackTrace' sptr rebp
         _ -> return []
+  printfMem "do alloc boehm. \n"
   mallocBytesGC size
 
 getHeapMemory :: IO Int
@@ -122,7 +125,7 @@ printGCStats = putStrLn "Should print GC Stats"
 -- initiated from <clinit> calls.
 getStackIfPossible :: Maybe (CPtrdiff,CPtrdiff) -> IO [StackDescription]
 getStackIfPossible (Just (eip,rebp)) = getStack eip rebp
-getStackIfPossible Nothing = printfGc "no sptr, rebp provided. no gc should take place" >> return []
+getStackIfPossible Nothing = printfGc "no sptr, rebp provided. no gc should take place\n" >> return []
 
 -- | gets stack according to valid sptr and rebp. if stack is invalid 
 -- an empty stack is returned
@@ -142,7 +145,7 @@ isValidTrace [] = True
 -- | allocates obj and performs gc if possible 
 allocObjAndDoGCPrecise :: Maybe (CPtrdiff,CPtrdiff) -> Int -> IO (Ptr a)
 allocObjAndDoGCPrecise regs size = do
-  printfGc "allocObjAndDoGCPrecise begin"
+  printfGc "allocObjAndDoGCPrecise begin...\n"
   stack <- getStackIfPossible regs 
 
   if useBlockAllocator 
@@ -155,7 +158,7 @@ allocObjAndDoGCPrecise regs size = do
       (ptr,memoryManager') <- runStateT gcAction memoryManager 
       writeIORef twoSpaceGC memoryManager'
       
-      printfGc "allocObjAndDoGCPrecise end"
+      printfGc "allocObjAndDoGCPrecise completed.\n"
       return ptr
 
 {-# NOINLINE twoSpaceGC #-}
