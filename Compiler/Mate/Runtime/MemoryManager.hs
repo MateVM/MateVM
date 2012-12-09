@@ -33,52 +33,43 @@ instance AllocationManager TwoSpace where
 
   validRef _  = return True --liftM (validRef' ptr) get
 
-printGc :: (Show a) => a -> IO ()
-printGc = printfGc . show
-
 performCollection' :: (RefObj a) => M.Map a RefUpdateAction -> StateT TwoSpace IO ()
 performCollection' roots = do modify switchSpaces
                               let rootList = map fst $ M.toList roots
-                              liftIO (printfGc "rootSet: " >> printGc rootList >> printfGc "\n")
+                              logGcT $ printf  "rootSet: %s\n " (show rootList)
                               performCollectionIO rootList
                               liftIO $ patchGCRoots roots
 
-markedOrInvalid :: (RefObj a) => StateT TwoSpace IO (a -> IO Bool)
-markedOrInvalid = do memManager <- get
-                     return $ \obj -> do objAsPtr <- getIntPtr obj
-                                         liftIO (printfGc $ printf "check obj: 0x%08x" (fromIntegral objAsPtr :: Int))
-                                         let valid = True
-                                         --let valid = validRef' objAsPtr memManager
-                                         if valid && objAsPtr /= 0 
-                                          then do validObj <- GCObj.validMateObj objAsPtr 
-                                                  if validObj
-                                                   then do m <- liftIO $ marked obj
-                                                           liftIO (printfGc $ "markedOrinvalid: " ++ show m)
-                                                           liftIO $ printRef obj
-                                                           return m
-                                                   else do 
-                                                           liftIO $ printfGc "no taken2\n"
-                                                           return True
-                                          else do
-                                                liftIO $ printfGc "not taken1\n"
-                                                return True -- not valid reference
+markedOrInvalid :: (RefObj a, AllocationManager b) => StateT b IO (a -> IO Bool)
+markedOrInvalid = 
+  return $ \obj -> do objAsPtr <- getIntPtr obj
+                      printfGc $ printf "check obj: 0x%08x" (fromIntegral objAsPtr :: Int)
+                      --let valid = validRef' objAsPtr memManager
+                      if objAsPtr /= 0 
+                        then do validObj <- GCObj.validMateObj objAsPtr 
+                                if validObj
+                                 then liftIO $ marked obj
+                                 else return True
+                        else return True -- not valid reference
 
 
 -- [todo hs] this is slow. merge phases to eliminate list with refs
-performCollectionIO :: (RefObj a) => [a] -> StateT TwoSpace IO ()
+performCollectionIO :: (RefObj a, AllocationManager b) => [a] -> StateT b IO ()
 performCollectionIO refs' = do 
-  liftIO $ printfGc "Phase 1. Marking..\n"
+  logGcT "==>Phase 1. Marking..\n"
   objFilter <- markedOrInvalid
   lifeRefs <- liftIO $ liftM (nub . concat) $ mapM (markTree'' objFilter mark refs') refs'
-  liftIO $ printfGc "Done Phase 1.\n"
-  liftIO $ mapM (getIntPtr >=> \x -> printfGc $ printf " 0x%08x" (fromIntegral x ::Int) ) lifeRefs
-  liftIO $ printfGc "\nPhase 2. Evacuating...\n"
+  logGcT "==>Done Phase 1.\n"
+  if gcLogEnabled 
+    then  liftIO $ mapM_ (getIntPtr >=> \x -> printfGc $ printf " 0x%08x" (fromIntegral x ::Int) ) lifeRefs
+    else return ()
+  logGcT "\nPhase 2. Evacuating...\n"
   evacuate' lifeRefs 
-  lift $ printfGc "Phase 2. Done.\n"
+  logGcT  "Phase 2. Done.\n"
   memoryManager <- get
-  lift $ patchAllRefs (getIntPtr >=> \x -> return $ x /= 0) lifeRefs
+  liftIO $ patchAllRefs (getIntPtr >=> \x -> return $ x /= 0) lifeRefs
   --lift $ patchAllRefs (getIntPtr >=> return . flip validRef' memoryManager) lifeRefs 
-  lift $ printfGc "patched.\n"    
+  logGcT "patched.\n"    
 
 buildGCAction :: AllocationManager a => [T.StackDescription] -> Int -> StateT a IO (Ptr b)
 buildGCAction [] size = mallocBytesT size

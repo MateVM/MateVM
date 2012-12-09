@@ -14,6 +14,8 @@ module Compiler.Mate.Debug
   , printfPipe
   , tracePipe
   , mateDEBUG
+  , logGcT
+  , gcLogEnabled 
   , printf -- TODO: delete me
   ) where
 
@@ -21,6 +23,7 @@ import Text.Printf
 import System.IO
 import System.IO.Unsafe
 import Control.Monad
+import Control.Monad.State
 
 
 {-# NOINLINE logHandle #-}
@@ -74,3 +77,9 @@ tracePipe :: String -> a -> a
 tracePipe string expr = unsafePerformIO $ do
   printfPipe string
   return expr
+{-# INLINE gcLogEnabled #-}
+gcLogEnabled :: Bool
+gcLogEnabled = True
+
+logGcT :: String -> StateT b IO ()
+logGcT s = when gcLogEnabled (liftIO $ printfGc s)

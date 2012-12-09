@@ -62,6 +62,7 @@ mallocStringGC size = do
   let size' = size + (size `rem` 4)
   printfMem $ printf "mallocString: %d\n" size'
   addr <- mallocObjectGC size'
+  addRootPrecise (fromIntegral addr)
   let ptr' = intPtrToPtr (fromIntegral addr)
   printfMem $ printf "string got: %s\n" (show ptr')
   BI.memset ptr' 0 (fromIntegral size')
@@ -167,3 +168,9 @@ twoSpaceGC = if not useBlockAllocator
                then unsafePerformIO $ initTwoSpace 0x1000000 >>= newIORef
                else error "tried to initialize twospace allocator but block allocator is set according to Flags"
 
+{-# NOINLINE permGenRoots #-}
+permGenRoots :: IORef [IntPtr]
+permGenRoots = unsafePerformIO $ newIORef []
+
+addRootPrecise :: IntPtr -> IO ()
+addRootPrecise ptr = modifyIORef permGenRoots (ptr:) 

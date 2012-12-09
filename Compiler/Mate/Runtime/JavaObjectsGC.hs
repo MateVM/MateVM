@@ -102,10 +102,7 @@ validMateObj intPtr = do let ptr = intPtrToPtr intPtr
                           else do 
                                   clazzNameM <- getClassNamePtr ptr
                                   case clazzNameM of 
-                                    Nothing -> do printfGc "invalid.\n"
-                                                  mem <- peekArray 12 (castPtr ptr) :: IO [Ptr Int32]
-                                                  printfGc $ printf  "dump: %s" (show mem)
-                                                  printRef' ptr
+                                    Nothing -> do printfGc "invalid.\n" 
                                                   return False
                                     Just _ -> return True
                                   
