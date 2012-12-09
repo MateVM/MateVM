@@ -13,6 +13,7 @@ instance AllocationManager GcState where
     initMemoryManager = initGen
     mallocBytesT = mallocBytesGen
     performCollection = collectGen
+    collectLoh = error "not implemented yet"
     heapSize = error "heap size in GenGC not implemented"
     validRef = error "valid ref in GenGC not implemented"
 

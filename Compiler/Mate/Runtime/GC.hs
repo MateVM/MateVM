@@ -51,6 +51,9 @@ class AllocationManager a where
   -- | performs full gc and which is reflected in mem managers state
   performCollection :: (RefObj b) => M.Map b RefUpdateAction ->  StateT a IO ()
 
+  -- | collects large objects (first argument is set of live objs)
+  collectLoh :: RefObj b => [b] -> StateT a IO ()
+
   heapSize :: StateT a IO Int
 
   validRef :: IntPtr -> StateT a IO Bool

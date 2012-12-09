@@ -4,7 +4,10 @@ import Foreign
 import Control.Monad.State
 import Control.Applicative
 import qualified Foreign.Marshal.Alloc as Alloc
+import Data.Set (Set) 
+import qualified Data.Set as S
 
+import Compiler.Mate.Flags
 import Compiler.Mate.Runtime.GC hiding (size)
 import qualified Compiler.Mate.Runtime.GC as GC
 import Compiler.Mate.Debug
@@ -15,7 +18,9 @@ data TwoSpace = TwoSpace { fromBase :: IntPtr,
                            toHeap   :: IntPtr,
                            fromExtreme :: IntPtr,
                            toExtreme   :: IntPtr,
-                           validRange :: (IntPtr,IntPtr) }
+                           validRange :: (IntPtr,IntPtr),
+                           loh :: Set IntPtr
+                         }
 
 
 switchSpaces :: TwoSpace -> TwoSpace
@@ -28,20 +33,25 @@ switchSpaces old = old { fromHeap = toHeap old,
 
 
 mallocBytes' :: Int -> StateT TwoSpace IO (Ptr b)
-mallocBytes' bytes = do state' <- get
-                        let end = toHeap state' + fromIntegral bytes
-                            
-                            base = fromIntegral $ toBase state'
-                            extreme = fromIntegral $ toExtreme state'
-                            heap = fromIntegral $ toHeap state'
-                            used = heap - base
-                            capacity = extreme - base
-                        if end <= toExtreme state' 
-                          then liftIO (logAllocation bytes used capacity) >> alloc state' end 
-                          else 
-                               failNoSpace used capacity
+mallocBytes' bytes = 
+      do state' <- get
+         if bytes < loThreshhold || not useLoh 
+           then do
+                  let end = toHeap state' + fromIntegral bytes 
+                      base = fromIntegral $ toBase state'
+                      extreme = fromIntegral $ toExtreme state'
+                      heap = fromIntegral $ toHeap state'
+                      used = heap - base
+                      capacity = extreme - base
+                  if end <= toExtreme state' 
+                    then liftIO (logAllocation bytes used capacity) >> alloc state' end 
+                    else 
+                      failNoSpace used capacity
+            else 
+              allocateLoh bytes
   where alloc :: TwoSpace -> IntPtr -> StateT TwoSpace IO (Ptr b)
-        alloc state' end = do let ptr = toHeap state'
+        alloc state' end = do 
+                              let ptr = toHeap state'
                               put $ state' { toHeap = end  } 
                               liftIO (printfGc $ "Allocated obj: " ++ show (intPtrToPtr ptr) ++ "\n")
                               liftIO (return $ intPtrToPtr ptr)
@@ -53,7 +63,14 @@ mallocBytes' bytes = do state' <- get
         --logAllocation _ _ _ = return ()
         logAllocation fullSize usage capacity = printfGc $ printf "alloc size: %d (%d/%d)\n" fullSize usage capacity
                           
-
+allocateLoh :: Int -> StateT TwoSpace IO (Ptr b)
+allocateLoh size = do
+    current <- get
+    let currentLoh = loh current
+    ptr <- liftIO $ Alloc.mallocBytes size
+    put $ current { loh = S.insert (ptrToIntPtr ptr) currentLoh }
+    liftIO $ printfGc $ printf "LOH: allocated %d bytes in loh %s" size (show ptr)
+    return ptr
 
 evacuate' :: (RefObj a, AllocationManager b) => [a] -> StateT b IO ()
 evacuate' =  mapM_ evacuate'' 
@@ -84,6 +101,24 @@ validRef' :: IntPtr -> TwoSpace -> Bool
 validRef' ptr twoSpace = (ptr >= fst (validRange twoSpace)) && 
                          (ptr <= snd (validRange twoSpace))
 
+showRefs :: [IntPtr] -> [String]
+showRefs = map (show . intPtrToPtr) 
+
+collectLohTwoSpace :: (RefObj a) => [a] -> StateT TwoSpace IO ()
+collectLohTwoSpace xs = do
+    current <- get
+    intptrs <- liftIO $ mapM getIntPtr xs
+    let oldLoh = loh current
+    let newSet = S.fromList intptrs
+    let toRemove = oldLoh `S.difference` newSet
+    liftIO $ printfGc $ printf "objs in loh: %d" (S.size oldLoh)
+    liftIO $ printfGc $ printf "old loh: %s" (show $ showRefs $ S.toList oldLoh)
+    liftIO $ printfGc $ printf "to remove: %s" (show $ showRefs $ S.toList toRemove) 
+    --liftIO $ mapM (free . intPtrToPtr) (S.toList toRemove)
+    put current { loh = newSet }
+
+
+
 initTwoSpace :: Int -> IO TwoSpace
 initTwoSpace size' =  do printfStr $ printf "initializing TwoSpace memory manager with %d bytes.\n" size'
                          fromSpace <- Alloc.mallocBytes (size' * 2)
@@ -99,5 +134,6 @@ initTwoSpace size' =  do printfStr $ printf "initializing TwoSpace memory manage
                                 in TwoSpace { fromBase = fromBase', toBase = toBase',
                                               fromHeap = fromBase', toHeap = toBase',
                                               fromExtreme = fromExtreme', toExtreme = toExtreme',
-                                              validRange = (fromBase',toExtreme') }
+                                              validRange = (fromBase',toExtreme'),
+                                              loh = S.empty}
 

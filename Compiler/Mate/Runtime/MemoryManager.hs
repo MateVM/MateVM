@@ -12,6 +12,7 @@ import Control.Monad.State
 import qualified Data.Map as M
 import Data.List
 
+import Compiler.Mate.Flags
 import Compiler.Mate.Debug
 import Compiler.Mate.Runtime.GC hiding (size)
 import qualified Compiler.Mate.Runtime.StackTrace as T
@@ -27,6 +28,8 @@ instance AllocationManager TwoSpace where
   initMemoryManager = initTwoSpace
   mallocBytesT = mallocBytes'
   performCollection = performCollection'
+
+  collectLoh = collectLohTwoSpace
   
   heapSize = do space <- get
                 return $ fromIntegral $ toHeap space - fromIntegral (toBase space)
@@ -58,18 +61,36 @@ performCollectionIO :: (RefObj a, AllocationManager b) => [a] -> StateT b IO ()
 performCollectionIO refs' = do 
   logGcT "==>Phase 1. Marking..\n"
   objFilter <- markedOrInvalid
-  lifeRefs <- liftIO $ liftM (nub . concat) $ mapM (markTree'' objFilter mark refs') refs'
+  allLifeRefs <- liftIO $ liftM (nub . concat) $ mapM (markTree'' objFilter mark refs') refs'
   logGcT "==>Done Phase 1.\n"
   if gcLogEnabled 
-    then  liftIO $ mapM_ (getIntPtr >=> \x -> printfGc $ printf " 0x%08x" (fromIntegral x ::Int) ) lifeRefs
+    then  liftIO $ mapM_ (getIntPtr >=> \x -> printfGc $ printf " 0x%08x" (fromIntegral x ::Int) ) allLifeRefs
     else return ()
+  (largeObjs,lifeRefs) <- liftIO $ extractLargeObjects allLifeRefs
   logGcT "\nPhase 2. Evacuating...\n"
   evacuate' lifeRefs 
   logGcT  "Phase 2. Done.\n"
-  memoryManager <- get
+  if useLoh
+    then do 
+            logGcT "killing unsued large objs\n"
+            collectLoh largeObjs
+            logGcT "cleaned up loh\n"
+    else return ();
   liftIO $ patchAllRefs (getIntPtr >=> \x -> return $ x /= 0) lifeRefs
   --lift $ patchAllRefs (getIntPtr >=> return . flip validRef' memoryManager) lifeRefs 
   logGcT "patched.\n"    
+
+
+-- splits [a] into (large objects, normal objects)
+extractLargeObjects :: RefObj a => [a] -> IO ([a],[a])
+extractLargeObjects xs = 
+    if not useLoh
+      then return ([],xs)
+      else do
+            sizes <-  mapM (\x -> GCObj.size x >>= \s -> return (x,s)) xs
+            let (lohs,objs) = partition ((>= loThreshhold) . snd) sizes
+            return (map fst lohs, map fst objs)
+
 
 buildGCAction :: AllocationManager a => [T.StackDescription] -> Int -> StateT a IO (Ptr b)
 buildGCAction [] size = mallocBytesT size
