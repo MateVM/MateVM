@@ -7,6 +7,7 @@ import Control.Monad.State
 import qualified Data.Map as M
 import Data.Map(Map)
 import qualified Data.Set as S
+import Data.List
 
 import Compiler.Mate.Runtime.BlockAllocation
 import Compiler.Mate.Runtime.GC
@@ -22,7 +23,7 @@ instance AllocationManager GcState where
     initMemoryManager = initGen
     mallocBytesT = mallocBytesGen
     performCollection = collectGen
-    collectLoh = error "not implemented yet"
+    collectLoh = collectLohTwoSpace
     heapSize = error "heap size in GenGC not implemented"
     validRef = error "valid ref in GenGC not implemented"
 
@@ -78,11 +79,11 @@ sourceGenToTargetGen x = error $ "source object is in strange generation: " ++ s
 collectGen :: (RefObj b) => Map b RefUpdateAction -> StateT GcState IO ()
 collectGen roots = do
     cnt <- liftM allocs get
-    --performCollectionGen (calculateGeneration cnt) roots
-    performCollectionGen Nothing roots
+    performCollectionGen (calculateGeneration cnt) roots
+    --performCollectionGen Nothing roots
 
 calculateGeneration :: Int -> Maybe Int
-calculateGeneration x | x < 5 = Nothing
+calculateGeneration x | x < 5 = Just 0
                       | x < 10 = Just 0
                       | x < 15 = Just 1
                       | otherwise = Just 2
@@ -97,9 +98,6 @@ performCollectionGen (Just generation) roots = do
    logGcT "patch gc roots.."
    liftIO $ patchGCRoots roots
    logGcT "all done \\o/"
-
-performCollectionGen' :: (RefObj b) => Int -> [b] -> StateT GcState IO ()
-performCollectionGen' generation roots = return ()
 
 
 buildPatchAction :: [T.StackDescription] -> [IntPtr] -> IO (Map (Ptr b) RefUpdateAction)
@@ -124,4 +122,25 @@ buildRootPatcher2 (ptr,obj) = M.insertWith both ptr' patch
 
 
 
-
+performCollectionGen' :: (RefObj a) => Int -> [a] -> StateT GcState IO ()
+performCollectionGen' collection refs' = do 
+  logGcT "==>Phase 1. Marking..\n"
+  objFilter <- markedOrInvalid
+  allLifeRefs <- liftIO $ liftM (nub . concat) $ mapM (markTree'' objFilter mark refs') refs'
+  logGcT "==>Done Phase 1.\n"
+  toEvacuate <- liftIO $ filterM (getIntPtr >=> return . uglyFilter) allLifeRefs 
+  if gcLogEnabled 
+    then  liftIO $ mapM_ (getIntPtr >=> \x -> printfGc $ printf " 0x%08x" (fromIntegral x ::Int) ) toEvacuate
+    else return ()
+  (largeObjs,lifeRefs) <- liftIO $ extractLargeObjects toEvacuate
+  logGcT "\nPhase 2. Evacuating...\n"
+  evacuate' (\_ -> return $ GenInfo { targetGen = 0 }) lifeRefs
+  logGcT  "Phase 2. Done.\n"
+  if useLoh
+    then do 
+            logGcT "killing unsued large objs\n"
+            collectLoh largeObjs
+            logGcT "cleaned up loh\n"
+    else return ();
+  liftIO $ patchAllRefs (getIntPtr >=> \x -> return $ x /= 0) lifeRefs
+  logGcT "patched2.\n"    

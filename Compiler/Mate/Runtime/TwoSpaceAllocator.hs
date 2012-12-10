@@ -72,20 +72,6 @@ allocateLoh size = do
     liftIO $ printfGc $ printf "LOH: allocated %d bytes in loh %s" size (show ptr)
     return ptr
 
-evacuate' :: (RefObj a, AllocationManager b) => [a] -> StateT b IO ()
-evacuate' =  mapM_ evacuate'' 
-
-evacuate'' :: (RefObj a, AllocationManager b) => a -> StateT b IO ()
-evacuate'' obj = do (size,location) <- liftIO ((,) <$> getSizeDebug obj <*> getIntPtr obj)
-                    -- malloc in TwoSpace
-                    newPtr <- mallocBytesT undefined size
-                    liftIO (printfGc ("evacuating: " ++ show obj ++ 
-                                         " and set: " ++ show newPtr ++ " size: " ++ show size ++ "\n"))
-                    -- copy data over and leave notice
-                    liftIO (copyBytes newPtr (intPtrToPtr location) size >> 
-                            setNewRef obj (cast newPtr) >>
-                            pokeByteOff newPtr 4 (0::Int32))
-
 getSizeDebug :: RefObj a => a -> IO Int
 getSizeDebug obj = do 
   intObj <- getIntPtr obj

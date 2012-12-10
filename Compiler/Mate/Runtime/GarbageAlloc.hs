@@ -180,7 +180,9 @@ allocObjAndDoGCPrecise regs size = do
 
       patches <- Gen.buildPatchAction stack permRoots 
 
-      let collectAndAlloc = Gen.collectGen patches >> 
+      let collectAndAlloc = (if null stack 
+                              then return ()
+                              else Gen.collectGen patches) >> 
                                   Gen.mallocBytesGen GC.mkGen0 size :: StateT B.GcState IO (Ptr b)
 
       printfGc "running statetGC\n\n"
