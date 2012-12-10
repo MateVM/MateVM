@@ -9,6 +9,8 @@ module Compiler.Mate.Runtime.GC
   , RefUpdateAction
   , notNullRef 
   , patchGCRoots
+  , GenInfo(..)
+  , mkGen0
   ) where
 
 import Control.Monad
@@ -43,12 +45,16 @@ class (Eq a, Ord a, Show a) => RefObj a where
 
 type RefUpdateAction = IntPtr -> IO () -- the argument is the new location of the refobj
 
+data GenInfo = GenInfo { targetGen :: Int }
+mkGen0 :: GenInfo
+mkGen0 = GenInfo { targetGen = 0 }
+
 class AllocationManager a where
  
   initMemoryManager :: Int -> IO a
 
   -- | allocates n bytes in current space to space (may be to space or gen0 space)
-  mallocBytesT :: Int -> StateT a IO (Ptr b)
+  mallocBytesT :: GenInfo -> Int -> StateT a IO (Ptr b)
   
   -- | performs full gc and which is reflected in mem managers state
   performCollection :: (RefObj b) => M.Map b RefUpdateAction ->  StateT a IO ()

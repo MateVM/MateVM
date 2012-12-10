@@ -12,9 +12,9 @@ import Test.QuickCheck
 import Text.Printf
 import qualified Data.Map as M
 import Data.Map(Map)
-
-blockSize :: Int
-blockSize = 1024
+import Data.Set(Set)
+import qualified Data.Set as S
+import Compiler.Mate.Flags
 
 data Block = Block { beginPtr :: !IntPtr
                    , endPtr   :: !IntPtr
@@ -35,7 +35,8 @@ data GenState = GenState { freeBlocks :: [Block]
 
 data GcState = GcState { generations :: [GenState], 
                          allocs :: Int,
-                         allocatedBytes :: Int
+                         allocatedBytes :: Int,
+                         loh :: Set IntPtr
                        } deriving (Eq,Show)
 
 generation0 :: GcState -> GenState
@@ -108,7 +109,7 @@ allocateInBlock b@(Block { freePtr = free', endPtr = end }) size =
 allocGen0 :: Alloc a m => Int -> GcStateT m a (Ptr b)
 allocGen0 size = 
     if size > blockSize 
-      then  error "tried to allocate superhuge object in gen0"
+      then  error $ "tried to allocate superhuge object in gen0 (" ++ show size ++ " bytes)"
       else do
             (gen0:xs) <- liftM generations get
             (ptr, newState) <- lift $ runStateT (allocGen size) gen0
@@ -161,10 +162,10 @@ blockAdresses k = iterate next first
 emptyGenState ::  GenState
 emptyGenState = GenState { freeBlocks = [], activeBlocks = M.empty, collections = 0 }
 gcState1 ::  GcState
-gcState1 = GcState { generations = [emptyGenState], allocs = 0, allocatedBytes = 0 }
+gcState1 = GcState { generations = [emptyGenState], allocs = 0, allocatedBytes = 0, loh = S.empty }
 
 mkGcState ::  GenState -> GcState
-mkGcState s = GcState { generations = [s], allocs = 0, allocatedBytes = 0}
+mkGcState s = GcState { generations = [s], allocs = 0, allocatedBytes = 0, loh = S.empty }
 
 
 runBlockAllocator :: Int -> GcState -> IO (Ptr b, GcState)

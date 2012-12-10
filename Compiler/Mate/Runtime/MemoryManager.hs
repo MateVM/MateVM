@@ -2,7 +2,13 @@
 {-# LANGUAGE ExistentialQuantification #-}
 module Compiler.Mate.Runtime.MemoryManager   
     ( AllocationManager(..)
-    , buildGCAction )   where
+    , buildGCAction
+    , dereference
+    , RootSet
+    , buildRootPatcher
+    , extractLargeObjects
+    , markedOrInvalid
+    , uglyFilter )   where
 
 import Foreign.Ptr
 import Foreign.Storable
@@ -25,7 +31,7 @@ type RootSet a = M.Map (Ptr a) RefUpdateAction
 
 instance AllocationManager TwoSpace where
   initMemoryManager = initTwoSpace
-  mallocBytesT = mallocBytes'
+  mallocBytesT _ = mallocBytes'
   performCollection = performCollection'
 
   collectLoh = collectLohTwoSpace
@@ -104,30 +110,31 @@ extractLargeObjects xs =
             return (map fst lohs, map fst objs)
 
 
-buildGCAction :: AllocationManager a => [T.StackDescription] -> [IntPtr] -> Int -> StateT a IO (Ptr b)
-buildGCAction [] _ size = mallocBytesT size
-buildGCAction stack perm size = 
+buildGCAction :: AllocationManager a => GenInfo -> [T.StackDescription] -> [IntPtr] -> Int -> StateT a IO (Ptr b)
+buildGCAction info [] _ size = mallocBytesT info size
+buildGCAction info stack perm size = 
     do let rootsOnStack = perm ++ concatMap T.candidates stack --concatMap T.possibleRefs stack
        rootCandidates <- lift $ mapM dereference rootsOnStack
        realRoots <- filterM (notNullRef . snd) rootCandidates
        performCollection $ foldr buildRootPatcher M.empty realRoots
-       mallocBytesT size
-  where dereference :: IntPtr -> IO (IntPtr,IntPtr)
-        dereference intPtr = do printfGc $ printf "deref stacklocation: 0x%08x\n" (fromIntegral intPtr :: Int)
-                                obj <- peek $ intPtrToPtr intPtr :: IO IntPtr
-                                printfGc $ printf "deref location: "
-                                printfGc (show (intPtrToPtr obj) ++ "\n")
-                                return (intPtr,obj)
+       mallocBytesT info size
+       
+
+dereference :: IntPtr -> IO (IntPtr,IntPtr)
+dereference intPtr = do 
+    printfGc $ printf "rootReference (stacklocation): 0x%08x\n" (fromIntegral intPtr :: Int)
+    obj <- peek $ intPtrToPtr intPtr :: IO IntPtr
+    printfGc $ printf "*(rootElement): "
+    printfGc (show (intPtrToPtr obj) ++ "\n")
+    return (intPtr,obj)
 
 -- (stackLocation,obj)
 buildRootPatcher :: (IntPtr,IntPtr) -> RootSet a -> RootSet a
 buildRootPatcher (ptr,obj) = M.insertWith both ptr' patch 
-  where --patch = poke ptr' 
-        patch newLocation = do printfGc $ printf "patch new ref: 0x%08x on stackloc: 0x%08x\n" 
+  where patch newLocation = do printfGc $ printf "patch new ref: 0x%08x on stackloc: 0x%08x .. " 
                                  (fromIntegral newLocation :: Int) (fromIntegral ptr :: Int)
-                               x <- poke (intPtrToPtr ptr) newLocation  
-                               printfGc "died?" 
-                               return x
+                               poke (intPtrToPtr ptr) newLocation  
+                               printfPlain "=>patched.\n"
         ptr' = intPtrToPtr obj
 
         both newPatch oldPatch newLocation = do newPatch newLocation

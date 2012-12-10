@@ -16,6 +16,8 @@ module Compiler.Mate.Debug
   , mateDEBUG
   , logGcT
   , gcLogEnabled 
+  , printfPlain
+  , showRefs
   , printf -- TODO: delete me
   ) where
 
@@ -24,7 +26,7 @@ import System.IO
 import System.IO.Unsafe
 import Control.Monad
 import Control.Monad.State
-
+import Foreign hiding(unsafePerformIO)
 
 {-# NOINLINE logHandle #-}
 -- TODO(bernhard): use MVar if threaded
@@ -54,8 +56,9 @@ printString prefix str = do
 {-# INLINE printfGc #-}
 {-# INLINE printfMem #-}
 {-# INLINE printfPipe #-}
+{-# INLINE printfPlain #-}
 printfJit, printfTrap, printfBb, printfMp, printfCp,
-  printfStr, printfInfo, printfEx, printfPipe, printfMem, printfGc :: String -> IO ()
+  printfStr, printfInfo, printfEx, printfPipe, printfMem, printfGc, printfPlain :: String -> IO ()
 {-
 -- TODO(bernhard):
 -- http://stackoverflow.com/questions/12123082/function-composition-with-text-printf-printf
@@ -71,6 +74,7 @@ printfEx = printString "Ex: "
 printfGc = printString "Gc: "
 printfMem = printString "Mem: "
 printfPipe = printString "Pipe: "
+printfPlain = printString ""
 
 {-# NOINLINE tracePipe #-}
 tracePipe :: String -> a -> a
@@ -83,3 +87,6 @@ gcLogEnabled = True
 
 logGcT :: String -> StateT b IO ()
 logGcT s = when gcLogEnabled (liftIO $ printfGc s)
+
+showRefs :: [IntPtr] -> [String]
+showRefs = map (show . intPtrToPtr) 

@@ -18,6 +18,7 @@ import Compiler.Mate.Runtime.MethodPool
 
 import Compiler.Mate.Types
 import Compiler.Mate.Debug
+import Compiler.Mate.Flags
 
 import Mate.GC.Boehm
 
@@ -61,7 +62,9 @@ parseArgs _ _ = parseArgs ["-"] False
 
 executeMain :: B.ByteString -> Class Direct -> IO ()
 executeMain bclspath cls = do 
-  initGC --required on some platforms. [todo bernhard: maybe this should be moved somewhere else - maybe at a global place where vm initialization takes place
+  --required on some platforms, initializes boehmgc. [todo bernhard: maybe this should be moved somewhere else - maybe at a global place where vm initialization takes place]
+  unless usePreciseGC initGC 
+
   case find ((==) "main" . methodName) (classMethods cls) of
     Just m -> do
       let mi = MethodInfo "main" bclspath $ methodSignature m

@@ -78,7 +78,7 @@ evacuate' =  mapM_ evacuate''
 evacuate'' :: (RefObj a, AllocationManager b) => a -> StateT b IO ()
 evacuate'' obj = do (size,location) <- liftIO ((,) <$> getSizeDebug obj <*> getIntPtr obj)
                     -- malloc in TwoSpace
-                    newPtr <- mallocBytesT size
+                    newPtr <- mallocBytesT undefined size
                     liftIO (printfGc ("evacuating: " ++ show obj ++ 
                                          " and set: " ++ show newPtr ++ " size: " ++ show size ++ "\n"))
                     -- copy data over and leave notice
@@ -100,9 +100,6 @@ getSizeDebug obj = do
 validRef' :: IntPtr -> TwoSpace -> Bool
 validRef' ptr twoSpace = (ptr >= fst (validRange twoSpace)) && 
                          (ptr <= snd (validRange twoSpace))
-
-showRefs :: [IntPtr] -> [String]
-showRefs = map (show . intPtrToPtr) 
 
 collectLohTwoSpace :: (RefObj a) => [a] -> StateT TwoSpace IO ()
 collectLohTwoSpace xs = do
