@@ -157,9 +157,8 @@ stupidRegAlloc preAssigned pcactive linsn stackcnt =
 
 -- lsra
 data LsraStateData = LsraStateData
-  { pcCnt :: PC
   -- mapping of virtual to hardware register (or spills)
-  , regmapping :: RegMapping
+  { regmapping :: RegMapping
   -- set of non-used hardware registers
   , freeHRegs :: [HVarX86]
   -- current offset on stack (for simplicity, don't reuse spill slots)
@@ -168,8 +167,7 @@ data LsraStateData = LsraStateData
   , activeRegs :: S.Set VirtualReg
   -- on every program counter, we store the current active map, in order to have
   -- information on GC operations or method invocation
-  , pc2active :: PCActiveMap
-  }
+  , pc2active :: PCActiveMap }
 type PCActiveMap = M.Map Int (S.Set VirtualReg)
 type LsraState a = State LsraStateData a
 
@@ -181,8 +179,7 @@ lsraMapping precolored (LiveRanges lstarts lends) =
   where
     lastPC = S.findMax $ M.keysSet lstarts
     mapping = execState lsra
-              LsraStateData { pcCnt = 0
-                            , regmapping = preAssignedRegs `M.union` precolored
+              LsraStateData { regmapping = preAssignedRegs `M.union` precolored
                             , freeHRegs = S.toList allIntRegs
                             , stackDisp = stackOffsetStart
                             , pc2active = M.insert 0 S.empty M.empty
