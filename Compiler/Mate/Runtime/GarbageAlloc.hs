@@ -26,6 +26,8 @@ import Compiler.Mate.Runtime.MemoryManager
 import Compiler.Mate.Runtime.TwoSpaceAllocator
 import Compiler.Mate.Runtime.JavaObjects
 import Compiler.Mate.Runtime.ClassPool
+import Compiler.Mate.Runtime.GenerationalGC
+import qualified Compiler.Mate.Runtime.BlockAllocation as B
 import JVM.ClassFile
 import Compiler.Mate.Debug
 import Compiler.Mate.Flags
@@ -172,7 +174,16 @@ allocObjAndDoGCPrecise regs size = do
 
   if useBlockAllocator 
     then do
-      error "not implemented"
+      permRoots <- readIORef permGenRoots
+      gcState <- readIORef genGC
+      let gcAction = buildGCAction stack permRoots size
+     
+      printfGc "running statetGC\n\n"
+      (ptr,gcState') <- runStateT gcAction gcState
+      writeIORef genGC gcState'
+      printfGc "GC finished\n\n"
+
+      return ptr
     else do
       permRoots <- readIORef permGenRoots 
       let gcAction = buildGCAction stack permRoots size
@@ -196,3 +207,9 @@ permGenRoots = unsafePerformIO $ newIORef []
 
 addRootPrecise :: IntPtr -> IO ()
 addRootPrecise ptr = modifyIORef permGenRoots (ptr:) 
+
+{-# NOINLINE genGC #-}
+genGC :: IORef B.GcState
+genGC = if useBlockAllocator 
+          then unsafePerformIO $ initGen 0  >>= newIORef
+          else error "tried to initialize generational gc but block allocation is disabled (enable flag!)"

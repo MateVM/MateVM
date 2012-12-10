@@ -33,7 +33,9 @@ data GenState = GenState { freeBlocks :: [Block]
                          , collections :: !Int 
                          } deriving (Show,Eq)
 
-data GcState = GcState { generations :: [GenState], allocs :: Int 
+data GcState = GcState { generations :: [GenState], 
+                         allocs :: Int,
+                         allocatedBytes :: Int
                        } deriving (Eq,Show)
 
 generation0 :: GcState -> GenState
@@ -159,10 +161,10 @@ blockAdresses k = iterate next first
 emptyGenState ::  GenState
 emptyGenState = GenState { freeBlocks = [], activeBlocks = M.empty, collections = 0 }
 gcState1 ::  GcState
-gcState1 = GcState { generations = [emptyGenState], allocs = 0 }
+gcState1 = GcState { generations = [emptyGenState], allocs = 0, allocatedBytes = 0 }
 
 mkGcState ::  GenState -> GcState
-mkGcState s = GcState { generations = [s], allocs = 0}
+mkGcState s = GcState { generations = [s], allocs = 0, allocatedBytes = 0}
 
 
 runBlockAllocator :: Int -> GcState -> IO (Ptr b, GcState)

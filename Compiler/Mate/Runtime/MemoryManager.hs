@@ -19,7 +19,6 @@ import qualified Compiler.Mate.Runtime.StackTrace as T
 import qualified Compiler.Mate.Runtime.JavaObjectsGC as GCObj
 import Compiler.Mate.Runtime.JavaObjectsGC() -- only instances for Ptr a
 import Compiler.Mate.Runtime.TwoSpaceAllocator
-import Compiler.Mate.Runtime.GenerationalGC
 
 type RootSet a = M.Map (Ptr a) RefUpdateAction
 
@@ -50,8 +49,8 @@ markedOrInvalid =
                       printfGc $ printf "check obj: 0x%08x" (fromIntegral objAsPtr :: Int)
                       --let valid = validRef' objAsPtr memManager
                       if uglyFilter objAsPtr-- this was not necassary before perm gens (now direct refs onto objs) 
-                        then do validObj <- GCObj.validMateObj objAsPtr 
-                                if validObj
+                        then do validObj' <- GCObj.validMateObj objAsPtr 
+                                if validObj'
                                  then do
                                         printfGc "gheck makred\n" 
                                         liftIO $ marked obj
@@ -106,7 +105,7 @@ extractLargeObjects xs =
 
 
 buildGCAction :: AllocationManager a => [T.StackDescription] -> [IntPtr] -> Int -> StateT a IO (Ptr b)
-buildGCAction [] perm size = mallocBytesT size
+buildGCAction [] _ size = mallocBytesT size
 buildGCAction stack perm size = 
     do let rootsOnStack = perm ++ concatMap T.candidates stack --concatMap T.possibleRefs stack
        rootCandidates <- lift $ mapM dereference rootsOnStack
