@@ -17,10 +17,9 @@ import qualified Data.Set as S
 import qualified Data.Map as M
 import Data.Word
 import Data.Maybe
-import Data.Tuple
+import Data.Ord
 
 import Control.Applicative
-import Control.Arrow
 import Control.Monad.State.Strict
 
 import Test.QuickCheck hiding (labels)
@@ -35,7 +34,7 @@ import Compiler.Mate.Frontend.LivenessPass
 
 import Compiler.Mate.Backend.NativeSizes
 
-import Debug.Trace
+-- import Debug.Trace
 
 data MappedRegs = MappedRegs
   { regMap :: RegMapping
@@ -162,7 +161,7 @@ data LsraStateData = LsraStateData
   -- mapping of virtual to hardware register (or spills)
   , regmapping :: RegMapping
   -- set of non-used hardware registers
-  , freeRegs :: [HVarX86]
+  , freeHRegs :: [HVarX86]
   -- current offset on stack (for simplicity, don't reuse spill slots)
   , stackDisp :: Word32
   -- set of active virtual registers
@@ -184,59 +183,82 @@ lsraMapping precolored (LiveRanges lstarts lends) =
     mapping = execState lsra
               LsraStateData { pcCnt = 0
                             , regmapping = preAssignedRegs `M.union` precolored
-                            , freeRegs = S.toList allIntRegs
+                            , freeHRegs = S.toList allIntRegs
                             , stackDisp = stackOffsetStart
                             , pc2active = M.insert 0 S.empty M.empty
                             , activeRegs = S.empty }
-    incPC :: LsraState ()
-    incPC = modify (\s -> s { pcCnt = 1 + pcCnt s })
+
+    lsra :: State LsraStateData ()
     lsra = do
-      pc <- pcCnt <$> get
-      -- when (trace (printf "pc: %d" pc) (pc <= lastPC)) $ do
-      when (pc <= lastPC) $ do
+      forM_ [0 .. lastPC] $ \pc -> do
         case pc `M.lookup` lstarts of
-          Nothing -> return ()
-          Just new -> do
-            -- fr' <- freeRegs <$> get
-            -- trace (printf "new: %s\nfree: %s" (show new) (show fr')) $
-            freeGuys pc
+          Nothing -> return () -- nothing todo at this program counter
+          Just new -> do -- we have to assign new regs
+            freeRegs pc -- first, free dead ones
             forM_ new $ \vreg -> do
               hasMapping <- M.member vreg <$> regmapping <$> get -- maybe pre assigned
               when (vreg /= (VR preeax JInt)) $
                 modify (\s -> s { activeRegs = S.insert vreg (activeRegs s) })
               unless hasMapping $ do
-                fr <- freeRegs <$> get
+                fr <- freeHRegs <$> get
                 if null fr
-                  then spillGuy vreg
+                  then spillReg vreg -- no hardware register available
                   else do
                     let hreg = head fr
-                    modify (\s -> s { freeRegs = tail fr
+                    modify (\s -> s { freeHRegs = tail fr
                                     , regmapping = M.insert vreg hreg (regmapping s)
                                     })
+        -- active set for each program counter, needed for gc points
         active <- activeRegs <$> get
         modify (\s -> s { pc2active = M.insert (pc + 1) active (pc2active s) })
-        incPC
-        lsra
-    freeGuys :: Int -> LsraState ()
-    freeGuys pc = do
+
+    freeRegs :: Int -> LsraState ()
+    freeRegs pc = do
       active <- activeRegs <$> get
       forM_ (S.toList active) $ \vreg ->
         when (M.member vreg lends) $ do
           -- TODO: test if `<=' works too
           when ((lends M.! vreg) < pc) $ do
-            let isSpill (SpillIReg _) = True
-                isSpill _ = False
             hreg <- (M.! vreg) <$> regmapping <$> get
             modify (\s -> s { activeRegs = S.delete vreg (activeRegs s) })
             unless (isSpill hreg) $ do
-              modify (\s -> s { freeRegs = hreg : freeRegs s })
-    spillGuy :: VirtualReg -> LsraState()
-    spillGuy vreg = do
+              modify (\s -> s { freeHRegs = hreg : freeHRegs s })
+
+    spillReg :: VirtualReg -> LsraState()
+    spillReg vreg = do
       sc <- stackDisp <$> get
       let spill = SpillIReg (Disp sc)
-      modify (\s -> s { stackDisp = stackDisp s - ptrSize
-                      , regmapping = M.insert vreg spill (regmapping s)
-                      })
+      modify (\s -> s { stackDisp = stackDisp s - ptrSize })
+
+      -- get all active virtual registers, mapped to hardware registers
+      l <- (S.toList <$> activeRegs <$> get) >>= filterM noVirSpill
+      -- create a map with virtual reg as key and end of live range as value (short list)
+      let allends = map (\x -> (x, lends M.! x)) l
+      -- sort by live range end (descending)
+      let maxlive = reverse (L.sortBy (comparing snd) allends)
+      when (null maxlive) $ error "lsra: active can't be empty here."
+
+      let (lastreg, lastpc) = head maxlive
+      -- if the current vreg to be assigned, has a shorter live range as some
+      -- already signed vreg to a hreg, swap assignment
+      if lastpc > (lends M.! vreg)
+        then do
+          m <- regmapping <$> get
+          let hreg = m M.! lastreg
+          modify (\s -> s { regmapping = M.delete lastreg (regmapping s) })
+          modify (\s -> s { regmapping = M.insert lastreg spill (regmapping s) })
+          modify (\s -> s { regmapping = M.insert vreg hreg (regmapping s) })
+        else do
+          modify (\s -> s { regmapping = M.insert vreg spill (regmapping s) })
+
+    isSpill (SpillIReg _) = True
+    isSpill _ = False
+
+    noVirSpill vr@(VR _ _) = do
+      m <- regmapping <$> get
+      case M.lookup vr m of
+        Just x -> return (not (isSpill x))
+        Nothing -> return True
 
 
 noLiveRangeCollision :: LiveRanges -> RegMapping -> Bool
