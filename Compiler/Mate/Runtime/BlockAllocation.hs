@@ -15,6 +15,7 @@ import Data.Map(Map)
 import Data.Set(Set)
 import qualified Data.Set as S
 import Compiler.Mate.Flags
+import Compiler.Mate.Debug
 
 data Block = Block { beginPtr :: !IntPtr
                    , endPtr   :: !IntPtr
@@ -30,7 +31,8 @@ type Blocks = Map Int [Block]
 
 data GenState = GenState { freeBlocks :: [Block]
                          , activeBlocks :: Blocks
-                         , collections :: !Int 
+                         , collections :: !Int
+                         , generation :: Int
                          } deriving (Show,Eq)
 
 data GcState = GcState { generations :: [GenState], 
@@ -144,15 +146,28 @@ mkBlockM size = do
 mkBlockIO :: Int -> AllocIOT Block
 mkBlockIO size = do
   ptr <- liftIO $ mallocBytes size
-  return Block { beginPtr = ptrToIntPtr ptr,
-                 endPtr = ptrToIntPtr $ ptr `plusPtr` size,
-                 freePtr = ptrToIntPtr ptr }  
+  let block = Block { beginPtr = ptrToIntPtr ptr,
+                      endPtr = ptrToIntPtr $ ptr `plusPtr` size,
+                      freePtr = ptrToIntPtr ptr }  
+  liftIO $ printfGc $ printf "made block: %s\n" (show block)
+  return block
                         
 releaseBlockIO :: Block -> AllocIOT ()
 releaseBlockIO = liftIO . freeBlock
   where action = return . intPtrToPtr . beginPtr
-        freeBlock = (free =<<) . action
+        freeBlock = (freeDbg =<<) . action
+        freeDbg ptr = do
+                        printfGc $ printf "releaseBlock free ptr: %s" (show ptr)
+                        free ptr
 
+freeGen :: GenState -> AllocIOT ()
+freeGen = mapM_ (mapM_ releaseBlockIO . snd) . M.toList . activeBlocks
+
+freeGens :: [GenState] -> AllocIOT ()
+freeGens = mapM_ freeGen 
+
+freeGensIO :: [GenState] -> IO ()
+freeGensIO xs = evalStateT (freeGens xs) AllocIO
 
 blockAdresses :: Num a => a -> [(a,a)]
 blockAdresses k = iterate next first
@@ -160,7 +175,12 @@ blockAdresses k = iterate next first
           next (l,u) = (l+k,u+k)
 
 emptyGenState ::  GenState
-emptyGenState = GenState { freeBlocks = [], activeBlocks = M.empty, collections = 0 }
+emptyGenState = GenState { freeBlocks = [], activeBlocks = M.empty, collections = 0, generation = 0 }
+
+mkGenState :: Int -> GenState
+mkGenState n = GenState { freeBlocks = [], activeBlocks = M.empty, collections = 0, generation = n }
+
+
 gcState1 ::  GcState
 gcState1 = GcState { generations = [emptyGenState], allocs = 0, allocatedBytes = 0, loh = S.empty }
 
@@ -199,14 +219,14 @@ emptyTest :: Int -> Property
 emptyTest x = let ((ptr,_),_) = runTest (allocGen0 x) start emptyAllocM 
               in x <= blockSize ==> ptr == int2Ptr 0
     where start = mkGcState  
-                     GenState { freeBlocks = [], activeBlocks = M.empty, collections = 0 } 
+                     GenState { freeBlocks = [], activeBlocks = M.empty, collections = 0, generation = 0} 
 
 test3 ::  Property
 test3 = let ((ptr,gcS),_) = runTest (allocGen0 12) start emptyAllocM 
         in True ==> ptr == int2Ptr 0xc && (freeBlocks . head . generations) gcS == [] 
     where aBlock = Block { beginPtr = 0x0, endPtr = 0x400, freePtr = 0xc }
           start = mkGcState  
-                     GenState { freeBlocks = [aBlock], activeBlocks = M.empty, collections = 0 } 
+                     GenState { freeBlocks = [aBlock], activeBlocks = M.empty, collections = 0, generation = 0 } 
 
 test4 ::  Property
 test4 = let ((ptr,gcS),_) = runTest (allocGen0 12) start emptyAllocM 
@@ -216,7 +236,7 @@ test4 = let ((ptr,gcS),_) = runTest (allocGen0 12) start emptyAllocM
           active' = M.insert (freeSpace aBlock) [aBlock] M.empty
           active'' = M.insert (freeSpace aBlock2) [aBlock2] active'
           start = mkGcState  
-                     GenState { freeBlocks = [], activeBlocks = active'', collections = 0 } 
+                     GenState { freeBlocks = [], activeBlocks = active'', collections = 0, generation = 0 } 
 
 test5 ::  Int -> Property
 test5 s = let ((ptr,gcS),_) = runTest (allocGen0 s) start AllocM { freeS = 0x801 }
@@ -226,5 +246,5 @@ test5 s = let ((ptr,gcS),_) = runTest (allocGen0 s) start AllocM { freeS = 0x801
           active' = M.insertWith (++) (freeSpace aBlock) [aBlock] M.empty
           active'' = M.insertWith (++) (freeSpace aBlock2) [aBlock2] active'
           start = mkGcState  
-                     GenState { freeBlocks = [], activeBlocks = active'', collections = 0 } 
+                     GenState { freeBlocks = [], activeBlocks = active'', collections = 0, generation = 0 } 
 

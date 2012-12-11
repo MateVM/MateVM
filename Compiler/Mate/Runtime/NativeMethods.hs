@@ -16,7 +16,6 @@ import Foreign.C.Types
 
 import JVM.ClassFile
 
-import Compiler.Mate.Runtime.Rts()
 import Compiler.Mate.Runtime.JavaObjects()
 import Compiler.Mate.Debug
 import Compiler.Mate.Backend.NativeSizes
@@ -24,9 +23,6 @@ import Compiler.Mate.Backend.NativeSizes
 
 foreign import ccall "&printMemoryUsage"
   printMemoryUsageAddr :: FunPtr (IO ())
-
-foreign import ccall "&loadLibrary"
-  loadLibraryAddr :: FunPtr (IO ())
 
 foreign import ccall "&printGCStats"
   printGCStatsAddr :: FunPtr (IO ())
@@ -58,7 +54,6 @@ nativeAddr scm smethod sig = do
   case scm of
     "jmate/lang/MateRuntime" ->
       case smethod of
-        "loadLibrary" -> ret loadLibraryAddr
         "printGCStats" -> ret printGCStatsAddr
         "printMemoryUsage" -> ret printMemoryUsageAddr
         _ -> error $ "native-call: " ++ smethod ++ " @ " ++ scm ++ " not found."
