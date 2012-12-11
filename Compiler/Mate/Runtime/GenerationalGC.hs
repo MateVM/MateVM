@@ -28,13 +28,14 @@ instance AllocationManager GcState where
     validRef = error "valid ref in GenGC not implemented"
 
 initGen :: Int -> IO GcState
-initGen _ = return  GcState { generations = map (const generation) [0..maxGen],
+initGen _ = return  GcState { generations = map generation' [0..maxGen],
                               allocs = 0,
                               allocatedBytes = 0 ,
                               loh = S.empty}
-    where generation = GenState { freeBlocks = [], 
-                                  activeBlocks = M.empty,
-                                  collections = 0 }
+    where generation' i = GenState { freeBlocks = [], 
+                                     activeBlocks = M.empty,
+                                     collections = 0,
+                                     generation = i }
 
 
 mallocBytesGen :: GenInfo -> Int -> StateT GcState IO (Ptr b)
@@ -94,10 +95,11 @@ performCollectionGen (Just generation) roots = do
    logGcT $ printf "!!! runn gen%d collection" generation
    let rootList = map fst $ M.toList roots
    logGcT $ printf  "rootSet: %s\n " (show rootList)
-   performCollectionGen' generation rootList
+   toKill <- performCollectionGen' generation rootList
    logGcT "patch gc roots.."
    liftIO $ patchGCRoots roots
    logGcT "all done \\o/"
+   liftIO $ freeGensIO toKill 
 
 
 buildPatchAction :: [T.StackDescription] -> [IntPtr] -> IO (Map (Ptr b) RefUpdateAction)
@@ -120,10 +122,30 @@ buildRootPatcher2 (ptr,obj) = M.insertWith both ptr' patch
         both newPatch oldPatch newLocation = do newPatch newLocation
                                                 oldPatch newLocation
 
+replaceIndices :: Eq a => [Int] -> [a] -> (Int -> a) -> [a]
+replaceIndices indices xs repl = map replace zipped
+    where zipped = zip xs [0..]
+          replace (x,index) = if index `elem` indices
+                               then repl index
+                               else x
+ 
+takeIndices :: [a] -> [Int] -> [a]
+takeIndices xs = map (xs !!) 
+ 
+switchStates :: Int -> StateT GcState IO [GenState]
+switchStates collection = do
+    let toBeReplaced = [0..collection] --all collections up to collection should be replaced by empty ones
+    current <- get
+    let gens = generations current
+    let newGens = replaceIndices toBeReplaced gens mkGenState
+    logGcT $ printf "new generations: %s" (show newGens)
+    put current { generations = newGens }
+    logGcT $ printf "generations to be killed: %s" (show toBeReplaced)
+    return $ takeIndices gens toBeReplaced
 
-
-performCollectionGen' :: (RefObj a) => Int -> [a] -> StateT GcState IO ()
+performCollectionGen' :: (RefObj a) => Int -> [a] -> StateT GcState IO [GenState]
 performCollectionGen' collection refs' = do 
+  toKill <- switchStates collection
   logGcT "==>Phase 1. Marking..\n"
   objFilter <- markedOrInvalid
   allLifeRefs <- liftIO $ liftM (nub . concat) $ mapM (markTree'' objFilter mark refs') refs'
@@ -143,4 +165,5 @@ performCollectionGen' collection refs' = do
             logGcT "cleaned up loh\n"
     else return ();
   liftIO $ patchAllRefs (getIntPtr >=> \x -> return $ x /= 0) lifeRefs
-  logGcT "patched2.\n"    
+  logGcT "patched2.\n" 
+  return toKill  

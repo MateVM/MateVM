@@ -175,8 +175,13 @@ allocObjAndDoGCPrecise regs size = do
 
   if useBlockAllocator 
     then do
-      permRoots <- readIORef permGenRoots
+      permRoots <- return []--readIORef permGenRoots
       gcState <- readIORef genGC
+
+      xs <- readIORef permGenRoots
+      printfGc $ printf "fuckin roots: %s" (show $ map intPtrToPtr xs)
+      ys <- (mapM (peek . intPtrToPtr) xs) :: IO [IntPtr]
+      printfGc $ printf "*fuckin roots: %s" (show $ map intPtrToPtr ys)
 
       patches <- Gen.buildPatchAction stack permRoots 
 
