@@ -90,14 +90,16 @@ collectGen roots = do
     --performCollectionGen Nothing roots
 
 calculateGeneration :: Int -> Maybe Int
-calculateGeneration x | x < 10 = Nothing
-                      | x < 20 = Just 0
-                      | x < 35 = Just 1
+calculateGeneration x | x < 20 = Nothing
+                      | x < 50 = Just 0
+                      | x < 60 = Just 1
                       | otherwise = Just 2
 
 performCollectionGen :: (RefObj b) => Maybe Int -> Map b RefUpdateAction  -> StateT GcState IO ()
 performCollectionGen Nothing _ = logGcT "skipping GC. not necessary atm. tune gc settings if required"
 performCollectionGen (Just generation') roots = do
+   current <- get
+   put current { allocs = 0 }
    logGcT $ printf "!!! runn gen%d collection" generation'
    let rootList = map fst $ M.toList roots
    logGcT $ printf  "rootSet: %s\n " (show rootList)

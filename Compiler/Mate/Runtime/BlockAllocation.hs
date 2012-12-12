@@ -10,6 +10,8 @@ import Control.Monad.State
 import Control.Monad.Identity
 import Test.QuickCheck hiding ((.&.))
 
+import qualified Data.Sequence as Q
+import Data.Sequence ((|>),(<|))
 import Data.IORef
 import Text.Printf
 import qualified Data.Map as M
@@ -214,7 +216,7 @@ runBlockAllocatorC gen size = do
     return ptr
 
 
-data AllocC = AllocC { freeBlocksC :: [Block] } 
+data AllocC = AllocC { freeBlocksC :: Q.Seq Block } 
                 deriving (Show,Eq)
 
 instance Alloc AllocC IO where
@@ -223,7 +225,7 @@ instance Alloc AllocC IO where
 
 
 mkAllocC :: Int -> IO AllocC
-mkAllocC 0 = return AllocC { freeBlocksC = [] }
+mkAllocC 0 = return AllocC { freeBlocksC = Q.empty }
 mkAllocC n = do
     printfGc $ printf "heapSize = %d * blockSize = %d => %d\n" n blockSize (n*blockSize)
     let size' = n * blockSize
@@ -235,21 +237,21 @@ mkAllocC n = do
     printfGc $ printf "ending at: 0x%08x\n" (fromIntegral  begin + size' :: Int)
     let allBlockBegins = [begin,begin+fromIntegral blockSize..begin + fromIntegral size']
     let allBlocks = [Block { beginPtr = x+4, endPtr = x+fromIntegral size', freePtr = x+4} | x <- allBlockBegins]
-    return AllocC { freeBlocksC = allBlocks } -- all is free
+    return AllocC { freeBlocksC = Q.fromList allBlocks } -- all is free
   
 
 allocC :: Generation -> Int -> StateT AllocC IO Block
 allocC gen _ = do
     current <- get
-    if null (freeBlocksC current) 
+    if Q.null (freeBlocksC current) 
       then error "out of heap memory!"
       else do
-        let (block:xs) = freeBlocksC current
+        let block = Q.index (freeBlocksC current) 0 
         writeGenToBlock block gen
         liftIO $ modifyIORef activeBlocksCnt (+ (1))
         activeOnes <- liftIO  $ readIORef activeBlocksCnt
         liftIO $ printfGc $ printf "activated a block %d\n" activeOnes
-        put current { freeBlocksC = xs }
+        put current { freeBlocksC = Q.drop 1 (freeBlocksC current) }
         --liftIO $ printfGc $ printf "we got free blocks: %s" (show $ length xs)
         return block { freePtr = beginPtr block }
 
@@ -264,7 +266,7 @@ releaseC b = do
     liftIO $ modifyIORef activeBlocksCnt (+ (-1))
     activeOnes <- liftIO  $ readIORef activeBlocksCnt
     liftIO $ printfGc $ printf "released a block %d\n" activeOnes
-    put current' { freeBlocksC = freeBlocksC current' ++ [b]  }
+    put current' { freeBlocksC = freeBlocksC current' |> b }
 
 activeBlocksCnt :: IORef Int
 activeBlocksCnt = unsafePerformIO $ newIORef 0
