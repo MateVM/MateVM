@@ -8,8 +8,8 @@ import Control.Monad.Trans
 import Control.Monad.State
 import Control.Monad.Identity
 import Test.QuickCheck hiding ((.&.))
-import Data.Bits
 
+import Data.IORef
 import Text.Printf
 import qualified Data.Map as M
 import Data.Map(Map)
@@ -50,8 +50,10 @@ data GcState = GcState { generations :: [GenState],
 generation0 :: GcState -> GenState
 generation0 = head . generations
 
+type Generation = Int
+
 class Monad m => Alloc a m | a -> m where
-    alloc :: Int -> StateT a m Block 
+    alloc ::  Generation -> Int -> StateT a m Block 
     release :: Block -> StateT a m ()
 
 type GenStateT m a = StateT GenState (StateT a m)
@@ -71,7 +73,7 @@ allocGen size = do
     -- as heuristics, take the one with the most free memory
     current <- get
     let possibleBlocks = activeBlocks current
-        biggestBlockM = M.maxViewWithKey possibleBlocks
+        biggestBlockM = M.maxViewWithKey (M.filter (not . null) possibleBlocks)
     case biggestBlockM of                          
       Just ((space,block:rest),smallBlocks) -> 
         if space >= size
@@ -81,8 +83,9 @@ allocGen size = do
                       active'' = M.insertWith (++) (freeSpace block') [block'] active'
                   put current { activeBlocks = active'' }
                   return ptr 
-          else allocateInFreshBlock size
-      _ -> allocateInFreshBlock size
+          else do
+                allocateInFreshBlock (tracePipe ("current blocks:" ++ show possibleBlocks) size)
+      _ -> tracePipe ("noActiveBlocks!!" ++ show possibleBlocks ++ "WIGH M:" ++ show biggestBlockM) $ allocateInFreshBlock size
 
 freeSpace :: Block -> Int
 freeSpace Block { freePtr = free', endPtr = end } = fromIntegral $ end - free'
@@ -91,7 +94,7 @@ allocateInFreshBlock :: Alloc a m => Int -> GenStateT m a (Ptr b)
 allocateInFreshBlock size = do
     current <- get
     freeBlock <- case freeBlocks current of
-                 [] -> lift $ alloc blockSize -- make a block
+                 [] -> lift $ alloc blockSize (generation current) -- make a block
                  (x:xs) -> do --reuse idle block
                               put current { freeBlocks = xs }
                               return x
@@ -108,7 +111,7 @@ activateBlock b = do
 allocateInBlock :: Block -> Int -> (Ptr b, Block)
 allocateInBlock b@(Block { freePtr = free', endPtr = end }) size = 
     if freePtr' > end
-      then error "allocateInBlock has insufficient space. wtf"
+      then error $ "allocateInBlock has insufficient space. wtf" ++ (show b) ++ " with alloc size: " ++ (show size)
       else (intPtrToPtr free', b { freePtr = freePtr' })
   where freePtr' = free' + fromIntegral size
 
@@ -129,14 +132,14 @@ emptyAllocM :: AllocM
 emptyAllocM = AllocM { freeS = 0 }
 
 instance Alloc AllocM Identity where
-    alloc = mkBlockM
+    alloc _ = mkBlockM
     release _ = return ()
 
 data AllocIO = AllocIO deriving Show
 type AllocIOT a = StateT AllocIO IO a
 
 instance Alloc AllocIO IO where
-    alloc = mkBlockIO
+    alloc _ = mkBlockIO
     release = releaseBlockIO 
 
 currentFreePtrM ::  AllocMT IntPtr
@@ -199,6 +202,14 @@ runBlockAllocator :: Int -> GcState -> IO (Ptr b, GcState)
 runBlockAllocator size current = evalStateT allocT AllocIO
     where allocT = runStateT (allocGen0 size) current
 
+runBlockAllocatorC :: Int -> StateT GcState IO (Ptr b)
+runBlockAllocatorC size = do
+    current <- get
+    let m = runStateT (allocGen0 size) current
+    ((ptr,gcState),allocState') <- liftIO $ runStateT m (allocState current)
+    put gcState { allocState = allocState' }
+    return ptr
+
 
 data AllocC = AllocC { freeBlocksC :: [Block] } 
                 deriving (Show,Eq)
@@ -211,6 +222,7 @@ instance Alloc AllocC IO where
 mkAllocC :: Int -> IO AllocC
 mkAllocC 0 = return AllocC { freeBlocksC = [] }
 mkAllocC n = do
+    printfGc $ printf "heapSize = %d * blockSize = %d => %d\n" n blockSize (n*blockSize)
     let size' = n * blockSize
     ptr <- mallocBytes size'
     let intPtr = ptrToIntPtr ptr
@@ -219,32 +231,47 @@ mkAllocC n = do
     printfGc $ printf "starting at: 0x%08x\n" (fromIntegral begin :: Int)
     printfGc $ printf "ending at: 0x%08x\n" (fromIntegral  begin + size' :: Int)
     let allBlockBegins = [begin,begin+fromIntegral blockSize..begin + fromIntegral size']
-    let allBlocks = [Block { beginPtr = x, endPtr = x + fromIntegral blockSize, freePtr = x} | x <- allBlockBegins]
+    let allBlocks = [Block { beginPtr = x, endPtr = x+fromIntegral size', freePtr = x} | x <- allBlockBegins]
     return AllocC { freeBlocksC = allBlocks } -- all is free
   
 
-allocC :: Int -> StateT AllocC IO Block
-allocC _ = do
+allocC :: Generation -> Int -> StateT AllocC IO Block
+allocC gen _ = do
     current <- get
     if null (freeBlocksC current) 
       then error "out of heap memory!"
       else do
         let (block:xs) = freeBlocksC current
+        writeGenToBlock block gen
+        liftIO $ modifyIORef activeBlocksCnt (+ (1))
+        activeOnes <- liftIO  $ readIORef activeBlocksCnt
+        liftIO $ printfGc $ printf "activated a block %d\n" activeOnes
         put current { freeBlocksC = xs }
-        return block
+        --liftIO $ printfGc $ printf "we got free blocks: %s" (show $ length xs)
+        return block { freePtr = beginPtr block }
+
+writeGenToBlock :: Block -> Generation -> StateT AllocC IO ()
+writeGenToBlock block gen = 
+    return () --liftIO $ poke (intPtrToPtr $ beginPtr block - 4) gen
 
 
 releaseC :: Block -> StateT AllocC IO ()
 releaseC b = do
-    current <- get
-    put current { freeBlocksC = b : freeBlocksC current  }
+    current' <- get
+    liftIO $ modifyIORef activeBlocksCnt (+ (-1))
+    activeOnes <- liftIO  $ readIORef activeBlocksCnt
+    liftIO $ printfGc $ printf "released a block %d\n" activeOnes
+    put current' { freeBlocksC = freeBlocksC current' ++ [b]  }
 
+activeBlocksCnt :: IORef Int
+activeBlocksCnt = unsafePerformIO $ newIORef 0
 
 freeGensIOC :: [GenState] -> StateT GcState IO ()
 freeGensIOC xs = do 
     current <- get
     let blocksToDispose = concatMap ( concatMap snd . M.toList . activeBlocks ) xs
-    liftIO $ runStateT (mapM_ releaseC blocksToDispose) (allocState current)
+    (_,s) <- liftIO $ runStateT (mapM_ releaseC blocksToDispose) (allocState current)
+    put current { allocState = s }
     return ()
 
 --dont be too frightened here. cornholio

@@ -11,16 +11,16 @@ useBlockAllocator = True
 
 -- objects bigger than this get allocated in LOH
 loThreshhold :: Int
-loThreshhold = 2048
+loThreshhold = 2040
 
 useLoh :: Bool
 useLoh = True
 
 blockSizePowerOfTwo :: Int
-blockSizePowerOfTwo = 11 --2048
+blockSizePowerOfTwo = 10 --2048
 
 heapSize :: Int
-heapSize = 8192 -- (*) blockSize
+heapSize = 32768 -- (*) blockSize
 
 useCachedAlloc :: Bool
 useCachedAlloc = True

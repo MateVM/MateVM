@@ -48,9 +48,10 @@ mallocBytesGen _ size' =
     if size' > loThreshhold  
       then allocateLoh size'
       else do 
-            current <- get
-            (ptr,current') <- liftIO $ runBlockAllocator size' current 
-            put $ current' { allocs = 1 + allocs current' }
+            ptr <- runBlockAllocatorC size' 
+            current <- get 
+            put $ current { allocs = 1 + allocs current }
+            logGcT $ printf "object got: %s\n" (show ptr)
             return ptr
 
 allocateLoh :: Int -> StateT GcState IO (Ptr b)
