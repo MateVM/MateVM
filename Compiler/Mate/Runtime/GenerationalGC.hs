@@ -28,10 +28,15 @@ instance AllocationManager GcState where
     validRef = error "valid ref in GenGC not implemented"
 
 initGen :: Int -> IO GcState
-initGen _ = return  GcState { generations = map generation' [0..maxGen],
-                              allocs = 0,
-                              allocatedBytes = 0 ,
-                              loh = S.empty}
+initGen size' = do 
+                  freshAllocState <- if useCachedAlloc 
+                                      then mkAllocC size'
+                                      else mkAllocC 0
+                  return  GcState { generations = map generation' [0..maxGen],
+                                    allocs = 0,
+                                    allocatedBytes = 0 ,
+                                    loh = S.empty, 
+                                    allocState = freshAllocState }
     where generation' i = GenState { freeBlocks = [], 
                                      activeBlocks = M.empty,
                                      collections = 0,
@@ -84,22 +89,22 @@ collectGen roots = do
     --performCollectionGen Nothing roots
 
 calculateGeneration :: Int -> Maybe Int
-calculateGeneration x | x < 5 = Just 0
-                      | x < 10 = Just 0
-                      | x < 15 = Just 1
+calculateGeneration x | x < 10 = Nothing
+                      | x < 20 = Just 0
+                      | x < 35 = Just 1
                       | otherwise = Just 2
 
 performCollectionGen :: (RefObj b) => Maybe Int -> Map b RefUpdateAction  -> StateT GcState IO ()
 performCollectionGen Nothing _ = logGcT "skipping GC. not necessary atm. tune gc settings if required"
-performCollectionGen (Just generation) roots = do
-   logGcT $ printf "!!! runn gen%d collection" generation
+performCollectionGen (Just generation') roots = do
+   logGcT $ printf "!!! runn gen%d collection" generation'
    let rootList = map fst $ M.toList roots
    logGcT $ printf  "rootSet: %s\n " (show rootList)
-   toKill <- performCollectionGen' generation rootList
+   toKill <- performCollectionGen' generation' rootList
    logGcT "patch gc roots.."
    liftIO $ patchGCRoots roots
    logGcT "all done \\o/"
-   liftIO $ freeGensIO toKill 
+   --liftIO $ freeGensIO toKill 
 
 
 buildPatchAction :: [T.StackDescription] -> [IntPtr] -> IO (Map (Ptr b) RefUpdateAction)

@@ -2,12 +2,13 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 module Compiler.Mate.Runtime.BlockAllocation where
 
-import Foreign
+import Foreign hiding ((.&.))
 import Control.Monad
 import Control.Monad.Trans
 import Control.Monad.State
 import Control.Monad.Identity
-import Test.QuickCheck
+import Test.QuickCheck hiding ((.&.))
+import Data.Bits
 
 import Text.Printf
 import qualified Data.Map as M
@@ -16,6 +17,10 @@ import Data.Set(Set)
 import qualified Data.Set as S
 import Compiler.Mate.Flags
 import Compiler.Mate.Debug
+
+
+blockSize :: Int
+blockSize = 1 `shift` blockSizePowerOfTwo
 
 data Block = Block { beginPtr :: !IntPtr
                    , endPtr   :: !IntPtr
@@ -38,7 +43,8 @@ data GenState = GenState { freeBlocks :: [Block]
 data GcState = GcState { generations :: [GenState], 
                          allocs :: Int,
                          allocatedBytes :: Int,
-                         loh :: Set IntPtr
+                         loh :: Set IntPtr,
+                         allocState :: AllocC
                        } deriving (Eq,Show)
 
 generation0 :: GcState -> GenState
@@ -182,10 +188,11 @@ mkGenState n = GenState { freeBlocks = [], activeBlocks = M.empty, collections =
 
 
 gcState1 ::  GcState
-gcState1 = GcState { generations = [emptyGenState], allocs = 0, allocatedBytes = 0, loh = S.empty }
+gcState1 = GcState { generations = [emptyGenState], allocs = 0, allocatedBytes = 0, loh = S.empty, 
+                     allocState = error "not implemented" }
 
 mkGcState ::  GenState -> GcState
-mkGcState s = GcState { generations = [s], allocs = 0, allocatedBytes = 0, loh = S.empty }
+mkGcState s = GcState { generations = [s], allocs = 0, allocatedBytes = 0, loh = S.empty, allocState = error "not implemented"}
 
 
 runBlockAllocator :: Int -> GcState -> IO (Ptr b, GcState)
@@ -193,13 +200,52 @@ runBlockAllocator size current = evalStateT allocT AllocIO
     where allocT = runStateT (allocGen0 size) current
 
 
+data AllocC = AllocC { freeBlocksC :: [Block] } 
+                deriving (Show,Eq)
+
+instance Alloc AllocC IO where
+    alloc = allocC
+    release = releaseC
+
+
+mkAllocC :: Int -> IO AllocC
+mkAllocC 0 = return AllocC { freeBlocksC = [] }
+mkAllocC n = do
+    let size' = n * blockSize
+    ptr <- mallocBytes size'
+    let intPtr = ptrToIntPtr ptr
+    printfGc $ printf "allocated cached block memory: %s\n" (show ptr)
+    let begin = shift (shift intPtr (-blockSizePowerOfTwo)) blockSizePowerOfTwo
+    printfGc $ printf "starting at: 0x%08x\n" (fromIntegral begin :: Int)
+    printfGc $ printf "ending at: 0x%08x\n" (fromIntegral  begin + size' :: Int)
+    let allBlockBegins = [begin,begin+fromIntegral blockSize..begin + fromIntegral size']
+    let allBlocks = [Block { beginPtr = x, endPtr = x + fromIntegral blockSize, freePtr = x} | x <- allBlockBegins]
+    return AllocC { freeBlocksC = allBlocks } -- all is free
+  
+
+allocC :: Int -> StateT AllocC IO Block
+allocC _ = do
+    current <- get
+    if null (freeBlocksC current) 
+      then error "out of heap memory!"
+      else do
+        let (block:xs) = freeBlocksC current
+        put current { freeBlocksC = xs }
+        return block
+
+
+releaseC :: Block -> StateT AllocC IO ()
+releaseC b = do
+    current <- get
+    put current { freeBlocksC = b : freeBlocksC current }
+
 
 --dont be too frightened here. cornholio
 runTest :: StateT GcState (StateT AllocM Identity) (Ptr a) -> GcState -> AllocM -> ((Ptr a, GcState), AllocM)
-runTest x gcState allocState = let allocation = runStateT x gcState
-                                   resultT = runStateT allocation allocState
-                                   result = runIdentity resultT
-                               in result
+runTest x gcState allocState' = let allocation = runStateT x gcState
+                                    resultT = runStateT allocation allocState'
+                                    result = runIdentity resultT
+                                in result
 
 
 test1 ::  ((Ptr b, GcState), AllocM)

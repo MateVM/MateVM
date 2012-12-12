@@ -2,7 +2,6 @@ module Compiler.Mate.Runtime.TwoSpaceAllocator where
 
 import Foreign
 import Control.Monad.State
-import Control.Applicative
 import qualified Foreign.Marshal.Alloc as Alloc
 import Data.Set (Set) 
 import qualified Data.Set as S

@@ -22,12 +22,12 @@ import Data.String.Utils
 
 import Mate.GC.Boehm
 import Compiler.Mate.Runtime.StackTrace
-import Compiler.Mate.Runtime.MemoryManager
+import Compiler.Mate.Runtime.MemoryManager hiding (heapSize)
 import Compiler.Mate.Runtime.TwoSpaceAllocator
 import Compiler.Mate.Runtime.JavaObjects
 import Compiler.Mate.Runtime.ClassPool
 import qualified Compiler.Mate.Runtime.GenerationalGC as Gen
-import qualified Compiler.Mate.Runtime.GC  as GC
+import qualified Compiler.Mate.Runtime.GC as GC
 import qualified Compiler.Mate.Runtime.BlockAllocation as B
 import JVM.ClassFile
 import Compiler.Mate.Debug
@@ -223,5 +223,5 @@ addRootPrecise ptr = modifyIORef permGenRoots (ptr:)
 {-# NOINLINE genGC #-}
 genGC :: IORef B.GcState
 genGC = if useBlockAllocator 
-          then unsafePerformIO $ Gen.initGen 0  >>= newIORef
+          then unsafePerformIO $ Gen.initGen heapSize  >>= newIORef
           else error "tried to initialize generational gc but block allocation is disabled (enable flag!)"
