@@ -241,30 +241,30 @@ girEmitOO (IROp operation dst' src1' src2') =
         (Add, SpillIReg d, HIConstant c1, HIConstant 0) ->
           mov (d, ebp) (i32Tow32 c1)
         -- general case
-        _ -> ge (select operation) dst' src1' src2'
+        _ -> gd (select operation) dst' src1' src2'
   where
-    ge :: (forall a b. (Sub a b, And a b, Add a b, Or a b, Xor a b)
+    gd :: (forall a b. (Sub a b, And a b, Add a b, Or a b, Xor a b)
                        => a -> b -> CodeGen e s ())
           -> HVarX86 -> HVarX86 -> HVarX86 -> CodeGen e s ()
-    ge _ (SpillIReg d) (HIConstant c1) (HIConstant c2) = do
+    gd _ (SpillIReg d) (HIConstant c1) (HIConstant c2) = do
       let res = i32Tow32 $ case operation of
                   Add -> c1 + c2
                   And -> c1 .&. c2
                   Or -> c1 .|. c2
                   Xor -> c1 `DB.xor` c2
-                  Sub -> error "emit: ge: opx: not sure if c1 - c2 or c2 - c1"
-                  y -> error $ "emit: ge: opx: constant: " ++ show y
+                  Sub -> error "emit: gd: opx: not sure if c1 - c2 or c2 - c1"
+                  y -> error $ "emit: gd: opx: constant: " ++ show y
       mov (d, ebp) res
-    ge opx (HIReg dst) (HIReg src1) (HIReg src2) = do
+    gd opx (HIReg dst) (HIReg src1) (HIReg src2) = do
       mov dst src2
       opx dst src1
-    ge opx dst src1 src2 = do
+    gd opx dst src1 src2 = do
       r2r eax src2
       case src1 of
         HIConstant c -> opx eax (i32Tow32 c)
         HIReg r ->      opx eax r
         SpillIReg d ->  opx eax (d, ebp)
-        y -> error $ "emit: ge: opx: src1: " ++ show y
+        y -> error $ "emit: gd: opx: src1: " ++ show y
       r2r dst eax
 
     -- edx is killed by `mul' instruction
