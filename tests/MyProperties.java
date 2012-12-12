@@ -4,7 +4,7 @@ public class MyProperties extends MyHashtable<Object, Object> {
 	public static void main(String []args) {
 		Lulz a = new Lulz();
 		System.out.printf("woot\n");
-		for (int i = 0; i < 0x100; i++) {
+		for (int i = 0; i < 0x50; i++) {
 			MyProperties m = new MyProperties();
 			MyProperties n = new MyProperties();
 			m.putAll(n);

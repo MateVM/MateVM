@@ -3,7 +3,7 @@ module Compiler.Mate.Flags where
 
 {-# INLINE usePreciseGC #-}
 usePreciseGC :: Bool
-usePreciseGC = True
+usePreciseGC = False
 
 {-# INLINE useBlockAllocator #-}
 useBlockAllocator :: Bool

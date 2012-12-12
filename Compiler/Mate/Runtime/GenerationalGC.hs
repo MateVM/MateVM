@@ -5,7 +5,7 @@ import Foreign
 import qualified Foreign.Marshal.Alloc as Alloc
 import Control.Monad.State
 import qualified Data.Map as M
-import Data.Map(Map)
+import Data.Map(Map,(!))
 import qualified Data.Set as S
 import Data.List
 
@@ -32,7 +32,7 @@ initGen size' = do
                   freshAllocState <- if useCachedAlloc 
                                       then mkAllocC size'
                                       else mkAllocC 0
-                  return  GcState { generations = map generation' [0..maxGen],
+                  return  GcState { generations = foldr (\i m -> M.insert i (generation' i) m) M.empty [0..maxGen],
                                     allocs = 0,
                                     allocatedBytes = 0 ,
                                     loh = S.empty, 
@@ -44,11 +44,11 @@ initGen size' = do
 
 
 mallocBytesGen :: GenInfo -> Int -> StateT GcState IO (Ptr b)
-mallocBytesGen _ size' = 
+mallocBytesGen gen size' = 
     if size' > loThreshhold  
       then allocateLoh size'
       else do 
-            ptr <- runBlockAllocatorC size' 
+            ptr <- runBlockAllocatorC gen size' 
             current <- get 
             put $ current { allocs = 1 + allocs current }
             logGcT $ printf "object got: %s\n" (show ptr)
@@ -130,15 +130,12 @@ buildRootPatcher2 (ptr,obj) = M.insertWith both ptr' patch
         both newPatch oldPatch newLocation = do newPatch newLocation
                                                 oldPatch newLocation
 
-replaceIndices :: Eq a => [Int] -> [a] -> (Int -> a) -> [a]
-replaceIndices indices xs repl = map replace zipped
-    where zipped = zip xs [0..]
-          replace (x,index) = if index `elem` indices
-                               then repl index
-                               else x
- 
-takeIndices :: [a] -> [Int] -> [a]
-takeIndices xs = map (xs !!) 
+replaceIndices :: Eq a => [Int] -> Map Int a -> (Int -> a) -> Map Int a
+replaceIndices indices m repl = foldr replace m indices
+  where replace index = M.insert index (repl index) 
+
+takeIndices :: Map Int a -> [Int] -> [a]
+takeIndices xs = map (\x -> xs!x) 
  
 switchStates :: Int -> StateT GcState IO [GenState]
 switchStates collection = do
@@ -164,7 +161,7 @@ performCollectionGen' collection refs' = do
     else return ()
   (largeObjs,lifeRefs) <- liftIO $ extractLargeObjects toEvacuate
   logGcT "\nPhase 2. Evacuating...\n"
-  evacuate' (\_ -> return $ GenInfo { targetGen = 0 }) lifeRefs
+  evacuate' getRefInfo lifeRefs
   logGcT  "Phase 2. Done.\n"
   if useLoh
     then do 
@@ -174,4 +171,13 @@ performCollectionGen' collection refs' = do
     else return ();
   liftIO $ patchAllRefs (getIntPtr >=> \x -> return $ x /= 0) lifeRefs
   logGcT "patched2.\n" 
-  return toKill  
+  return toKill 
+
+
+getRefInfo :: (RefObj a) => a -> IO GenInfo
+getRefInfo obj = do
+    intPtr <- getIntPtr obj
+    let begin = shift (shift intPtr (-blockSizePowerOfTwo)) blockSizePowerOfTwo
+    generation' <- peek (intPtrToPtr begin)
+    printfGc $ printf "got a reference in generation: %d\n" generation'
+    return GenInfo { targetGen = min 2 generation' }
