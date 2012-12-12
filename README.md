@@ -19,16 +19,16 @@ the JVM, for example there is no support for threads yet.
 Install GHC via your distro manager. Make sure you install it with shared
 libaries. On Ubuntu 12.04 LTS that is:
 
-    $ sudo apt-get install ghc-dynamic
+    $ sudo apt-get install ghc-dynamic cabal-install
 
-For an "easy" installation of the remaining packages, you can use
+For an easy installation of the remaining packages, you can use
 the script `./tools/installhaskellenv.sh`.
 
 **PLEASE NOTE**: it deletes your `~/.cabal` and `~/.ghc directory` first in
 order to get a fresh cabal install!
 
 ## Try it
-Build the `mate` executable with
+Build the `mate` executable with (building with `cabal` isn't supported yet)
 
     $ make
 
@@ -38,6 +38,11 @@ There are some working examples in `./tests/`, you can execute
 one with the given Makefile; assume you want to execute `./tests/Fib.java`:
 
     $ make tests/Fib
+
+or without the Makefile
+
+	$ javac tests/Fib.java
+	$ ./mate tests.Fib
 
 you can compare the output with your Java JVM (`java` in your `$PATH`) with:
 

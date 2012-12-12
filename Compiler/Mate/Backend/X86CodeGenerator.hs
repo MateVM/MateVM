@@ -149,6 +149,7 @@ compileLinear lbls linsn stackAlloc = do
                 (Just val, label) -> do
                   cmp eax (i32Tow32 val)
                   je (lmap M.! label)
+                -- on construction, we ensure that Nothing is the last entry of the table
                 (Nothing, label) ->
                   jmp (lmap M.! label)
           IRReturn Nothing -> retseq
@@ -629,20 +630,20 @@ freeRegFor r32 dst body = do
   return res
 
 -- transfer between "HVar" and real maschine registers
-class RegisterToHvar a b where
+class RegisterToRegister a b where
   r2r :: a -> b -> CodeGen e s ()
 
-instance RegisterToHvar HVarX86 Word32 where
+instance RegisterToRegister HVarX86 Word32 where
   r2r (HIReg reg) src = mov reg src
   r2r (SpillIReg disp) src = mov (disp, ebp) src
   r2r i _ = error $ "r2r HVarX86 Word32: " ++ show i
 
-instance RegisterToHvar HVarX86 Reg32 where
+instance RegisterToRegister HVarX86 Reg32 where
   r2r (HIReg reg) src = mov reg src
   r2r (SpillIReg disp) src = mov (disp, ebp) src
   r2r i _ = error $ "r2r HVarX86 Reg32: " ++ show i
 
-instance RegisterToHvar Reg32 HVarX86 where
+instance RegisterToRegister Reg32 HVarX86 where
   r2r dst (HIReg reg) = mov dst reg
   r2r dst (SpillIReg disp) = mov dst (disp, ebp)
   r2r dst (HIConstant i32) = mov dst (i32Tow32 i32)
