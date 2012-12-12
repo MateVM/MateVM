@@ -104,7 +104,9 @@ performCollectionGen (Just generation') roots = do
    logGcT "patch gc roots.."
    liftIO $ patchGCRoots roots
    logGcT "all done \\o/"
-   --liftIO $ freeGensIO toKill 
+   if useCachedAlloc
+     then freeGensIOC toKill 
+     else liftIO $ freeGensIO toKill 
 
 
 buildPatchAction :: [T.StackDescription] -> [IntPtr] -> IO (Map (Ptr b) RefUpdateAction)

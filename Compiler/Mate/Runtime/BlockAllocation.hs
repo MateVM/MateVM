@@ -237,8 +237,15 @@ allocC _ = do
 releaseC :: Block -> StateT AllocC IO ()
 releaseC b = do
     current <- get
-    put current { freeBlocksC = b : freeBlocksC current }
+    put current { freeBlocksC = b : freeBlocksC current  }
 
+
+freeGensIOC :: [GenState] -> StateT GcState IO ()
+freeGensIOC xs = do 
+    current <- get
+    let blocksToDispose = concatMap ( concatMap snd . M.toList . activeBlocks ) xs
+    liftIO $ runStateT (mapM_ releaseC blocksToDispose) (allocState current)
+    return ()
 
 --dont be too frightened here. cornholio
 runTest :: StateT GcState (StateT AllocM Identity) (Ptr a) -> GcState -> AllocM -> ((Ptr a, GcState), AllocM)
