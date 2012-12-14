@@ -1,8 +1,6 @@
 Adventures in RTS - or - Status of the GCs available in MateVM
 ==============================================================
 
-## Story
-
 As reference GC we implemented a simple wrapper[1] for BoehmGC[2]. If something
 goes wrong (tests fail) it is always a good idea to witch to BoehmGC - 
 to be sure the GC does not mess up something. 
@@ -58,5 +56,7 @@ To sum up there is still much to do, but we found it is possible to implement pa
 RuntimeSystem in haskell in a quite nice and abstract way.
 
 [1] https://github.com/MateVM/hs-boehmgc
+
 [2] http://www.hpl.hp.com/personal/Hans_Boehm/gc/
+
 [3] http://dl.acm.org/citation.cfm?id=808261 
