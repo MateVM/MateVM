@@ -87,7 +87,7 @@ performCollectionIO refs' = do
   if gcLogEnabled 
     then  liftIO $ mapM_ (getIntPtr >=> \x -> printfGc $ printf " 0x%08x" (fromIntegral x ::Int) ) lifeRefs
     else return ()
-  evacuate' (\_ -> return mkGen0) lifeRefs
+  evacuate' (const True) (\_ -> return mkGen0) lifeRefs
   logGcT  "Phase 2. Done.\n"
   if useLoh
     then do 
@@ -99,21 +99,25 @@ performCollectionIO refs' = do
   --lift $ patchAllRefs (getIntPtr >=> return . flip validRef' memoryManager) lifeRefs 
   logGcT "patched2.\n"    
 
-evacuate' :: (RefObj a, AllocationManager b) => (a -> IO GenInfo) -> [a] -> StateT b IO ()
-evacuate' info =  mapM_ (evacuate'' info)
+evacuate' :: (RefObj a, AllocationManager b) => (GenInfo -> Bool) -> (a -> IO GenInfo) -> [a] -> StateT b IO ()
+evacuate' filterF info =  mapM_ (evacuate'' filterF info)
 
-evacuate'' :: (RefObj a, AllocationManager b) => (a -> IO GenInfo) -> a -> StateT b IO ()
-evacuate'' info obj = do 
+evacuate'' :: (RefObj a, AllocationManager b) => (GenInfo -> Bool) -> (a -> IO GenInfo) -> a -> StateT b IO ()
+evacuate'' filterF info obj = do 
   (size,location) <- liftIO ((,) <$> getSizeDebug obj <*> getIntPtr obj)
   target <- liftIO $ info obj
-  -- malloc in TwoSpace
-  newPtr <- mallocBytesT target size
-  liftIO (printfGc ("evacuating: " ++ show obj ++ 
-                       " and set: " ++ show newPtr ++ " size: " ++ show size ++ "\n"))
-  -- copy data over and leave notice
-  liftIO (copyBytes newPtr (intPtrToPtr location) size >> 
-          setNewRef obj (cast newPtr) >>
-          pokeByteOff newPtr 4 (0::Int32))
+  
+  if filterF target
+    then do 
+       -- malloc in TwoSpace
+       newPtr <- mallocBytesT target size
+       liftIO (printfGc ("evacuating: " ++ show obj ++ 
+                            " and set: " ++ show newPtr ++ " size: " ++ show size ++ "\n"))
+       -- copy data over and leave notice
+       liftIO (copyBytes newPtr (intPtrToPtr location) size >> 
+               setNewRef obj (cast newPtr) >>
+               pokeByteOff newPtr 4 (0::Int32))
+    else return ()
 
 -- splits [a] into (large objects, normal objects)
 extractLargeObjects :: RefObj a => [a] -> IO ([a],[a])

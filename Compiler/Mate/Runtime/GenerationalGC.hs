@@ -163,7 +163,7 @@ performCollectionGen' collection refs' = do
     else return ()
   (largeObjs,lifeRefs) <- liftIO $ extractLargeObjects toEvacuate
   logGcT "\nPhase 2. Evacuating...\n"
-  evacuate' getRefInfo lifeRefs
+  evacuate' (\objGen -> targetGen objGen <= collection) getRefInfo lifeRefs
   logGcT  "Phase 2. Done.\n"
   if useLoh
     then do 
