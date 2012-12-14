@@ -19,6 +19,7 @@ import JVM.ClassFile
 import Compiler.Mate.Runtime.JavaObjects
 import Compiler.Mate.Debug
 import Compiler.Mate.Runtime.ClassPool
+import qualified Compiler.Mate.Types as T
 
 instance RefObj (Ptr a) where
   getIntPtr   = return . ptrToIntPtr
@@ -45,26 +46,15 @@ instance RefObj (Ptr a) where
   printRef    = printRef'
 
 
-markByteOffset, newPtrOffset, fieldsOffset ::  Int
-
-markByteOffset = 4
-newPtrOffset = 4
-fieldsOffset = 8
-
-fieldsOffsetArray :: Int
-fieldsOffsetArray = 12
-
-arrayMagicNumber :: Int32
-arrayMagicNumber = 0x1227babe 
-
-primArrayMagicNumber :: Int32
-primArrayMagicNumber = 0x1228babe 
+newPtrOffset ::  Int
+newPtrOffset = T.objectGC
 
 isArrayMagicNumber :: Int32 -> Bool
-isArrayMagicNumber ptr = ptr == arrayMagicNumber || ptr == primArrayMagicNumber
+isArrayMagicNumber ptr = ptr == fromIntegral T.referenceArrayMagic || ptr == fromIntegral T.primitiveArrayMagic
 
 hasMTable :: IntPtr -> Bool
-hasMTable objAsPtr = objAsPtr /= 0 && objAsPtr /= 0x1228babe && objAsPtr /= 0x1227bab
+hasMTable objAsPtr = objAsPtr /= 0 && objAsPtr /= fromIntegral T.primitiveArrayMagic 
+                                    && objAsPtr /= fromIntegral T.referenceArrayMagic
 
 -- [TODO hs] fix for array[array]
 unpackRefs :: Ptr a -> IO [Ptr a]
@@ -73,7 +63,7 @@ unpackRefs ptr = do
   if isarray
     then do
       method_table <- peekByteOff ptr 0 :: IO Int32
-      if method_table == arrayMagicNumber 
+      if method_table == fromIntegral T.referenceArrayMagic 
         then do len <- peekByteOff ptr 8 :: IO Int
                 printfGc "got reference type array\n"
                 peekArray len (ptr `plusPtr` 12)
@@ -128,10 +118,10 @@ getArrayObjectSize ptr = do
  return $ 12 + len * 4
 
 markedRef :: Ptr a -> IO Bool
-markedRef ptr = liftM (/= (0::Int32)) (peekByteOff ptr markByteOffset  :: IO Int32)
+markedRef ptr = liftM (/= (0::Int32)) (peekByteOff ptr T.objectGC  :: IO Int32)
 
 markRef :: Int32 -> Ptr a -> IO ()
-markRef val ptr = pokeByteOff ptr markByteOffset  val
+markRef val ptr = pokeByteOff ptr T.objectGC  val
 
 setNewRefPtr :: Ptr a -> Ptr a -> IO ()
 setNewRefPtr ptr = pokeByteOff ptr newPtrOffset 
@@ -140,8 +130,8 @@ patchRefsPtr :: Ptr a -> [Ptr a] -> IO ()
 patchRefsPtr ptr xs = do
   isarray <- isArray ptr
   if isarray
-    then pokeArray (ptr `plusPtr` fieldsOffsetArray) xs 
-    else pokeArray (ptr `plusPtr` fieldsOffset) xs
+    then pokeArray (ptr `plusPtr` T.arrayBase) xs 
+    else pokeArray (ptr `plusPtr` T.objectField) xs
 
 printInt32 :: String -> Int32 -> IO ()
 printInt32 str ptr = printfGc $ printf str ptr
@@ -168,7 +158,7 @@ printRef' ptr = do
          printfGc $ printf "type: %s\n" $ toString clazzName
          fieldCnt <- getObjectFieldCountPtr ptr    
          printfGc $ printf "children 0x%08x\n" fieldCnt
-         markedBit <- peekByteOff ptr markByteOffset :: IO Int32
+         markedBit <- peekByteOff ptr T.objectGC :: IO Int32
          printInt32 "marked 0x%08x\n" markedBit
          printInt32 "newRef 0x%08x\n" =<< (peekByteOff ptr newPtrOffset :: IO Int32)
          printChildren ptr

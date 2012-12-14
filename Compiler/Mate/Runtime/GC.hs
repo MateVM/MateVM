@@ -167,9 +167,9 @@ getSizeDebug :: RefObj a => a -> IO Int
 getSizeDebug obj = do 
   intObj <- getIntPtr obj
   printfGc $ printf "objTo evacuate: 0x%08x\n" (fromIntegral intObj :: Int)
-  size <- size obj
-  printfGc $ printf "size was %i\n" size
-  return size
+  size' <- size obj
+  printfGc $ printf "size was %i\n" size'
+  return size'
 
 -- splits [a] into (large objects, normal objects)
 extractLargeObjects :: RefObj a => [a] -> IO ([a],[a])

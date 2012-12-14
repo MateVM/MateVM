@@ -13,9 +13,7 @@ import Foreign
 import Text.Printf
 import Control.Monad.State
 import qualified Data.Map as M
-import Data.List
 
-import Compiler.Mate.Flags
 import Compiler.Mate.Debug
 import Compiler.Mate.Runtime.GC hiding (size)
 import qualified Compiler.Mate.Runtime.StackTrace as T

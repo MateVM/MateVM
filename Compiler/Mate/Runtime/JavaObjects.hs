@@ -83,7 +83,6 @@ allocateJavaString str = do
   copyBytes (plusPtr newstr (4 + arrayObjCorr)) arr strlen
   printfStr $ printf "new str ptr: (%s)@%d\n" (toString str) strlen
 
-  let newstr_length = castPtr newstr :: Ptr CPtrdiff
   poke (plusPtr newstr arrayLength) (fromIntegral strlen :: Int32)
 
   -- set mtable

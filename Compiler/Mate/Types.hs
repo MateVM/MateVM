@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Compiler.Mate.Types
   ( w8Toi32, w16Toi32, w32Toi32, i32Tow32
-  , objectMtable, objectGC
+  , objectMtable, objectGC, objectField
   , arrayMagic, arrayGC, arrayLength, arrayBase
   , primitiveArrayMagic, referenceArrayMagic
   , ExceptionMap
@@ -61,9 +61,10 @@ i32Tow32 :: Int32 -> Word32
 i32Tow32 = fromIntegral
 
 -- object offsets
-objectMtable, objectGC :: Num a => a
+objectMtable, objectGC, objectField :: Num a => a
 objectMtable = 0x0
 objectGC = 0x4
+objectField = 0x8
 
 -- array offsets
 arrayMagic, arrayGC, arrayLength, arrayBase :: Num a => a
