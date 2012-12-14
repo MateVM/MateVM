@@ -31,7 +31,7 @@ import qualified Compiler.Mate.Runtime.GC as GC
 import qualified Compiler.Mate.Runtime.BlockAllocation as B
 import JVM.ClassFile
 import Compiler.Mate.Debug
-import Compiler.Mate.Flags
+import Compiler.Mate.Runtime.RtsOptions
 import Compiler.Mate.Types
 
 foreign export ccall mallocObjectGC_stackstrace :: CPtrdiff -> CPtrdiff -> Int -> IO CPtrdiff

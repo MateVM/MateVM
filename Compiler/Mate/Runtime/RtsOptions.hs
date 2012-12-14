@@ -1,13 +1,25 @@
-module Mate.RgsOptions(
-    HsGcOptions(..)
-  , GCOptions ) where
+module Compiler.Mate.Runtime.RtsOptions where
 
-data HsGcOptions = HsGcOptions { 
-    blockSize :: Int          -- unit of allocation
-  , periodicGc :: Maybe Int   -- whether to perform periodic gc within [ms]
-  , activationFillRate :: Float -- fill rate at which gc should perform [%/100]
-  , parallelGc :: Bool }
-  
+{-# INLINE usePreciseGC #-}
+usePreciseGC :: Bool
+usePreciseGC = False
 
--- options for either hs precise gc or boehm weiser reference gc
-type GCOptions = Either HsGcOptions ()
+{-# INLINE useBlockAllocator #-}
+useBlockAllocator :: Bool
+useBlockAllocator = True
+
+--- objects bigger than this get allocated in LOH
+loThreshhold :: Int
+loThreshhold = 2040
+
+useLoh :: Bool
+useLoh = True
+
+blockSizePowerOfTwo :: Int
+blockSizePowerOfTwo = 10 
+
+heapSize :: Int
+heapSize = 32768 -- (*) blockSize
+
+
+

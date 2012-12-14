@@ -1,5 +1,3 @@
-{-# OPTIONS_GHC -fno-warn-orphans #-}
-{-# LANGUAGE ExistentialQuantification #-}
 module Compiler.Mate.Runtime.MemoryManager   
     ( AllocationManager(..)
     , buildGCAction
@@ -23,60 +21,9 @@ import Compiler.Mate.Runtime.GC hiding (size)
 import qualified Compiler.Mate.Runtime.StackTrace as T
 import qualified Compiler.Mate.Runtime.JavaObjectsGC as GCObj
 import Compiler.Mate.Runtime.JavaObjectsGC(hasMTable) -- only instances for Ptr a
-import Compiler.Mate.Runtime.TwoSpaceAllocator
 
 type RootSet a = M.Map (Ptr a) RefUpdateAction
 
-
-instance AllocationManager TwoSpace where
-  initMemoryManager = initTwoSpace
-  mallocBytesT _ = mallocBytes'
-  performCollection = performCollection'
-
-  collectLoh = collectLohTwoSpace
-  
-  heapSize = do space <- get
-                return $ fromIntegral $ toHeap space - fromIntegral (toBase space)
-
-  validRef _  = return True --liftM (validRef' ptr) get
-
-performCollection' :: (RefObj a) => M.Map a RefUpdateAction -> StateT TwoSpace IO ()
-performCollection' roots = do modify switchSpaces
-                              let rootList = map fst $ M.toList roots
-                              logGcT $ printf  "rootSet: %s\n " (show rootList)
-                              performCollectionIO rootList
-                              liftIO $ patchGCRoots roots
-                              logGcT "all done \\o/"
-
-
--- [todo hs] this is slow. merge phases to eliminate list with refs
-performCollectionIO :: (RefObj a, AllocationManager b) => [a] -> StateT b IO ()
-performCollectionIO refs' = do 
-  logGcT "==>Phase 1. Marking..\n"
-  objFilter <- markedOrInvalid
-  allLifeRefs <- liftIO $ liftM (nub . concat) $ mapM (markTree'' objFilter mark refs') refs'
-  logGcT "==>Done Phase 1.\n"
-  toEvacuate <- liftIO $ filterM (getIntPtr >=> return . hasMTable) allLifeRefs 
-  if gcLogEnabled 
-    then  liftIO $ mapM_ (getIntPtr >=> \x -> printfGc $ printf " 0x%08x" (fromIntegral x ::Int) ) toEvacuate
-    else return ()
-  (largeObjs,lifeRefs) <- liftIO $ extractLargeObjects toEvacuate
-  logGcT "\nPhase 2. Evacuating...\n"
-
-  if gcLogEnabled 
-    then  liftIO $ mapM_ (getIntPtr >=> \x -> printfGc $ printf " 0x%08x" (fromIntegral x ::Int) ) lifeRefs
-    else return ()
-  evacuate' (const True) (\_ -> return mkGen0) lifeRefs
-  logGcT  "Phase 2. Done.\n"
-  if useLoh
-    then do 
-            logGcT "killing unsued large objs\n"
-            collectLoh largeObjs
-            logGcT "cleaned up loh\n"
-    else return ();
-  liftIO $ patchAllRefs (getIntPtr >=> \x -> return $ x /= 0) lifeRefs
-  --lift $ patchAllRefs (getIntPtr >=> return . flip validRef' memoryManager) lifeRefs 
-  logGcT "patched2.\n"    
 
 markedOrInvalid :: (RefObj a, AllocationManager b) => StateT b IO (a -> IO Bool)
 markedOrInvalid = 

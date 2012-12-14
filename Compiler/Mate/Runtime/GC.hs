@@ -26,7 +26,8 @@ import qualified Data.Set as S
 import Text.Printf
 import Foreign.Ptr (IntPtr, Ptr)
 import Compiler.Mate.Debug
-import Compiler.Mate.Flags
+import Compiler.Mate.Runtime.RtsOptions
+
 
 class (Eq a, Ord a, Show a) => RefObj a where
   
@@ -147,17 +148,17 @@ evacuate' filterF info =  mapM_ (evacuate'' filterF info)
 
 evacuate'' :: (RefObj a, AllocationManager b) => (GenInfo -> Bool) -> (a -> IO GenInfo) -> a -> StateT b IO ()
 evacuate'' filterF info obj = do 
-  (size,location) <- liftIO ((,) <$> getSizeDebug obj <*> getIntPtr obj)
+  (size',location) <- liftIO ((,) <$> getSizeDebug obj <*> getIntPtr obj)
   target <- liftIO $ info obj
   
   if filterF target
     then do 
        -- malloc in toSpace
-       newPtr <- mallocBytesT target size
+       newPtr <- mallocBytesT target size'
        liftIO (printfGc ("evacuating: " ++ show obj ++ 
-                            " and set: " ++ show newPtr ++ " size: " ++ show size ++ "\n"))
+                            " and set: " ++ show newPtr ++ " size: " ++ show size' ++ "\n"))
        -- copy data over and leave notice
-       liftIO (F.copyBytes newPtr (F.intPtrToPtr location) size >> 
+       liftIO (F.copyBytes newPtr (F.intPtrToPtr location) size' >> 
                setNewRef obj (cast newPtr) >>
                F.pokeByteOff newPtr 4 (0::Int32))
     else return ()

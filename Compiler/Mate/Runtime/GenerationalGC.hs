@@ -13,7 +13,7 @@ import Compiler.Mate.Runtime.BlockAllocation
 import Compiler.Mate.Runtime.GC
 import Compiler.Mate.Debug
 import Compiler.Mate.Runtime.MemoryManager
-import Compiler.Mate.Flags
+import Compiler.Mate.Runtime.RtsOptions
 import qualified Compiler.Mate.Runtime.StackTrace as T
 
 maxGen :: Int
@@ -29,9 +29,7 @@ instance AllocationManager GcState where
 
 initGen :: Int -> IO GcState
 initGen size' = do 
-                  freshAllocState <- if useCachedAlloc 
-                                      then mkAllocC size'
-                                      else mkAllocC 0
+                  freshAllocState <- mkAllocC size'
                   return  GcState { generations = foldr (\i m -> M.insert i (generation' i) m) M.empty [0..maxGen],
                                     allocs = 0,
                                     allocatedBytes = 0 ,
@@ -107,9 +105,7 @@ performCollectionGen (Just generation') roots = do
    logGcT "patch gc roots.."
    liftIO $ patchGCRoots roots
    logGcT "all done \\o/"
-   if useCachedAlloc
-     then freeGensIOC toKill 
-     else liftIO $ freeGensIO toKill 
+   freeGensIOC toKill 
 
 
 buildPatchAction :: [T.StackDescription] -> [IntPtr] -> IO (Map (Ptr b) RefUpdateAction)

@@ -18,7 +18,7 @@ import Compiler.Mate.Runtime.MethodPool
 
 import Compiler.Mate.Types
 import Compiler.Mate.Debug
-import Compiler.Mate.Flags
+import Compiler.Mate.Runtime.RtsOptions
 
 import Mate.GC.Boehm
 
