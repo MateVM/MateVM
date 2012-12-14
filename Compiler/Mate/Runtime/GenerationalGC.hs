@@ -157,7 +157,7 @@ performCollectionGen' collection refs' = do
   objFilter <- markedOrInvalid
   allLifeRefs <- liftIO $ liftM (nub . concat) $ mapM (markTree'' objFilter mark refs') refs'
   logGcT "==>Done Phase 1.\n"
-  toEvacuate <- liftIO $ filterM (getIntPtr >=> return . uglyFilter) allLifeRefs 
+  toEvacuate <- liftIO $ filterM (getIntPtr >=> return . hasMTable) allLifeRefs 
   if gcLogEnabled 
     then  liftIO $ mapM_ (getIntPtr >=> \x -> printfGc $ printf " 0x%08x" (fromIntegral x ::Int) ) toEvacuate
     else return ()

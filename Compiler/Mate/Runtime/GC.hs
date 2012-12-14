@@ -11,8 +11,14 @@ module Compiler.Mate.Runtime.GC
   , patchGCRoots
   , GenInfo(..)
   , mkGen0
+  , evacuate'
+  , extractLargeObjects
   ) where
 
+import GHC.Int
+import Data.List
+import qualified Foreign as F
+import Control.Applicative
 import Control.Monad
 import Control.Monad.State
 import qualified Data.Map as M
@@ -20,6 +26,7 @@ import qualified Data.Set as S
 import Text.Printf
 import Foreign.Ptr (IntPtr, Ptr)
 import Compiler.Mate.Debug
+import Compiler.Mate.Flags
 
 class (Eq a, Ord a, Show a) => RefObj a where
   
@@ -133,5 +140,44 @@ patchGCRoots roots = mapM_ fixRef $ M.toList roots
                                       if valid 
                                         then getNewRef obj >>= getIntPtr >>= fixupAction
                                         else return ()
+
+
+evacuate' :: (RefObj a, AllocationManager b) => (GenInfo -> Bool) -> (a -> IO GenInfo) -> [a] -> StateT b IO ()
+evacuate' filterF info =  mapM_ (evacuate'' filterF info)
+
+evacuate'' :: (RefObj a, AllocationManager b) => (GenInfo -> Bool) -> (a -> IO GenInfo) -> a -> StateT b IO ()
+evacuate'' filterF info obj = do 
+  (size,location) <- liftIO ((,) <$> getSizeDebug obj <*> getIntPtr obj)
+  target <- liftIO $ info obj
+  
+  if filterF target
+    then do 
+       -- malloc in toSpace
+       newPtr <- mallocBytesT target size
+       liftIO (printfGc ("evacuating: " ++ show obj ++ 
+                            " and set: " ++ show newPtr ++ " size: " ++ show size ++ "\n"))
+       -- copy data over and leave notice
+       liftIO (F.copyBytes newPtr (F.intPtrToPtr location) size >> 
+               setNewRef obj (cast newPtr) >>
+               F.pokeByteOff newPtr 4 (0::Int32))
+    else return ()
+
+getSizeDebug :: RefObj a => a -> IO Int
+getSizeDebug obj = do 
+  intObj <- getIntPtr obj
+  printfGc $ printf "objTo evacuate: 0x%08x\n" (fromIntegral intObj :: Int)
+  size <- size obj
+  printfGc $ printf "size was %i\n" size
+  return size
+
+-- splits [a] into (large objects, normal objects)
+extractLargeObjects :: RefObj a => [a] -> IO ([a],[a])
+extractLargeObjects xs = 
+    if not useLoh
+      then return ([],xs)
+      else do
+            sizes <-  mapM (\x -> size x >>= \s -> return (x,s)) xs
+            let (lohs,objs) = partition ((>= loThreshhold) . snd) sizes
+            return (map fst lohs, map fst objs)
 
 

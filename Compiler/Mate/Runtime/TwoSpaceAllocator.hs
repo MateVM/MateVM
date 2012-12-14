@@ -8,7 +8,6 @@ import qualified Data.Set as S
 
 import Compiler.Mate.Flags
 import Compiler.Mate.Runtime.GC hiding (size)
-import qualified Compiler.Mate.Runtime.GC as GC
 import Compiler.Mate.Debug
 
 data TwoSpace = TwoSpace { fromBase :: IntPtr, 
@@ -71,13 +70,6 @@ allocateLoh size = do
     liftIO $ printfGc $ printf "LOH: allocated %d bytes in loh %s" size (show ptr)
     return ptr
 
-getSizeDebug :: RefObj a => a -> IO Int
-getSizeDebug obj = do 
-  intObj <- getIntPtr obj
-  printfGc $ printf "objTo evacuate: 0x%08x\n" (fromIntegral intObj :: Int)
-  size <- GC.size obj
-  printfGc $ printf "size was %i\n" size
-  return size
 
 --evacuateList :: (RefObj a, AllocationManager b) => [a] -> b -> StateT b IO ()
 --evacuateList objs = evacuate' objs

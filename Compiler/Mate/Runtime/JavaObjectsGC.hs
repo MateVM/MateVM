@@ -3,6 +3,7 @@ module Compiler.Mate.Runtime.JavaObjectsGC
     ( RefObj(..)
     , printRef'
     , validMateObj
+    , hasMTable
     ) where
 
 import Compiler.Mate.Runtime.GC
@@ -61,6 +62,9 @@ primArrayMagicNumber = 0x1228babe
 
 isArrayMagicNumber :: Int32 -> Bool
 isArrayMagicNumber ptr = ptr == arrayMagicNumber || ptr == primArrayMagicNumber
+
+hasMTable :: IntPtr -> Bool
+hasMTable objAsPtr = objAsPtr /= 0 && objAsPtr /= 0x1228babe && objAsPtr /= 0x1227bab
 
 -- [TODO hs] fix for array[array]
 unpackRefs :: Ptr a -> IO [Ptr a]

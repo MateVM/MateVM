@@ -11,7 +11,7 @@ import Control.Monad.Identity
 import Test.QuickCheck hiding ((.&.))
 
 import qualified Data.Sequence as Q
-import Data.Sequence ((|>),(<|))
+import Data.Sequence ((|>))
 import Data.IORef
 import Text.Printf
 import qualified Data.Map as M

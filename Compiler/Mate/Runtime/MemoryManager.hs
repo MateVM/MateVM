@@ -8,8 +8,7 @@ module Compiler.Mate.Runtime.MemoryManager
     , buildRootPatcher
     , extractLargeObjects
     , markedOrInvalid
-    , uglyFilter
-    , evacuate' )   where
+    , hasMTable)   where
 
 import Foreign
 
@@ -17,14 +16,13 @@ import Text.Printf
 import Control.Monad.State
 import qualified Data.Map as M
 import Data.List
-import Control.Applicative
 
 import Compiler.Mate.Flags
 import Compiler.Mate.Debug
 import Compiler.Mate.Runtime.GC hiding (size)
 import qualified Compiler.Mate.Runtime.StackTrace as T
 import qualified Compiler.Mate.Runtime.JavaObjectsGC as GCObj
-import Compiler.Mate.Runtime.JavaObjectsGC() -- only instances for Ptr a
+import Compiler.Mate.Runtime.JavaObjectsGC(hasMTable) -- only instances for Ptr a
 import Compiler.Mate.Runtime.TwoSpaceAllocator
 
 type RootSet a = M.Map (Ptr a) RefUpdateAction
@@ -50,25 +48,6 @@ performCollection' roots = do modify switchSpaces
                               liftIO $ patchGCRoots roots
                               logGcT "all done \\o/"
 
-markedOrInvalid :: (RefObj a, AllocationManager b) => StateT b IO (a -> IO Bool)
-markedOrInvalid = 
-  return $ \obj -> do objAsPtr <- getIntPtr obj
-                      printfGc $ printf "check obj: 0x%08x" (fromIntegral objAsPtr :: Int)
-                      --let valid = validRef' objAsPtr memManager
-                      if uglyFilter objAsPtr-- this was not necassary before perm gens (now direct refs onto objs) 
-                        then do validObj' <- GCObj.validMateObj objAsPtr 
-                                if validObj'
-                                 then do
-                                        printfGc "gheck makred\n" 
-                                        liftIO $ marked obj
-                                 else do 
-                                         printfGc "not valid1\n"
-                                         return True
-                        else do printfGc "not valid1\n"
-                                return True -- not valid reference
-
-uglyFilter :: IntPtr -> Bool
-uglyFilter objAsPtr = objAsPtr /= 0 && objAsPtr /= 0x1228babe && objAsPtr /= 0x1227babe 
 
 -- [todo hs] this is slow. merge phases to eliminate list with refs
 performCollectionIO :: (RefObj a, AllocationManager b) => [a] -> StateT b IO ()
@@ -77,7 +56,7 @@ performCollectionIO refs' = do
   objFilter <- markedOrInvalid
   allLifeRefs <- liftIO $ liftM (nub . concat) $ mapM (markTree'' objFilter mark refs') refs'
   logGcT "==>Done Phase 1.\n"
-  toEvacuate <- liftIO $ filterM (getIntPtr >=> return . uglyFilter) allLifeRefs 
+  toEvacuate <- liftIO $ filterM (getIntPtr >=> return . hasMTable) allLifeRefs 
   if gcLogEnabled 
     then  liftIO $ mapM_ (getIntPtr >=> \x -> printfGc $ printf " 0x%08x" (fromIntegral x ::Int) ) toEvacuate
     else return ()
@@ -99,35 +78,22 @@ performCollectionIO refs' = do
   --lift $ patchAllRefs (getIntPtr >=> return . flip validRef' memoryManager) lifeRefs 
   logGcT "patched2.\n"    
 
-evacuate' :: (RefObj a, AllocationManager b) => (GenInfo -> Bool) -> (a -> IO GenInfo) -> [a] -> StateT b IO ()
-evacuate' filterF info =  mapM_ (evacuate'' filterF info)
-
-evacuate'' :: (RefObj a, AllocationManager b) => (GenInfo -> Bool) -> (a -> IO GenInfo) -> a -> StateT b IO ()
-evacuate'' filterF info obj = do 
-  (size,location) <- liftIO ((,) <$> getSizeDebug obj <*> getIntPtr obj)
-  target <- liftIO $ info obj
-  
-  if filterF target
-    then do 
-       -- malloc in TwoSpace
-       newPtr <- mallocBytesT target size
-       liftIO (printfGc ("evacuating: " ++ show obj ++ 
-                            " and set: " ++ show newPtr ++ " size: " ++ show size ++ "\n"))
-       -- copy data over and leave notice
-       liftIO (copyBytes newPtr (intPtrToPtr location) size >> 
-               setNewRef obj (cast newPtr) >>
-               pokeByteOff newPtr 4 (0::Int32))
-    else return ()
-
--- splits [a] into (large objects, normal objects)
-extractLargeObjects :: RefObj a => [a] -> IO ([a],[a])
-extractLargeObjects xs = 
-    if not useLoh
-      then return ([],xs)
-      else do
-            sizes <-  mapM (\x -> GCObj.size x >>= \s -> return (x,s)) xs
-            let (lohs,objs) = partition ((>= loThreshhold) . snd) sizes
-            return (map fst lohs, map fst objs)
+markedOrInvalid :: (RefObj a, AllocationManager b) => StateT b IO (a -> IO Bool)
+markedOrInvalid = 
+  return $ \obj -> do objAsPtr <- getIntPtr obj
+                      printfGc $ printf "check obj: 0x%08x" (fromIntegral objAsPtr :: Int)
+                      --let valid = validRef' objAsPtr memManager
+                      if hasMTable objAsPtr-- this was not necassary before perm gens (now direct refs onto objs) 
+                        then do validObj' <- GCObj.validMateObj objAsPtr 
+                                if validObj'
+                                 then do
+                                        printfGc "gheck makred\n" 
+                                        liftIO $ marked obj
+                                 else do 
+                                         printfGc "not valid1\n"
+                                         return True
+                        else do printfGc "not valid1\n"
+                                return True -- not valid reference
 
 
 buildGCAction :: AllocationManager a => GenInfo -> [T.StackDescription] -> [IntPtr] -> Int -> StateT a IO (Ptr b)
