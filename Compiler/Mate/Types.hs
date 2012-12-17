@@ -161,6 +161,7 @@ data ClassInfo = ClassInfo {
   ciStaticFieldTypeMap :: FieldTypeMap,
   ciFieldMap :: FieldMap,
   ciFieldTypeMap :: FieldTypeMap,
+  ciFieldLength :: NativeWord,
   ciMethodMap :: FieldMap,
   ciMethodBase :: NativeWord,
   ciMethodLength :: NativeWord,
