@@ -163,6 +163,7 @@ data ClassInfo = ClassInfo {
   ciFieldTypeMap :: FieldTypeMap,
   ciMethodMap :: FieldMap,
   ciMethodBase :: NativeWord,
+  ciMethodLength :: NativeWord,
   ciInitDone :: Bool }
 
 

@@ -123,8 +123,7 @@ getFieldCount :: B.ByteString -> IO NativeWord
 getFieldCount path = do
   ci <- getClassInfo path
   -- TODO(bernhard): correct sizes for different types...
-  let fsize = fromIntegral $ M.size $ ciFieldMap ci
-  return fsize
+  return $ ciFieldLength ci
 
 -- TODO: not implemented yet. will return empty map!
 getStaticFieldTypes :: B.ByteString -> IO [(Int32, FieldSignature)]
@@ -186,9 +185,9 @@ readClass path = do
             return $ Just sc
           else return Nothing
 
-      ((staticmap, statictypemap), (fieldmap, fieldtypemap)) <-
+      ((staticmap, statictypemap), (fieldmap, fieldtypemap, fsize)) <-
         calculateFields cfile superclass
-      (methodmap, mbase) <- calculateMethodMap cfile superclass
+      (methodmap, mbase, msize) <- calculateMethodMap cfile superclass
       immap <- getInterfaceMethodMap
 
       -- store interface-table at offset 0 in method-table
@@ -219,8 +218,10 @@ readClass path = do
                    , ciStaticFieldTypeMap = statictypemap
                    , ciFieldMap = fieldmap
                    , ciFieldTypeMap = fieldtypemap
+                   , ciFieldLength = fsize
                    , ciMethodMap = methodmap
                    , ciMethodBase = mbase
+                   , ciMethodLength = msize
                    , ciInitDone = False
                    }
       setClassMap $ M.insert path new_ci class_map
@@ -274,7 +275,7 @@ loadInterface path = do
 
 
 calculateFields :: Class Direct -> Maybe ClassInfo
-                -> IO ((FieldMap, FieldTypeMap), (FieldMap, FieldTypeMap))
+                -> IO ((FieldMap, FieldTypeMap), (FieldMap, FieldTypeMap, NativeWord))
 calculateFields cf superclass = do
     -- TODO(bernhard): correct sizes. int only atm
 
@@ -291,15 +292,20 @@ calculateFields cf superclass = do
 
     let sc_im = getsupermap superclass ciFieldMap
     let sc_imtype = getsupermap superclass ciFieldTypeMap
+    let sc_size :: Num a => a
+        sc_size = case superclass of
+                    Just x -> fromIntegral $ ciFieldLength x
+                    Nothing -> 0
     -- "+ (2*ptrsize)" for the method table pointer and GC data
-    let max_off = (+ (2*ptrSize)) $ fromIntegral $ M.size sc_im * ptrSize
+    let max_off = (+ (2*ptrSize)) $ sc_size * ptrSize
     let im = zipbase max_off ifields
     let imtype = zipbasetype max_off ifields
     -- new fields "overwrite" old ones, if they have the same name
     let fieldmap = im `M.union` sc_im
     let fieldtypemap = imtype `M.union` sc_imtype
+    let fsize = sc_size + fromIntegral (M.size im)
 
-    return ((staticmap, statictypemap), (fieldmap, fieldtypemap))
+    return ((staticmap, statictypemap), (fieldmap, fieldtypemap, fsize))
   where
     zipbase :: Int32 -> [Field Direct] -> FieldMap
     zipbase base = foldr (\(x,y) -> M.insert (fieldName y) (x + base)) M.empty . zip [0,ptrSize..]
@@ -311,20 +317,27 @@ getsupermap :: Maybe ClassInfo -> (ClassInfo -> M.Map k v) -> M.Map k v
 getsupermap superclass getter = case superclass of Just x -> getter x; Nothing -> M.empty
 
 
-calculateMethodMap :: Class Direct -> Maybe ClassInfo -> IO (FieldMap, NativeWord)
+calculateMethodMap :: Class Direct -> Maybe ClassInfo -> IO (FieldMap, NativeWord, NativeWord)
 calculateMethodMap cf superclass = do
     let methods = filter
                   (\x -> (not . S.member ACC_STATIC . methodAccessFlags) x &&
                          ((/=) "<init>" . methodName) x)
                   (classMethods cf)
     let sc_mm = getsupermap superclass ciMethodMap
-    let max_off = fromIntegral $ M.size sc_mm * ptrSize
-    let mm = zipbase max_off methods
-    let methodmap = M.fromList mm `M.union` sc_mm
+    let sc_size :: Num a => a
+        sc_size = case superclass of
+                    Just x -> fromIntegral $ ciMethodLength x
+                    Nothing -> 0
+    let max_off = sc_size * ptrSize
+    let mm = M.fromList $ zipbase max_off methods
+    let methodmap = mm `M.union` sc_mm
 
+    let size = M.size sc_mm + sc_size
     -- (+1): one slot for the interface-table-ptr
-    methodbase <- mallocClassData (((+1) $ fromIntegral $ M.size methodmap) * ptrSize)
-    return (methodmap, fromIntegral $ ptrToIntPtr methodbase)
+    methodbase <- mallocClassData $ (size + 1) * ptrSize
+    return ( methodmap
+           , fromIntegral $ ptrToIntPtr methodbase
+           , fromIntegral $ size)
   where zipbase base = zipWith (\x y -> (entry y, x + base)) [0,ptrSize..]
           where entry y = methodName y `B.append` encode (methodSignature y)
 
