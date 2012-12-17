@@ -55,7 +55,7 @@ mateHandler reip reax rebx resi rebp resp recx retarr = do
         patchWithHarpy patcher wbr >>= delTrue
     (Just (VirtualCall False mi io_offset)) ->
         patchWithHarpy (patchInvoke mi reax reax io_offset) wbr >>= delFalse
-    (Just (VirtualCall True  mi io_offset)) ->
+    (Just (VirtualCall True  mi io_offset)) -> -- interface call
         patchWithHarpy (patchInvoke mi rebx reax io_offset) wbr >>= delFalse
     Nothing -> do
       -- TODO(bernhard) check if it was segfault

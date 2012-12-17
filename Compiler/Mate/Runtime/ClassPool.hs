@@ -158,9 +158,16 @@ getInterfaceMethodOffset ifname meth sig = do
   loadInterface ifname
   ifmmap <- getInterfaceMethodMap
   case M.lookup (ifname `B.append` meth `B.append` sig) ifmmap of
-    Just w32 -> return $ w32 + 4 -- todo: why +4?
+    -- (+ ptrSize): to match the same layout as in mtable
+    Just w32 -> return $ w32 + ptrSize
     Nothing -> error "getInterfaceMethodOffset: no offset set"
 
+-- TODO(bernhard): dynamic growth?
+-- TODO(bernhard): better idea as a plain table in memory?
+ifaceGlobalTable :: NativeWord
+{-# NOINLINE ifaceGlobalTable #-}
+ifaceGlobalTable = fromIntegral $ ptrToIntPtr $
+  unsafePerformIO $ mallocClassData ((ptrSize *) 0x1000)
 
 readClass :: B.ByteString -> IO ClassInfo
 readClass path = do
@@ -184,14 +191,8 @@ readClass path = do
       (methodmap, mbase) <- calculateMethodMap cfile superclass
       immap <- getInterfaceMethodMap
 
-      -- allocate interface offset table for this class
-      -- TODO(bernhard): we have some duplicates in immap (i.e. some
-      --                 entries have the same offset), so we could
-      --                 save some memory here.
-      iftable <- mallocClassData ((ptrSize*) $ M.size immap)
-      let wn_iftable = fromIntegral $ ptrToIntPtr iftable :: NativeWord
       -- store interface-table at offset 0 in method-table
-      pokeElemOff (intPtrToPtr $ fromIntegral mbase) 0 wn_iftable
+      pokeElemOff (intPtrToPtr $ fromIntegral mbase) 0 ifaceGlobalTable
       let hexDumpMap :: Integral v => String -> M.Map B.ByteString v -> IO ()
           hexDumpMap header mmap = do
             let printValue :: B.ByteString -> IO ()
@@ -206,7 +207,7 @@ readClass path = do
         hexDumpMap ("methodmap @ " ++ strpath) methodmap
         hexDumpMap ("interfacemap @ " ++ strpath) immap
         printfCp $ printf "mbase:   0x%08x\n" mbase
-        printfCp $ printf "iftable: 0x%08x\n" wn_iftable
+        printfCp $ printf "iftable: 0x%08x\n" ifaceGlobalTable
       virtual_map <- getVirtualMap
       setVirtualMap $ M.insert mbase path virtual_map
 

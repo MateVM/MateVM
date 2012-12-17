@@ -563,7 +563,8 @@ girVirtual cpidx haveReturn ct mapping = do
           buildMethodID cls cpidx
   newNamedLabel (show mi) >>= defineLabel
   -- get method offset for call @ runtime
-  let offset =
+  let offset :: IO NativeWord
+      offset =
         (if isInterface then getInterfaceMethodOffset else getMethodOffset)
           objname methodname (encode msig)
   -- objref lives somewhere on the argument stack
