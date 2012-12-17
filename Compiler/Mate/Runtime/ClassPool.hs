@@ -88,13 +88,13 @@ getFieldOffset path field = do
   ci <- getClassInfo path
   return $ ciFieldMap ci M.! field
 
--- method + signature plz!
-
-getMethodOffset :: B.ByteString -> B.ByteString -> IO NativeWord
-getMethodOffset path method = do
+-- class name, methodname, methodsignature
+getMethodOffset :: B.ByteString -> B.ByteString -> B.ByteString -> IO NativeWord
+getMethodOffset path method sig = do
   ci <- getClassInfo path
-  -- (+ ptrSize) one slot for "interface-table-ptr"
-  return $ (+ ptrSize) $ fromIntegral $ ciMethodMap ci M.! method
+  -- (+ ptrSize): one slot for "interface-table-ptr"
+  return $ (+ ptrSize) $ fromIntegral $
+    ciMethodMap ci M.! (method `B.append` sig)
 
 getMethodTableNoInit :: B.ByteString -> IO NativeWord
 getMethodTableNoInit path = do
@@ -152,14 +152,13 @@ getStaticFieldAddr from = do
     (StaticField (StaticFieldInfo cls field)) -> getStaticFieldOffset cls field
     _ -> error "getFieldAddr: no TrapCause found. abort"
 
--- interface + method + signature plz!
+-- interface name, methodname, methodsignature
 getInterfaceMethodOffset :: B.ByteString -> B.ByteString -> B.ByteString -> IO NativeWord
 getInterfaceMethodOffset ifname meth sig = do
   loadInterface ifname
   ifmmap <- getInterfaceMethodMap
-  let k = ifname `B.append` meth `B.append` sig
-  case M.lookup k ifmmap of
-    Just w32 -> return $ w32 + 4
+  case M.lookup (ifname `B.append` meth `B.append` sig) ifmmap of
+    Just w32 -> return $ w32 + 4 -- todo: why +4?
     Nothing -> error "getInterfaceMethodOffset: no offset set"
 
 

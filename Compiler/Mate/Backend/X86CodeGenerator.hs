@@ -564,9 +564,8 @@ girVirtual cpidx haveReturn ct mapping = do
   newNamedLabel (show mi) >>= defineLabel
   -- get method offset for call @ runtime
   let offset =
-        if isInterface
-          then getInterfaceMethodOffset objname methodname (encode msig)
-          else getMethodOffset objname (methodname `B.append` encode msig)
+        (if isInterface then getInterfaceMethodOffset else getMethodOffset)
+          objname methodname (encode msig)
   -- objref lives somewhere on the argument stack
   mov ebx (Disp 0, esp)
   when isInterface $
