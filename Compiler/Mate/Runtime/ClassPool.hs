@@ -282,10 +282,10 @@ calculateFields cf superclass = do
     let (sfields, ifields) = partition (S.member ACC_STATIC . fieldAccessFlags) (classFields cf)
 
     let sc_sm = getsupermap superclass ciStaticMap
-   
-    -- TODO(bernhard): is this complete bullshit?
-    let statictypemap = zipbasetype (fromIntegral $ length sfields) sfields
-    staticbase <- mallocStaticData (fromIntegral (length sfields) * ptrSize) statictypemap
+
+    let sfields_size = fromIntegral $ length sfields
+    let statictypemap = zipbasetype (fromIntegral sfields_size) sfields
+    staticbase <- mallocStaticData (sfields_size * ptrSize) statictypemap
     let sm = zipbase (fromIntegral $ ptrToIntPtr staticbase) sfields
     -- new fields "overwrite" old ones, if they have the same name
     let staticmap = sm `M.union` sc_sm
