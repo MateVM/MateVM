@@ -157,8 +157,7 @@ getInterfaceMethodOffset ifname meth sig = do
   loadInterface ifname
   ifmmap <- getInterfaceMethodMap
   case M.lookup (ifname `B.append` meth `B.append` sig) ifmmap of
-    -- (+ ptrSize): to match the same layout as in mtable
-    Just w32 -> return $ w32 + ptrSize
+    Just w32 -> return w32
     Nothing -> error "getInterfaceMethodOffset: no offset set"
 
 
@@ -185,11 +184,10 @@ readClass path = do
       immap <- getInterfaceMethodMap
 
       -- allocate interface offset table for this class
-      -- (+1): to match the same layout as in mtable
       -- TODO(bernhard): we have some duplicates in immap (i.e. some
       --                 entries have the same offset), so we could
       --                 save some memory here.
-      iftable <- mallocClassData $ (ptrSize*) $ 1 + M.size immap
+      iftable <- mallocClassData $ ptrSize * M.size immap
       let wn_iftable = fromIntegral $ ptrToIntPtr iftable :: NativeWord
       -- store interface-table at offset 0 in method-table
       pokeElemOff (intPtrToPtr $ fromIntegral mbase) 0 wn_iftable
