@@ -10,10 +10,9 @@ public class Instance5 {
 			System.out.printf("Nothing to do here\n");
 		}
 	}
-}
-
-class Instance5_notload {
-	static {
-		System.out.printf("sup, I'm Instance5_notload\n");
+	public static class Instance5_notload {
+		static {
+			System.out.printf("sup, I'm Instance5_notload\n");
+		}
 	}
 }

@@ -29,18 +29,17 @@ public class ObjectCreation {
 	public static void woot() {
 		checkMe++;
 	}
-}
+	public static class CreateMe extends ObjectCreation {
+		public int var1;
+		public int var2;
 
-class CreateMe extends ObjectCreation {
-	public int var1;
-	public int var2;
+		public CreateMe() {
+			this.var1 = 0x11;
+			this.var2 = 0x22;
+		}
 
-	public CreateMe() {
-		this.var1 = 0x11;
-		this.var2 = 0x22;
-	}
-
-	public void executeMe() {
-		ObjectCreation.checkMe = this.var1 + this.var2 + this.stuff;
+		public void executeMe() {
+			ObjectCreation.checkMe = this.var1 + this.var2 + this.stuff;
+		}
 	}
 }

@@ -1,12 +1,12 @@
 package tests;
 
-public class Generics1 implements Cmp<Integer> {
+public class Generics1 implements Generics1Cmp<Integer> {
 	public Integer a = new Integer(0x1337);
 	public int cmpto(Integer o) {
 		return a.intValue() - o.intValue();
 	}
 
-	public static Cmp<Integer> sb = new Generics1();
+	public static Generics1Cmp<Integer> sb = new Generics1();
 	public static int lalelu = 0;
 
 	public static void main(String []args) {
@@ -18,7 +18,7 @@ public class Generics1 implements Cmp<Integer> {
 	}
 }
 
-interface Cmp<T>
+interface Generics1Cmp<T>
 {
 	int cmpto(T o);
 }

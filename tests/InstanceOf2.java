@@ -34,11 +34,9 @@ public class InstanceOf2 {
 			System.out.printf(" :-(\n");
 		}
 	}
-}
+	public static class InstanceOf2_local extends Instance1 {
+	}
 
-
-class InstanceOf2_local extends Instance1 {
-}
-
-class InstanceOf2_local2 extends InstanceOf2_local {
+	public static class InstanceOf2_local2 extends InstanceOf2_local {
+	}
 }

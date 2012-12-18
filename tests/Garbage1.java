@@ -33,19 +33,18 @@ public class Garbage1
 		}
 		//System.out.println("done.");
 	}
-}
-
-class Big2
-{
-	private int[]arr;
-
-	public Big2()
+	public static class Big2
 	{
-		arr = new int[0xF400];
-		//System.out.println("foo");
+		private int[]arr;
+
+		public Big2()
+		{
+			arr = new int[0xF400];
+			//System.out.println("foo");
+		}
+			
+			public void foo()
+			{
+			}
 	}
-        
-        public void foo()
-        {
-        }
 }

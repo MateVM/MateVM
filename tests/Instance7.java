@@ -11,11 +11,11 @@ public class Instance7 {
 			System.out.printf("Nothing to do here\n");
 		}
 	}
-}
 
-class Instance7_notload {
-	static {
-		System.out.printf("sup, I'm Instance7_notload\n");
+	public static class Instance7_notload {
+		static {
+			System.out.printf("sup, I'm Instance7_notload\n");
+		}
+		public int foo = 6;
 	}
-	public int foo = 6;
 }

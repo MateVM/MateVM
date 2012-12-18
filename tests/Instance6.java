@@ -12,13 +12,12 @@ public class Instance6 {
 			System.out.printf("Nothing to do here\n");
 		}
 	}
-}
-
-class Instance6_notload {
-	static {
-		System.out.printf("sup, I'm Instance6_notload\n");
-	}
-	void lol() {
-		System.out.printf("lolololololo\n");
+	public static class Instance6_notload {
+		static {
+			System.out.printf("sup, I'm Instance6_notload\n");
+		}
+		void lol() {
+			System.out.printf("lolololololo\n");
+		}
 	}
 }
