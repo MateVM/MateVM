@@ -122,7 +122,8 @@ patchInvoke :: MethodInfo -> CPtrdiff -> CPtrdiff -> IO NativeWord ->
 patchInvoke (MethodInfo methname _ msig)  method_table table2patch io_offset wbr = do
   liftIO $ printfTrap "patching invoke call\n"
   vmap <- liftIO getVirtualMap
-  liftIO $ printfTrap $ printf "patched virtual call: issued from 0x%08x\n" (fromIntegral (wbEip wbr) :: Word32)
+  let calltype = if method_table == table2patch then "virtual" else "interface"
+  liftIO $ printfTrap $ printf "patched %s call: issued from 0x%08x\n" (calltype :: String) (fromIntegral (wbEip wbr) :: Word32)
   when (method_table == 0) $ error "patchInvoke: method_table is null.  abort."
   let cls = vmap M.! fromIntegral method_table
   liftIO $ printfTrap $ printf "cls stuff: %s\n" (toString cls)
