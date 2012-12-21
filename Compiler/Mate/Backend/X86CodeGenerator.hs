@@ -81,6 +81,7 @@ modifyState f = do
   setState (f s)
 
 
+-- TODO: registers ebx, esi, edi are defined as callee-saved by cdecl.
 compileLinear :: M.Map Int32 H.Label -> [LinearIns HVarX86] -> Word32
               -> CodeGen e CompileState ([Instruction], NativeWord, TrapMap)
 compileLinear lbls linsn stackAlloc = do
