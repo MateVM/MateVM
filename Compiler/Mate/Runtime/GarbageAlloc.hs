@@ -125,11 +125,7 @@ mallocObjectGC_stackstrace eip rebp size = do
   return $ fromIntegral $ ptrToIntPtr ptr
 
 allocObjBoehm :: Maybe (CPtrdiff,CPtrdiff) -> Int -> IO (Ptr a) 
-allocObjBoehm regs size = do
-  --printStackTrace 0 rebp TODO: compare performance of printStackTrace and printStackTrace'?
-  _ <- case (mateDEBUG, regs) of
-        (True, Just(sptr,rebp)) -> printStackTrace' sptr rebp
-        _ -> return []
+allocObjBoehm _ size = do
   printfMem "do alloc boehm. \n"
   mallocBytesGC size
 
@@ -170,42 +166,50 @@ isValidTrace [] = True
 -- | allocates obj and performs gc if possible 
 allocObjAndDoGCPrecise :: Maybe (CPtrdiff,CPtrdiff) -> Int -> IO (Ptr a)
 allocObjAndDoGCPrecise regs size = do
-  printfGc "allocObjAndDoGCPrecise begin...\n"
-  stack <- getStackIfPossible regs 
-
-  if useBlockAllocator 
-    then do
-      permRoots <- return []--readIORef permGenRoots
-      gcState <- readIORef genGC
-
-      xs <- readIORef permGenRoots
-      printfGc $ printf "fuckin roots: %s" (show $ map intPtrToPtr xs)
-      ys <- (mapM (peek . intPtrToPtr) xs) :: IO [IntPtr]
-      printfGc $ printf "*fuckin roots: %s" (show $ map intPtrToPtr ys)
-
-      patches <- Gen.buildPatchAction stack permRoots 
-
-      let collectAndAlloc = (if null stack 
-                              then return ()
-                              else Gen.collectGen patches) >> 
-                                  Gen.mallocBytesGen GC.mkGen0 size :: StateT B.GcState IO (Ptr b)
-
-      printfGc "running statetGC\n\n"
-      (ptr,gcState') <- runStateT collectAndAlloc gcState
-      writeIORef genGC gcState'
-      printfGc "GC finished\n\n"
-
-      return ptr
-    else do
-      permRoots <- readIORef permGenRoots 
-      let gcAction = buildGCAction (error "no geninfo") stack permRoots size
-     
-      memoryManager <- readIORef twoSpaceGC 
-      (ptr,memoryManager') <- runStateT gcAction memoryManager 
-      writeIORef twoSpaceGC memoryManager'
-      
-      printfGc "allocObjAndDoGCPrecise completed.\n"
-      return ptr
+  if useLeakingGCForJitBenches 
+   then do 
+    printfGc "alloc using GenerationalGC but will not perform GC. (useLeakingGCForJitBenches)"
+    gcState <- readIORef genGC
+    (ptr,gcState') <- runStateT (Gen.mallocBytesGen GC.mkGen0 size :: StateT B.GcState IO (Ptr b)) gcState
+    writeIORef genGC gcState'
+    return ptr
+   else do 
+    printfGc "allocObjAndDoGCPrecise begin...\n"
+    stack <- getStackIfPossible regs 
+  
+    if useBlockAllocator 
+      then do
+        permRoots <- return []--readIORef permGenRoots
+        gcState <- readIORef genGC
+  
+        xs <- readIORef permGenRoots
+        printfGc $ printf "gc root: %s" (show $ map intPtrToPtr xs)
+        ys <- (mapM (peek . intPtrToPtr) xs) :: IO [IntPtr]
+        printfGc $ printf "*gc root: %s" (show $ map intPtrToPtr ys)
+  
+        patches <- Gen.buildPatchAction stack permRoots 
+  
+        let collectAndAlloc = (if null stack 
+                                then return ()
+                                else Gen.collectGen patches) >> 
+                                    Gen.mallocBytesGen GC.mkGen0 size :: StateT B.GcState IO (Ptr b)
+  
+        printfGc "running statetGC\n\n"
+        (ptr,gcState') <- runStateT collectAndAlloc gcState
+        writeIORef genGC gcState'
+        printfGc "GC finished\n\n"
+  
+        return ptr
+      else do
+        permRoots <- readIORef permGenRoots 
+        let gcAction = buildGCAction (error "no geninfo") stack permRoots size
+       
+        memoryManager <- readIORef twoSpaceGC 
+        (ptr,memoryManager') <- runStateT gcAction memoryManager 
+        writeIORef twoSpaceGC memoryManager'
+        
+        printfGc "allocObjAndDoGCPrecise completed.\n"
+        return ptr
 
 {-# NOINLINE twoSpaceGC #-}
 twoSpaceGC :: IORef TwoSpace
