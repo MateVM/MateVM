@@ -20,3 +20,4 @@ build/
 tools/hs-boehmgc
 .hpc/
 *.tix
+benchlog

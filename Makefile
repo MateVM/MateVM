@@ -36,8 +36,18 @@ all: mate
 %: %.class mate
 	./mate $(basename $<)
 
+bench: mate $(TEST_JAVA_FILES:.java=.class)
+	for j in "tests/Fib" "tests/Exception11"; \
+	do \
+		printf "benchmark: %s\n" "$$j"; \
+		for i in "./mate" "java -client" "java -cacao"; \
+		do \
+			JAVA="$$i" ./tools/bench.sh "$$j"; \
+		done; \
+		echo ""; \
+	done
 
-tests: mate $(TEST_JAVA_FILES:.java=.class) $(TEST_CLASS_FILES)
+tests: mate $(TEST_CLASS_FILES)
 
 CALLF = $(basename $@).call
 testcase = ./tools/openjdktest.sh "$(1) $(basename $@)"
