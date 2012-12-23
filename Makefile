@@ -37,7 +37,7 @@ all: mate
 	./mate $(basename $<)
 
 bench: mate $(TEST_JAVA_FILES:.java=.class)
-	for j in "tests/Fib" "tests/Exception11"; \
+	for j in "tests/Fib" "tests/BenchException"; \
 	do \
 		printf "benchmark: %s\n" "$$j"; \
 		for i in "./mate" "java -client" "java -cacao"; \
