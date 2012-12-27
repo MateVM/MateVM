@@ -81,7 +81,6 @@ modifyState f = do
   setState (f s)
 
 
--- TODO: registers ebx, esi, edi are defined as callee-saved by cdecl.
 compileLinear :: M.Map Int32 H.Label -> [LinearIns HVarX86] -> Word32
               -> CodeGen e CompileState ([Instruction], NativeWord, TrapMap)
 compileLinear lbls linsn stackAlloc = do
@@ -91,12 +90,14 @@ compileLinear lbls linsn stackAlloc = do
   push (0x13371337 :: Word32) -- (compile-time) patch it later manually
   mov ebp esp
   sub esp stackAlloc
+  forM_ x86calleesave push
   bblabels <- forM (M.elems lbls) $ \h -> do
                 l <- newNamedLabel ("Label: " ++ show h)
                 return (h, l)
   let lmap :: M.Map H.Label Label
       lmap = M.fromList bblabels
-  let retseq = do mov esp ebp
+  let retseq = do forM_ (reverse x86calleesave) pop
+                  mov esp ebp
                   pop ebp {- kill exmap ref on stack -}
                   pop ebp
                   ret

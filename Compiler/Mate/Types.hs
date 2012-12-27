@@ -10,7 +10,7 @@ module Compiler.Mate.Types
   , TrapPatcher, TrapPatcherEax
   , ExceptionHandler
   , WriteBackRegs, printWbr
-  , x86callersave, x86regs, eip
+  , x86callersave, x86calleesave, x86regs, eip
   , TrapMap, MethodMap, ClassMap, FieldMap, FieldTypeMap
   , StringMap, VirtualMap, InterfaceMap
   , InterfaceMethodMap
@@ -112,7 +112,10 @@ eip :: Reg32
 eip = Reg32 8
 
 x86callersave :: [Reg32]
-x86callersave = [ecx, edx, ebx, esi, edi]
+x86callersave = [ecx, edx]
+
+x86calleesave :: [Reg32]
+x86calleesave = [ebx, esi, edi]
 
 x86regs :: [Reg32]
 x86regs = [eax, ecx, edx, ebx,
