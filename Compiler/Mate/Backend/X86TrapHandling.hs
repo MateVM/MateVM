@@ -23,23 +23,27 @@ import Compiler.Mate.Runtime.ClassPool
 import Compiler.Mate.Backend.X86CodeGenerator
 
 import Compiler.Mate.Debug
-import Numeric
 
 import Harpy.X86Disassembler
 
 foreign import ccall "register_signal"
   register_signal :: IO ()
 
-type MateHandlerType = CPtrdiff -> CPtrdiff -> CPtrdiff ->
-                       CPtrdiff -> CPtrdiff -> CPtrdiff ->
-                       CPtrdiff -> CUIntPtr -> IO ()
+type MateHandlerType = CUIntPtr -> IO ()
 foreign export ccall mateHandler :: MateHandlerType
 mateHandler :: MateHandlerType
-mateHandler reip reax rebx resi rebp resp recx retarr = do
+mateHandler retarr = do
   tmap <- getTrapMap
   printfTrap "----------------------\nenter matehandler\n"
-  let reipw32 = fromIntegral reip
-  let wbr = M.fromList [(eip, reip), (ebp, rebp), (esp, resp), (eax, reax)]
+  let f wbr (reg, offset) = do
+        val <- peek (plusPtr addr offset)
+        return $ M.insert reg val wbr
+  wbr <- foldM f M.empty (zip x86regs [0, 4..])
+  let reipw32 = fromIntegral (wbr M.! eip)
+  let reax = wbr M.! eax
+  let rebx = wbr M.! ebx
+
+  printfTrap $ printWbr wbr
   (deleteMe, ret_wbr) <- case M.lookup reipw32 tmap of
     (Just (StaticMethod patcher)) ->
         patchWithHarpy patcher wbr >>= delFalse
@@ -61,28 +65,20 @@ mateHandler reip reax rebx resi rebp resp recx retarr = do
       -- TODO(bernhard) check if it was segfault
       ex <- allocAndInitObject "java/lang/NullPointerException"
       printfTrap $ "getTrapType: abort :-( eip: "
-           ++ showHex (fromIntegral reip :: Word32) ".   "
-           ++ concatMap (`showHex` ", ") (M.keys tmap)
-           ++ printf "\neax: 0x%08x" (fromIntegral reax :: Word32)
-           ++ printf "\nebx: 0x%08x" (fromIntegral rebx :: Word32)
-           ++ printf "\necx: 0x%08x" (fromIntegral recx :: Word32)
-           ++ printf "\nesi: 0x%08x" (fromIntegral resi :: Word32)
-           ++ printf "\nebp: 0x%08x" (fromIntegral rebp :: Word32)
+      printfTrap $ printWbr wbr
       -- push exception ref on the stack
       let lesp = (wbr M.! esp) - 4
       poke (intPtrToPtr . fromIntegral $ lesp) ex
       handleExceptionPatcher (M.insert eax ex $ M.insert esp lesp wbr) >>= delFalse
   when deleteMe $ setTrapMap $ M.delete reipw32 tmap
-  pokeReg 0x0 eip ret_wbr
-  pokeReg 0x4 ebp ret_wbr
-  pokeReg 0x8 esp ret_wbr
-  pokeReg 0xc eax ret_wbr
+  forM_ (zip x86regs [0, 4 ..]) $ \(reg, off) -> do
+    poke (plusPtr addr off) (ret_wbr M.! reg)
+
   printfTrap "nothing todo here *fly away*\n"
     where
       delTrue x = return (True,x)
       delFalse x = return (False,x)
       addr = intPtrToPtr . fromIntegral $ retarr
-      pokeReg off cons ret_wbr = poke (plusPtr addr off) (fromIntegral (ret_wbr M.! cons) :: Word32)
 
 
 patchWithHarpy :: TrapPatcher -> WriteBackRegs -> IO WriteBackRegs

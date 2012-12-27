@@ -9,8 +9,8 @@ module Compiler.Mate.Types
   , StackDisp, GCPoint, GCPoints, GCSet, rootSet
   , TrapPatcher, TrapPatcherEax
   , ExceptionHandler
-  , WriteBackRegs
-  , eip
+  , WriteBackRegs, printWbr
+  , eip, x86regs
   , TrapMap, MethodMap, ClassMap, FieldMap, FieldTypeMap
   , StringMap, VirtualMap, InterfaceMap
   , InterfaceMethodMap
@@ -111,15 +111,22 @@ type TrapMap = M.Map NativeWord TrapCause
 eip :: Reg32
 eip = Reg32 8
 
+x86regs :: [Reg32]
+x86regs = [eax, ecx, edx, ebx,
+           esp, ebp, esi, edi,
+           eip]
+
 type WriteBackRegs = M.Map Reg32 CPtrdiff
 
-printWbr :: WriteBackRegs -> IO ()
+printWbr :: WriteBackRegs -> String
 printWbr wbregs =
-  printf "reg dump:\n\teip: 0x%08x\tebp: 0x%08x\n\tesp: 0x%08x\teax: 0x%08x\n"
-         (readreg eip) (readreg ebp) (readreg esp) (readreg eax)
-    where
-      readreg r = fromIntegral (wbregs M.! r) :: Word32
-
+  printf "reg dump:\n" ++
+    (concatMap (\reg -> printf "%s: 0x%08x\n" (printReg reg)
+         (fromIntegral (case M.lookup reg wbregs of Just x -> x; Nothing -> 0xffeeddcc) :: Word32))
+         x86regs)
+  where
+    printReg (Reg32 8) = "eip"
+    printReg x = show x
 
 type TrapPatcher = WriteBackRegs -> CodeGen () () WriteBackRegs
 type TrapPatcherEax = TrapPatcher

@@ -794,11 +794,12 @@ handleExceptionPatcher wbr = do
                   myMapM g (x:xs) = do
                     r <- g x
                     case r of
-                      Just y -> return $ Just $ M.fromList
+                      Just y -> return $ Just $ (M.fromList
                                   [(eip, fromIntegral y)
                                   ,(ebp, rebp)
                                   ,(esp, resp)
-                                  ,(eax, fromIntegral weax)]
+                                  ,(eax, fromIntegral weax)])
+                                  `M.union` wbr
                       Nothing -> myMapM g xs
               let f :: (B.ByteString, Word32) -> IO (Maybe Word32)
                   f (x, y) = do
