@@ -39,7 +39,7 @@ mateHandler reip reax rebx resi rebp resp recx retarr = do
   tmap <- getTrapMap
   printfTrap "----------------------\nenter matehandler\n"
   let reipw32 = fromIntegral reip
-  let wbr = WriteBackRegs { wbEip = reip, wbEbp = rebp, wbEsp = resp, wbEax = reax }
+  let wbr = M.fromList [(eip, reip), (ebp, rebp), (esp, resp), (eax, reax)]
   (deleteMe, ret_wbr) <- case M.lookup reipw32 tmap of
     (Just (StaticMethod patcher)) ->
         patchWithHarpy patcher wbr >>= delFalse
@@ -69,20 +69,20 @@ mateHandler reip reax rebx resi rebp resp recx retarr = do
            ++ printf "\nesi: 0x%08x" (fromIntegral resi :: Word32)
            ++ printf "\nebp: 0x%08x" (fromIntegral rebp :: Word32)
       -- push exception ref on the stack
-      let lesp = wbEsp wbr - 4
+      let lesp = (wbr M.! esp) - 4
       poke (intPtrToPtr . fromIntegral $ lesp) ex
-      handleExceptionPatcher (wbr { wbEax = ex, wbEsp = lesp}) >>= delFalse
+      handleExceptionPatcher (M.insert eax ex $ M.insert esp lesp wbr) >>= delFalse
   when deleteMe $ setTrapMap $ M.delete reipw32 tmap
-  pokeReg 0x0 wbEip ret_wbr
-  pokeReg 0x4 wbEbp ret_wbr
-  pokeReg 0x8 wbEsp ret_wbr
-  pokeReg 0xc wbEax ret_wbr
+  pokeReg 0x0 eip ret_wbr
+  pokeReg 0x4 ebp ret_wbr
+  pokeReg 0x8 esp ret_wbr
+  pokeReg 0xc eax ret_wbr
   printfTrap "nothing todo here *fly away*\n"
     where
       delTrue x = return (True,x)
       delFalse x = return (False,x)
       addr = intPtrToPtr . fromIntegral $ retarr
-      pokeReg off cons ret_wbr = poke (plusPtr addr off) (fromIntegral (cons ret_wbr) :: Word32)
+      pokeReg off cons ret_wbr = poke (plusPtr addr off) (fromIntegral (ret_wbr M.! cons) :: Word32)
 
 
 patchWithHarpy :: TrapPatcher -> WriteBackRegs -> IO WriteBackRegs
@@ -90,7 +90,7 @@ patchWithHarpy patcher wbr = do
   -- this is just an upperbound. if the value is to low, patching fails. find
   -- something better?
   let fixme = 1024
-  let entry = Just (intPtrToPtr (fromIntegral $ wbEip wbr), fixme)
+  let entry = Just (intPtrToPtr (fromIntegral (wbr M.! eip)), fixme)
   let cgconfig = defaultCodeGenConfig { customCodeBuffer = entry }
   printfTrap "try patching with harpy now\n"
   (_, Right right) <- runCodeGenWithConfig (withDisasm $ patcher wbr) () () cgconfig
@@ -109,11 +109,11 @@ staticFieldHandler :: WriteBackRegs -> IO WriteBackRegs
 staticFieldHandler wbr = do
   printfTrap "patching static field handler\n"
   -- patch the offset here, first two bytes are part of the insn (opcode + reg)
-  let imm_ptr = intPtrToPtr (fromIntegral (wbEip wbr + 2)) :: Ptr CPtrdiff
+  let imm_ptr = intPtrToPtr (fromIntegral ((wbr M.! eip) + 2)) :: Ptr CPtrdiff
   checkMe <- peek imm_ptr
   if checkMe == 0x00000000 then
     do
-      getStaticFieldAddr (wbEip wbr) >>= poke imm_ptr
+      getStaticFieldAddr (wbr M.! eip) >>= poke imm_ptr
       return wbr
     else error "staticFieldHandler: something is wrong here. abort.\n"
 
@@ -123,7 +123,7 @@ patchInvoke (MethodInfo methname _ msig)  method_table table2patch io_offset wbr
   liftIO $ printfTrap "patching invoke call\n"
   vmap <- liftIO getVirtualMap
   let calltype = if method_table == table2patch then "virtual" else "interface"
-  liftIO $ printfTrap $ printf "patched %s call: issued from 0x%08x\n" (calltype :: String) (fromIntegral (wbEip wbr) :: Word32)
+  liftIO $ printfTrap $ printf "patched %s call: issued from 0x%08x\n" (calltype :: String) (fromIntegral (wbr M.! eip) :: Word32)
   when (method_table == 0) $ error "patchInvoke: method_table is null.  abort."
   let cls = vmap M.! fromIntegral method_table
   liftIO $ printfTrap $ printf "cls stuff: %s\n" (toString cls)

@@ -315,7 +315,7 @@ girEmitOO (IROp operation dst' src1' src2') =
                 emitSigIllTrap 2
                 liftIO $ do
                   ex <- allocAndInitObject "java/lang/ArithmeticException"
-                  handleExceptionPatcher (wbr { wbEax = ex })
+                  handleExceptionPatcher (M.insert eax ex wbr)
           modifyState (\s -> s { traps = M.insert trapaddr (ThrowException patcher) (traps s) })
           lokay @@ xor edx edx
           div ebx
@@ -520,9 +520,9 @@ girEmitOO (IRMisc2 jins dst src) =
       let patcher wbr = do
             emitSigIllTrap 4
             let classname = buildClassID cls cpidx
-            check <- liftIO $ isInstanceOf (fromIntegral $ wbEax wbr) classname
+            check <- liftIO $ isInstanceOf (fromIntegral $ wbr M.! eax) classname
             movres (if check then 1 else 0)
-            return $ wbr {wbEip = wbEip wbr + 4}
+            return $ M.update (Just . (+4)) eip wbr
       s <- getState
       setState (s { traps = M.insert trapaddr (InstanceOf patcher) (traps s) })
     x -> error $ "emit: misc2: " ++ show x
@@ -539,7 +539,7 @@ girStatic cpidx haveReturn ct mapping = do
   calladdr <- emitSigIllTrap 5
   let patcher wbr = do
         entryAddr <- liftIO $ lookupMethodEntry l
-        call (fromIntegral (entryAddr - (wbEip wbr + 5)) :: NativeWord)
+        call (fromIntegral (entryAddr - ((wbr M.! eip) + 5)) :: NativeWord)
         return wbr
   setGCPoint mapping
   -- discard arguments on stack
@@ -737,11 +737,11 @@ typeSize' vt = case typeSize vt :: Integer of
 
 handleExceptionPatcher :: ExceptionHandler
 handleExceptionPatcher wbr = do
-  let weip = fromIntegral $ wbEip wbr
+  let weip = fromIntegral $ wbr M.! eip
   printfEx $ printf "eip of throw: 0x%08x %d\n" weip weip
-  handleException weip (wbEbp wbr) (wbEsp wbr)
+  handleException weip (wbr M.! ebp) (wbr M.! esp)
     where
-      weax = fromIntegral (wbEax wbr) :: Word32
+      weax = fromIntegral (wbr M.! eax) :: Word32
       unwindStack :: CPtrdiff -> IO WriteBackRegs
       unwindStack rebp = do
         let nesp = rebp + 8
@@ -794,11 +794,11 @@ handleExceptionPatcher wbr = do
                   myMapM g (x:xs) = do
                     r <- g x
                     case r of
-                      Just y -> return $ Just WriteBackRegs
-                                  { wbEip = fromIntegral y
-                                  , wbEbp = rebp
-                                  , wbEsp = resp
-                                  , wbEax = fromIntegral weax }
+                      Just y -> return $ Just $ M.fromList
+                                  [(eip, fromIntegral y)
+                                  ,(ebp, rebp)
+                                  ,(esp, resp)
+                                  ,(eax, fromIntegral weax)]
                       Nothing -> myMapM g xs
               let f :: (B.ByteString, Word32) -> IO (Maybe Word32)
                   f (x, y) = do
