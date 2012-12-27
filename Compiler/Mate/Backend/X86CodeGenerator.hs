@@ -736,26 +736,28 @@ typeSize' vt = case typeSize vt :: Integer of
              ++ show y ++ ", " ++ show vt
 
 handleExceptionPatcher :: ExceptionHandler
-handleExceptionPatcher wbr = do
-  let weip = fromIntegral $ wbr M.! eip
-  printfEx $ printf "eip of throw: 0x%08x %d\n" weip weip
-  handleException weip (wbr M.! ebp) (wbr M.! esp)
+handleExceptionPatcher wbr' = do
+  printfEx $ printf "eip of exception: 0x%08x %d\n" (fromIntegral (wbr' M.! eip) :: Word32)
+  handleException wbr'
     where
-      weax = fromIntegral (wbr M.! eax) :: Word32
-      unwindStack :: CPtrdiff -> IO WriteBackRegs
-      unwindStack rebp = do
+      unwindStack :: WriteBackRegs -> IO WriteBackRegs
+      unwindStack wbr = do
+        let rebp = wbr M.! ebp
         let nesp = rebp + 8
         -- get ebp of caller
-        nebp <- peek (intPtrToPtr . fromIntegral $ (nesp - 4))
+        nebp <- peek . intPtrToPtr . fromIntegral $ nesp - 4
         printfEx $ printf "nebp: 0x%08x\n" (fromIntegral nebp :: Word32)
         printfEx $ printf "nesp: 0x%08x\n" (fromIntegral nesp :: Word32)
         printfEx (show wbr)
         -- get return addr
         neip <- peek . intPtrToPtr . fromIntegral $ nesp
-        printfEx $ printf "neip: 0x%08x\n" (neip :: Word32)
-        handleException neip nebp nesp
-      handleException :: Word32 -> CPtrdiff -> CPtrdiff -> IO WriteBackRegs
-      handleException weip rebp resp = do
+        printfEx $ printf "neip: 0x%08x\n" (fromIntegral neip :: Word32)
+        handleException $ M.insert eip neip
+                        $ M.insert ebp nebp
+                        $ M.insert esp nesp wbr
+
+      handleException :: WriteBackRegs -> IO WriteBackRegs
+      handleException wbr = do
         -- get full exception map from stack
         stblptr <- peek (intPtrToPtr . fromIntegral $ rebp) :: IO Word32
         let sptr = castPtrToStablePtr $ intPtrToPtr $ fromIntegral stblptr
@@ -770,15 +772,17 @@ handleExceptionPatcher wbr = do
         let searchRegion :: [IM.Interval Word32] -> IO WriteBackRegs
             searchRegion [] = do
               printfEx "unwind stack now. good luck(x)\n\n"
-              unwindStack rebp
+              unwindStack wbr
             searchRegion (r:rs) = do
               -- let's see if there's a proper handler in this range
               res <- findHandler r exmap
               case res of
                 Just x -> return x
                 Nothing -> searchRegion rs
-        searchRegion . map fst $ exmap `IM.containing` weip
+        searchRegion . map fst $ exmap `IM.containing` (fromIntegral (wbr M.! eip))
           where
+            rebp = wbr M.! ebp
+
             findHandler :: IM.Interval Word32 -> ExceptionMap Word32 -> IO (Maybe WriteBackRegs)
             findHandler key exmap = do
               printfEx $ printf "key is: %s\n" (show key)
@@ -794,19 +798,14 @@ handleExceptionPatcher wbr = do
                   myMapM g (x:xs) = do
                     r <- g x
                     case r of
-                      Just y -> return $ Just $ (M.fromList
-                                  [(eip, fromIntegral y)
-                                  ,(ebp, rebp)
-                                  ,(esp, resp)
-                                  ,(eax, fromIntegral weax)])
-                                  `M.union` wbr
+                      Just y -> return $ Just $ M.insert eip (fromIntegral y) wbr
                       Nothing -> myMapM g xs
               let f :: (B.ByteString, Word32) -> IO (Maybe Word32)
                   f (x, y) = do
                         printfEx $ printf "looking at @ %s\n" (show x)
                         -- on B.empty, it's the "generic handler"
                         -- (e.g. finally)
-                        x' <- if x == B.empty then return True else isInstanceOf weax x
+                        x' <- if x == B.empty then return True else isInstanceOf (fromIntegral (wbr M.! eax)) x
                         return $ if x' then Just y else Nothing
               -- by using myMapM, we avoid to look at *every* handler,
               -- but abort on the first match (yes, it's rather
