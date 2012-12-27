@@ -670,12 +670,12 @@ saveReg (Reg32 w8) =
 
 saveRegs :: CodeGen e s ()
 saveRegs =
-  forM_ [ecx, edx, ebx, esi, edi] $ \x ->
+  forM_ x86callersave $ \x ->
     mov (Disp (fromJust (saveReg x)), ebp) x
 
 restoreRegs :: CodeGen e s ()
 restoreRegs =
-  forM_ [ecx, edx, ebx, esi, edi] $ \x ->
+  forM_ x86callersave $ \x ->
     mov x (Disp (fromJust (saveReg x)), ebp)
 
 -- helper
@@ -752,13 +752,12 @@ handleExceptionPatcher wbr' = do
         -- get return addr
         neip <- peek . intPtrToPtr . fromIntegral $ nesp
         printfEx $ printf "neip: 0x%08x\n" (fromIntegral neip :: Word32)
-        let xregs = [ecx, edx, ebx, esi, edi]
-        wbrnew <- forM xregs $ \reg ->
+        wbrnew <- forM x86callersave $ \reg ->
                     peek (plusPtr
                             (intPtrToPtr . fromIntegral $ nebp)
                             (fromIntegral . fromJust $ saveReg reg))
         let wbrnew' = foldl (\m (reg,val) -> M.insert reg val m)
-                            wbr (zip xregs wbrnew)
+                            wbr (zip x86callersave wbrnew)
         handleException $ M.insert eip neip
                         $ M.insert ebp nebp
                         $ M.insert esp nesp wbrnew'

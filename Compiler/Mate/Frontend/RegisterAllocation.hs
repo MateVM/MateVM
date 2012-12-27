@@ -28,6 +28,8 @@ import Text.Printf
 
 import Harpy hiding (Label, fst, not, and)
 
+import Compiler.Mate.Types
+
 import Compiler.Mate.Frontend.IR
 import Compiler.Mate.Frontend.Linear
 import Compiler.Mate.Frontend.LivenessPass
@@ -77,7 +79,7 @@ allIntRegs, allFloatRegs :: S.Set HVarX86
 -- - eax as scratch/int return
 -- - esp/ebp for stack (TODO: maybe we can elimate ebp usage?)
 -- - xmm7 as scratch/float return
-allIntRegs = S.fromList $ map HIReg [ecx, edx, ebx, esi, edi]
+allIntRegs = S.fromList $ map HIReg x86callersave
 allFloatRegs = S.fromList $ map HFReg [xmm0, xmm1, xmm2, xmm3, xmm4, xmm5, xmm6]
 
 stupidRegAlloc :: RegMapping -> PCActiveMap -> [LinearIns Var] -> Word32
