@@ -1,6 +1,6 @@
 SHELL := bash
 
-JAVAC := javac
+JAVAC := javac -J-Xss128M
 JAVA_FILES := $(wildcard jmate/lang/*.java jmate/io/*.java java/lang/*.java java/io/*.java)
 CLASS_FILES := $(JAVA_FILES:.java=.class)
 TEST_JAVA_FILES := $(wildcard tests/*.java)

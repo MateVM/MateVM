@@ -3,7 +3,7 @@ for j in \
 		 "tests/BenchObjectfield" "tests/BenchStaticfield" \
 		 "tests/Fib" "tests/BenchException" "tests/BenchInterface" \
 		 "tests/BenchArray" "tests/BenchInstanceOf" \
-		 "tests/BenchVirtual"
+		 "tests/BenchVirtual" "tests/BenchCompiletime"
 do
 	printf "benchmark: %s\n" "$j";
 	for i in "java -client" "java -cacao" "./mate.opt" "java -jamvm";
