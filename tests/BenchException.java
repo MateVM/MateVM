@@ -7,15 +7,11 @@ public class BenchException {
 
 	public static void main(String []args) {
 		for (int i = 0; i < 0x800; i++) {
-			bench();
-		}
-	}
-
-	public static void bench() {
-		try {
-			foo();
-		} catch (FooEx _) {
-			System.out.printf("catch FooEx\n");
+			try {
+				foo();
+			} catch (FooEx _) {
+				System.out.printf("catch FooEx\n");
+			}
 		}
 	}
 
