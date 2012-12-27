@@ -738,7 +738,7 @@ typeSize' vt = case typeSize vt :: Integer of
 
 handleExceptionPatcher :: ExceptionHandler
 handleExceptionPatcher wbr' = do
-  printfEx $ printf "eip of exception: 0x%08x %d\n" (fromIntegral (wbr' M.! eip) :: Word32)
+  printfEx $ printf "eip of exception: %08x\n" (fromIntegral (wbr' M.! eip) :: Word32)
   handleException wbr'
     where
       unwindStack :: WriteBackRegs -> IO WriteBackRegs
@@ -749,7 +749,7 @@ handleExceptionPatcher wbr' = do
         nebp <- peek . intPtrToPtr . fromIntegral $ nesp - 4
         printfEx $ printf "nebp: 0x%08x\n" (fromIntegral nebp :: Word32)
         printfEx $ printf "nesp: 0x%08x\n" (fromIntegral nesp :: Word32)
-        printfEx (show wbr)
+        printfEx $ printWbr wbr
         -- get return addr
         neip <- peek . intPtrToPtr . fromIntegral $ nesp
         printfEx $ printf "neip: 0x%08x\n" (fromIntegral neip :: Word32)
