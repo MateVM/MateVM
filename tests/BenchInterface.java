@@ -9,7 +9,7 @@ public class BenchInterface extends Interface4ABI {
 
 		Interface4I2BI o_ = (Interface4I2BI) o;
 		Interface4I2BI p_ = (Interface4I2BI) p;
-		int i = 0x90000;
+		int i = 0x900000;
 		while (i != 0) {
 			o_.method2(); o_.method1();
 			p_.method2(); p_.method1();
