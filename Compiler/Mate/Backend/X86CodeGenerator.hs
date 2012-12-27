@@ -752,9 +752,16 @@ handleExceptionPatcher wbr' = do
         -- get return addr
         neip <- peek . intPtrToPtr . fromIntegral $ nesp
         printfEx $ printf "neip: 0x%08x\n" (fromIntegral neip :: Word32)
+        let xregs = [ecx, edx, ebx, esi, edi]
+        wbrnew <- forM xregs $ \reg ->
+                    peek (plusPtr
+                            (intPtrToPtr . fromIntegral $ nebp)
+                            (fromIntegral . fromJust $ saveReg reg))
+        let wbrnew' = foldl (\m (reg,val) -> M.insert reg val m)
+                            wbr (zip xregs wbrnew)
         handleException $ M.insert eip neip
                         $ M.insert ebp nebp
-                        $ M.insert esp nesp wbr
+                        $ M.insert esp nesp wbrnew'
 
       handleException :: WriteBackRegs -> IO WriteBackRegs
       handleException wbr = do
