@@ -38,15 +38,7 @@ all: mate
 	./mate $(basename $<)
 
 bench: mate.opt $(TEST_JAVA_FILES:.java=.class)
-	for j in "tests/Fib" "tests/BenchException" "tests/BenchInterface"; \
-	do \
-		printf "benchmark: %s\n" "$$j"; \
-		for i in "./mate.opt" "java -client" "java -cacao"; \
-		do \
-			JAVA="$$i" ./tools/bench.sh "$$j"; \
-		done; \
-		echo ""; \
-	done
+	./tools/benchall.sh
 
 tests: mate $(TEST_CLASS_FILES)
 
