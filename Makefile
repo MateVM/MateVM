@@ -10,6 +10,7 @@ HS_BOOT := $(shell ls Compiler/Mate/Runtime/*.hs-boot)
 BUILD := build
 B_RELEASE := $(BUILD)/release
 B_STATIC := $(BUILD)/static
+B_OPT := $(BUILD)/opt
 B_COVERAGE := $(BUILD)/coverage
 B_DEBUG := $(BUILD)/debug
 B_QUICKCHECK := $(BUILD)/B_QUICKCHECK
@@ -19,7 +20,7 @@ PACKAGES := $(addprefix -package ,$(PACKAGES_))
 
 GHC_CPP := -DARCH_X86
 
-GHC_OPT  = -I. -O0 -Wall -fno-warn-unused-do-bind -fwarn-tabs
+GHC_OPT  = -I. -Wall -fno-warn-unused-do-bind -fwarn-tabs
 # TODO: define this in cabal... (see cpu package @ hackage)
 # see *.gdb target. also useful for profiling (-p at call)
 GHC_OPT += -rtsopts # -prof -auto-all
@@ -36,11 +37,11 @@ all: mate
 %: %.class mate
 	./mate $(basename $<)
 
-bench: mate $(TEST_JAVA_FILES:.java=.class)
+bench: mate.opt $(TEST_JAVA_FILES:.java=.class)
 	for j in "tests/Fib" "tests/BenchException" "tests/BenchInterface"; \
 	do \
 		printf "benchmark: %s\n" "$$j"; \
-		for i in "./mate" "java -client" "java -cacao"; \
+		for i in "./mate.opt" "java -client" "java -cacao"; \
 		do \
 			JAVA="$$i" ./tools/bench.sh "$$j"; \
 		done; \
@@ -74,16 +75,20 @@ runtime: jmate/lang/MateRuntime.java
 GHCCALL = ghc --make $(GHC_OPT) Mate.hs ffi/trap.c -o $@ $(GHC_LD) -outputdir
 mate: Mate.hs ffi/trap.c $(HS_FILES) $(HS_BOOT) ffi/native.o $(CLASS_FILES)
 	@mkdir -p $(B_RELEASE)
-	$(GHCCALL) $(B_RELEASE) -dynamic
+	$(GHCCALL) $(B_RELEASE) -O0 -dynamic
 
 mate.static: Mate.hs ffi/trap.c $(HS_FILES) $(HS_BOOT) ffi/native.o $(CLASS_FILES)
 	@mkdir -p $(B_STATIC)
-	$(GHCCALL) $(B_STATIC) -static
+	$(GHCCALL) $(B_STATIC) -O0 -static
+
+mate.opt: Mate.hs ffi/trap.c $(HS_FILES) $(HS_BOOT) ffi/native.o $(CLASS_FILES)
+	@mkdir -p $(B_OPT)
+	$(GHCCALL) $(B_OPT) -O2 -static
 
 mate.hpc: Mate.hs ffi/trap.c $(HS_FILES) $(HS_BOOT) ffi/native.o $(CLASS_FILES)
 	@mkdir -p $(B_COVERAGE)
 	@mkdir -p $(B_COVERAGE)/tix/tests
-	$(GHCCALL) $(B_COVERAGE) -static -fhpc
+	$(GHCCALL) $(B_COVERAGE) -O0 -static -fhpc
 
 quickcheck: mate.quickcheck
 	@./$<
