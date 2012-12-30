@@ -34,17 +34,31 @@ function measure {
 
 javavm=$JAVA
 mate="./mate"
-timecap="time --format='%e'"
+
+if [ $# = 1 ]
+then
+	timecap="time --format='%e'" # wall time
+else
+	timecap="time --format='%M'" # memory (max rss)
+fi
 
 # printf "bench base...\n"
 base=`measure "$timecap" "$javavm" "tests/HelloWorld"`
 # printf "bench $1...\n"
 target=`measure "$timecap" "$javavm" "$1"`
 
-diff=`awk "END { print $target - $base }" < /dev/null`
 
-# TODO: print base, target and difference results as TeX
-printf "%-15s" "$javavm"
-printf "base: %0.2fs  " $base
-printf "target: %0.2fs  " $target
-printf "diff: %0.2fs\n" $diff
+if [ $# = 1 ]
+then
+	diff=`awk "END { print $target - $base }" < /dev/null`
+# printf "%-15s" "$javavm"
+# printf "base: %0.2fs  " $base
+# printf "target: %0.2fs  " $target
+# printf "diff: %0.2fs\n" $diff
+	printf "%0.2f&s" $diff
+else
+	# bug in time(1):
+	# https://groups.google.com/forum/?fromgroups=#!topic/gnu.utils.help/u1MOsHL4bhg
+	targetbug=`awk "END { print $target / (4 * 1024.0) }" < /dev/null`
+	printf "%0.2f&MB" $targetbug
+fi
