@@ -550,7 +550,7 @@ girStatic cpidx haveReturn ct mapping = do
   when (argcnt > 0) (add esp argcnt)
 
   case haveReturn of
-    Just (HIReg dst) -> mov dst eax
+    Just (HIReg dst) -> when (dst /= eax) $ mov dst eax
     Just y -> error $ "girStatic: haveReturn: " ++ show y
     Nothing -> return ()
   s <- getState
