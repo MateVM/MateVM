@@ -353,8 +353,7 @@ girEmitOO (IRLoad (RTPoolCall x mapping) (HIConstant 0) dst) = do
             mov (Disp objectGC, eax) (0 :: Word32)
             r2r dst eax
             return wbr
-      s <- getState
-      setState (s { traps = M.insert trapaddr (NewObject patcher) (traps s) })
+      modifyState (\s -> s { traps = M.insert trapaddr (NewObject patcher) (traps s)})
     e -> error $ "emit irload: missing impl.: " ++ show e
 
 girEmitOO (IRLoad (RTPool x) (HIConstant 0) dst) = do
@@ -369,8 +368,7 @@ girEmitOO (IRLoad (RTPool x) (HIConstant 0) dst) = do
       trapaddr <- getCurrentOffset
       mov eax (Addr 0)
       r2r dst eax
-      s <- getState
-      setState (s { traps = M.insert trapaddr sfi (traps s) })
+      modifyState (\s -> s { traps = M.insert trapaddr sfi (traps s)})
     e -> error $ "emit: irload2: missing impl.: " ++ show e
 
 girEmitOO (IRLoad (RTPool x) src dst) = do
@@ -386,8 +384,7 @@ girEmitOO (IRLoad (RTPool x) src dst) = do
               return wbr
         r2r dst ebx
         let ofp = ObjectField patcher
-        s <- getState
-        setState (s { traps = M.insert trapaddr ofp (traps s) })
+        modifyState (\s -> s { traps = M.insert trapaddr ofp (traps s)})
     y -> error $ "emit: irload: missing impl.: getfield or something: " ++ show y
 
 girEmitOO (IRLoad (RTArrayNew ta objType regmapping arrlen) (HIConstant 0) dst) = do
@@ -447,8 +444,7 @@ girEmitOO (IRStore (RTPool x) obj src) = do
           r2r eax src
           trapaddr <- getCurrentOffset
           mov (Addr 0) eax
-          s <- getState
-          setState (s { traps = M.insert trapaddr sfi (traps s) })
+          modifyState (\s -> s { traps = M.insert trapaddr sfi (traps s) })
         else do -- putfield
           push ebx
           r2r eax obj
@@ -461,8 +457,7 @@ girEmitOO (IRStore (RTPool x) obj src) = do
                 mov32RelEbxEax (Disp offset) -- set field
                 return wbr
           pop ebx
-          s <- getState
-          setState (s { traps = M.insert trapaddr (ObjectField patcher) (traps s)})
+          modifyState (\s -> s{ traps = M.insert trapaddr (ObjectField patcher) (traps s)})
     e -> error $ "emit: irstore: missing impl.: " ++ show e
 girEmitOO (IRStore (RTArrayIndex idx typ) obj dst) =
     freeRegFor edx dst $ do
@@ -503,8 +498,7 @@ girEmitOO (IRMisc1 jins vreg) =
       let patcher wbr = do
             emitSigIllTrap 2
             liftIO $ handleExceptionPatcher wbr
-      s <- getState
-      setState (s { traps = M.insert trapaddr (ThrowException patcher) (traps s) })
+      modifyState (\s -> s { traps = M.insert trapaddr (ThrowException patcher) (traps s) })
     CHECKCAST _ ->
       nop -- TODO ..
     x -> error $ "emit: misc1: " ++ show x
@@ -524,8 +518,7 @@ girEmitOO (IRMisc2 jins dst src) =
             check <- liftIO $ isInstanceOf (fromIntegral $ wbr M.! eax) classname
             movres (if check then 1 else 0)
             return $ M.update (Just . (+4)) eip wbr
-      s <- getState
-      setState (s { traps = M.insert trapaddr (InstanceOf patcher) (traps s) })
+      modifyState (\s -> s { traps = M.insert trapaddr (InstanceOf patcher) (traps s) })
     x -> error $ "emit: misc2: " ++ show x
 girEmitOO x = error $ "girEmitOO: insn not implemented: " ++ show x
 
@@ -553,8 +546,7 @@ girStatic cpidx haveReturn ct mapping = do
     Just (HIReg dst) -> when (dst /= eax) $ mov dst eax
     Just y -> error $ "girStatic: haveReturn: " ++ show y
     Nothing -> return ()
-  s <- getState
-  setState (s { traps = M.insert calladdr (StaticMethod patcher) (traps s) })
+  modifyState (\s -> s { traps = M.insert calladdr (StaticMethod patcher) (traps s) })
 
 girVirtual :: Word16 -> Maybe HVarX86 -> CallType -> PreGCPoint HVarX86
            -> CodeGen e CompileState ()
@@ -592,8 +584,7 @@ girVirtual cpidx haveReturn ct mapping = do
   -- note, that "mi" has the wrong class reference here.
   -- we figure that out at run-time, in the methodpool,
   -- depending on the method-table-ptr
-  s <- getState
-  setState (s { traps = M.insert calladdr
+  modifyState (\s -> s { traps = M.insert calladdr
                         (VirtualCall isInterface mi offset)
                         (traps s) })
 
@@ -607,8 +598,7 @@ setGCPoint mapping = do
   -- liftIO $ printfJit "setGCPoint: filtered:\n"
   -- liftIO $ forM_ filtered $ \x -> do
   --               printfJit $ printf "\t0x%08x\n" x
-  s <- getState
-  setState (s { gcpoints = M.insert ip filtered (gcpoints s) })
+  modifyState (\s -> s { gcpoints = M.insert ip filtered (gcpoints s)})
 
 
 filterJRefs :: [(HVarX86, VarType)] -> GCPoint
