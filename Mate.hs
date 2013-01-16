@@ -20,13 +20,17 @@ import Compiler.Mate.Types
 import Compiler.Mate.Debug
 import Compiler.Mate.Runtime.RtsOptions
 
+import Compiler.Mate.Utilities
+
 import Mate.GC.Boehm
 
 main ::  IO ()
 main = do
-  args <- getArgs
-  register_signal
-  parseArgs args False
+  time "main" $ do
+    args <- getArgs
+    register_signal
+    parseArgs args False
+  printCompileTime
 
 parseArgs :: [String] -> Bool -> IO ()
 parseArgs ("-jar":jarpath:_) stdcp = do

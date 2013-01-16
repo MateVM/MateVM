@@ -29,6 +29,8 @@ function measure {
 		($1 $2 $3) 2>> $log
 	done) > /dev/null
 
+	# $3 for printTime stuff
+	# sort $log | head -n $take | awk -F" " '{ sum += $3; run += 1 } END { print (sum / run) }' | xargs printf "%0.6f\n"
 	sort $log | head -n $take | awk -F"'" '{ sum += $2; run += 1 } END { print (sum / run) }' | xargs printf "%0.2f\n"
 }
 
@@ -50,6 +52,8 @@ target=`measure "$timecap" "$javavm" "$1"`
 
 if [ $# = 1 ]
 then
+	# timediff
+
 	diff=`awk "END { print $target - $base }" < /dev/null`
 # printf "%-15s" "$javavm"
 # printf "base: %0.2fs  " $base
@@ -57,6 +61,8 @@ then
 # printf "diff: %0.2fs\n" $diff
 	printf "%0.2f&s" $diff
 else
+	# memory
+
 	# bug in time(1):
 	# https://groups.google.com/forum/?fromgroups=#!topic/gnu.utils.help/u1MOsHL4bhg
 	targetbug=`awk "END { print $target / (4 * 1024.0) }" < /dev/null`

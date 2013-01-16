@@ -78,7 +78,7 @@ insertCompiledMethod entry (MethodInfo mmname _ msig) clsnames = do
 
 
 compile :: MethodInfo -> IO NativeWord
-compile methodinfo = do
+compile methodinfo = time (printf "compile \"%s\"" $ toString $ methName methodinfo) $ do
   tmap <- getTrapMap
 
   cls <- getClassFile (methClassName methodinfo)

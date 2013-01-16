@@ -12,11 +12,13 @@ module Compiler.Mate.Debug
   , printfGc
   , printfMem
   , printfPipe
+  , printfPlain
+  , printfTime
   , tracePipe
   , mateDEBUG
+  , mateTIME
   , logGcT
   , gcLogEnabled 
-  , printfPlain
   , showRefs
   , printf -- TODO: delete me
   ) where
@@ -39,10 +41,20 @@ logHandle = if mateDEBUG
 mateDEBUG :: Bool
 mateDEBUG = False
 
+{-# INLINE mateTIME #-}
+mateTIME :: Bool
+mateTIME = False
+
+{-# INLINE printError #-}
+printError :: Bool -> String -> String -> IO ()
+printError dbgflag prefix str = do
+  when dbgflag $ hPutStr stderr . (++) prefix $ str
+  hFlush stderr
+
 {-# INLINE printString #-}
-printString :: String -> String -> IO ()
-printString prefix str = do
-  when mateDEBUG $ hPutStr logHandle . (++) prefix $ str
+printString :: Bool -> String -> String -> IO ()
+printString dbgflag prefix str = do
+  when dbgflag $ hPutStr logHandle . (++) prefix $ str
   hFlush logHandle
 
 {-# INLINE printfJit #-}
@@ -58,23 +70,25 @@ printString prefix str = do
 {-# INLINE printfPipe #-}
 {-# INLINE printfPlain #-}
 printfJit, printfTrap, printfBb, printfMp, printfCp,
-  printfStr, printfInfo, printfEx, printfPipe, printfMem, printfGc, printfPlain :: String -> IO ()
+  printfStr, printfInfo, printfEx, printfPipe, printfMem, printfGc,
+  printfPlain, printfTime :: String -> IO ()
 {-
 -- TODO(bernhard):
 -- http://stackoverflow.com/questions/12123082/function-composition-with-text-printf-printf
 -}
-printfJit  = printString "Jit: "
-printfTrap = printString "Trap: "
-printfBb   = printString "Bb: "
-printfMp   = printString "Mp: "
-printfCp   = printString "Cp: "
-printfStr  = printString "Str: "
-printfInfo = printString "Info: "
-printfEx = printString "Ex: "
-printfGc = printString "Gc: "
-printfMem = printString "Mem: "
-printfPipe = printString "Pipe: "
-printfPlain = printString ""
+printfJit  = printString mateDEBUG "Jit: "
+printfTrap = printString mateDEBUG "Trap: "
+printfBb   = printString mateDEBUG "Bb: "
+printfMp   = printString mateDEBUG "Mp: "
+printfCp   = printString mateDEBUG "Cp: "
+printfStr  = printString mateDEBUG "Str: "
+printfInfo = printString mateDEBUG "Info: "
+printfEx   = printString mateDEBUG "Ex: "
+printfGc   = printString mateDEBUG "Gc: "
+printfMem  = printString mateDEBUG "Mem: "
+printfPipe = printString mateDEBUG "Pipe: "
+printfPlain = printString mateDEBUG ""
+printfTime = printError mateTIME "time: "
 
 {-# NOINLINE tracePipe #-}
 tracePipe :: String -> a -> a
