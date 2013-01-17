@@ -212,9 +212,9 @@ compileLinear lbls linsn stackAlloc = do
   tm <- traps <$> getState
   return (d, ep, tm)
 
-select :: forall a b e s.
+select :: forall a b.
           (Sub a b, And a b, Add a b, Or a b, Xor a b) =>
-          OpType -> a -> b -> CodeGen e s ()
+          OpType -> a -> b -> forall e s. CodeGen e s ()
 select Add = add
 select Sub = sub
 select And = and
