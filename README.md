@@ -19,7 +19,7 @@ the JVM, for example there is no support for threads yet.
 Install GHC via your distro manager. Make sure you install it with shared
 libaries. On Ubuntu 12.04 LTS that is:
 
-    $ sudo apt-get install ghc-dynamic cabal-install
+    $ sudo apt-get install ghc-dynamic ghc-prof cabal-install
 
 For an easy installation of the remaining packages, you can use
 the script `./tools/installhaskellenv.sh`.
