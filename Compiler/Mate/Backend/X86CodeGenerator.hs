@@ -306,6 +306,7 @@ girEmitOO (IROp operation dst' src1' src2') =
           r2r eax src2'
           r2r ebx src1'
 
+          -- TODO(bernhard): remove guard and replace it with trap for div0
           -- guard for exception
           lokay <- newNamedLabel "lokay"
           cmp ebx (0 :: Word32)
