@@ -26,6 +26,7 @@ function gitinstallWithCustomSetup {
 
 rm -rf ~/.ghc ~/.cabal
 cabal update
+cabal install mtl random $CABAL_OPT
 cabal install cabal-install $CABAL_OPT
 export PATH=~/.cabal/bin:$PATH
 cabal update
