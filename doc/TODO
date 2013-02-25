@@ -1,11 +1,3 @@
-(h) newcodegen
-	-> interface with updated GC (object layout, arrays, ...)
-
-(h) lsra
-	-> liveness?
-		o annotate each instruction with current liveness infos in a hoopl pass
-		o calculate intervalls at linearising graph?
-
 (h) hoopl
 	-> some simple passes
 		o kill vregs?
