@@ -143,6 +143,7 @@ data TrapCause
   | VirtualCall Bool MethodInfo (IO NativeWord) -- for invoke{interface,virtual}
   | InstanceOf TrapPatcherEax
   | ThrowException TrapPatcherEax
+  | DivByNullException
   | NewObject TrapPatcher
   | StaticField StaticFieldInfo
   | ObjectField TrapPatcher

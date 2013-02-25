@@ -69,4 +69,10 @@ void register_signal(void)
 	sigemptyset(&segvaction.sa_mask);
 	segvaction.sa_flags = SA_SIGINFO | SA_RESTART | SA_NODEFER;
 	sigaction(SIGSEGV, &segvaction, NULL);
+
+	struct sigaction fpaction;
+	fpaction.sa_sigaction = chandler;
+	sigemptyset(&fpaction.sa_mask);
+	fpaction.sa_flags = SA_SIGINFO | SA_RESTART | SA_NODEFER;
+	sigaction(SIGFPE, &fpaction, NULL);
 }

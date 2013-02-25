@@ -61,6 +61,9 @@ mateHandler retarr = do
         patchWithHarpy (patchInvoke mi reax reax io_offset) wbr >>= delFalse
     (Just (VirtualCall True  mi io_offset)) -> -- interface call
         patchWithHarpy (patchInvoke mi rebx reax io_offset) wbr >>= delFalse
+    (Just (DivByNullException)) -> do
+        ex <- allocAndInitObject "java/lang/ArithmeticException"
+        handleExceptionPatcher (M.insert eax ex wbr) >>= delFalse
     Nothing -> do
       -- TODO(bernhard) check if it was segfault
       ex <- allocAndInitObject "java/lang/NullPointerException"

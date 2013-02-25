@@ -306,20 +306,10 @@ girEmitOO (IROp operation dst' src1' src2') =
           r2r eax src2'
           r2r ebx src1'
 
-          -- TODO(bernhard): remove guard and replace it with trap for div0
-          -- guard for exception
-          lokay <- newNamedLabel "lokay"
-          cmp ebx (0 :: Word32)
-          jne lokay
           -- if null, then create exception-object in signal handler
-          trapaddr <- emitSigIllTrap 2
-          let patcher wbr = do
-                emitSigIllTrap 2
-                liftIO $ do
-                  ex <- allocAndInitObject "java/lang/ArithmeticException"
-                  handleExceptionPatcher (M.insert eax ex wbr)
-          modifyState (\s -> s { traps = M.insert trapaddr (ThrowException patcher) (traps s) })
-          lokay @@ xor edx edx
+          xor edx edx
+          trapaddr <- getCurrentOffset
+          modifyState (\s -> s { traps = M.insert trapaddr DivByNullException (traps s) })
           div ebx
           -- move result (depending on the operation) into destination
           r2r dst' resreg
