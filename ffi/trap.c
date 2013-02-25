@@ -33,12 +33,13 @@ void chandler(int nSignal, siginfo_t *info, void *ctx)
 	mcontext_t *mctx = &((ucontext_t *) ctx)->uc_mcontext;
 	greg_t *regs = mctx->gregs;
 
-	ptrdiff_t ret[9] = {0};
-	int order[9] = {REG_EAX, REG_ECX, REG_EDX, REG_EBX,
+#define HWREGS 9
+	ptrdiff_t ret[HWREGS] = {0};
+	int order[HWREGS] = {REG_EAX, REG_ECX, REG_EDX, REG_EBX,
 		            REG_ESP, REG_EBP, REG_ESI, REG_EDI,
 					REG_EIP};
 	int i;
-	for (i = 0; i < 9; i++)
+	for (i = 0; i < HWREGS; i++)
 		ret[i] = (ptrdiff_t) regs[order[i]];
 
 	mateHandler(ret);
@@ -50,7 +51,7 @@ void chandler(int nSignal, siginfo_t *info, void *ctx)
 			regs[REG_ESI], regs[REG_EDI], regs[REG_EBP], regs[REG_ESP]);
 		mctx->gregs[REG_EIP] = regs[REG_EIP] + 6;
 	} else {
-		for (i = 0; i < 9; i++)
+		for (i = 0; i < HWREGS; i++)
 			regs[order[i]] = ret[i];
 	}
 }
