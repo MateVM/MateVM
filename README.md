@@ -19,7 +19,8 @@ the JVM, for example there is no support for threads yet.
 Install GHC via your distro manager. Make sure you install it with shared
 libaries. On Ubuntu 12.04 LTS that is:
 
-    $ sudo apt-get install ghc-dynamic ghc-prof cabal-install
+    $ sudo apt-get install ghc-dynamic ghc-prof \
+      cabal-install libzip-dev libgc-dev
 
 For an easy installation of the remaining packages, you can use
 the script `./tools/installhaskellenv.sh`.
@@ -41,8 +42,8 @@ one with the given Makefile; assume you want to execute `./tests/Fib.java`:
 
 or without the Makefile
 
-	$ javac tests/Fib.java
-	$ ./mate tests.Fib
+    $ javac tests/Fib.java
+    $ ./mate tests.Fib
 
 you can compare the output with your Java JVM (`java` in your `$PATH`) with:
 
