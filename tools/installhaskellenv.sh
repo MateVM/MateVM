@@ -32,6 +32,10 @@ export PATH=~/.cabal/bin:$PATH
 cabal update
 cabal install missingh heap plugins split bimap disassembler intervalmap $CABAL_OPT_NEW
 
+# explicitly install not so recent libzip version, since on the suggested
+# system (ubuntu 12.04) libzip-0.11 is not available.
+cabal install libzip-0.10.2 $CABAL_OPT
+
 # cabal install hs-java $CABAL_OPT_NEW
 gitinstall git://github.com/MateVM/hs-java.git
 
