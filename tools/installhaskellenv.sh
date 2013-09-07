@@ -30,7 +30,8 @@ cabal install mtl random $CABAL_OPT
 cabal install cabal-install $CABAL_OPT
 export PATH=~/.cabal/bin:$PATH
 cabal update
-cabal install missingh heap plugins split bimap disassembler intervalmap $CABAL_OPT_NEW
+cabal install plugins $CABAL_OPT
+cabal install missingh heap split bimap disassembler intervalmap $CABAL_OPT_NEW
 
 # explicitly install not so recent libzip version, since on the suggested
 # system (ubuntu 12.04) libzip-0.11 is not available.
@@ -45,7 +46,6 @@ gitinstall git://github.com/MateVM/harpy.git
 # cabal install hoopl $CABAL_OPT
 gitinstall git://github.com/MateVM/hoopl.git
 # gitinstall https://github.com/ghc/packages-hoopl
-
 
 gitinstallWithCustomSetup git://github.com/MateVM/hs-boehmgc.git
 
